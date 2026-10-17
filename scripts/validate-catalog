@@ -38,6 +38,15 @@ for (const [id, s] of Object.entries(skills)) {
   arr(s.invokes).forEach((ref) => { if (!has(skills, ref)) errors.push(`${id}: invokes unknown skill ${ref}`); });
 }
 
+// The router resolves "Call the Skill tool with \"<name>\"" to <same-source>/<name>.
+for (const [id, s] of Object.entries(skills)) {
+  if (!Catalog.available(s)) continue;
+  const text = fs.readFileSync(path.join(Catalog.ROOT, s.path), 'utf8');
+  for (const [, name] of text.matchAll(/Skill tool with "([\w.-]+)"/g)) {
+    if (!has(skills, `${s.source}/${name}`)) errors.push(`${id}: calls uncataloged skill ${s.source}/${name}`);
+  }
+}
+
 Object.keys(rankings).filter((c) => !has(categories, c)).forEach((c) => errors.push(`rankings: unknown category '${c}'`));
 Object.keys(categories).filter((c) => !has(rankings, c)).forEach((c) => warnings.push(`rankings: no entry for category '${c}'`));
 for (const [cat, r] of Object.entries(rankings)) {

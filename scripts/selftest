@@ -66,6 +66,13 @@ for (const msg of ['duplicate skill id: pstack/how', 'path not found', "invalid 
   if (!out.includes(msg)) fail(`expected: ${msg}`);
 }
 
+// Drop the grilling entry: grill-me calls it, so validation must flag the missing skill.
+const skillsFile = path.join(tmp, 'catalog/skills.yaml');
+const blocks = fs.readFileSync(path.join(ROOT, 'catalog/skills.yaml'), 'utf8').split('\n\n');
+fs.writeFileSync(skillsFile, blocks.filter((b) => !b.startsWith('  mattpocock/grilling:')).join('\n\n'));
+({ out } = run('validate-catalog'));
+if (!out.includes('mattpocock/grill-me: calls uncataloged skill mattpocock/grilling')) fail('expected: calls uncataloged skill');
+
 const adapter = spawnSync(process.execPath, ['--test', path.join(ROOT, 'adapters/pi/state.test.ts')], { encoding: 'utf8' });
 if (adapter.status !== 0) fail(`Pi adapter tests\n${adapter.stdout}${adapter.stderr}`);
 console.log('selftest OK');

@@ -22,6 +22,16 @@ skills:
       - task is vague or a plan needs stress-testing
       - important decisions are unresolved
     complexity: [medium, high]
+    invokes: [mattpocock/grilling]
+
+  mattpocock/grilling:
+    source: mattpocock
+    path: vendors/mattpocock/skills/productivity/grilling/SKILL.md
+    categories: [requirements, clarification]
+    use_when:
+      - called by grill-me or improve-codebase-architecture
+      - a plan or decision needs stress-testing in rounds of questions
+    complexity: [medium, high]
 
   mattpocock/grill-with-docs:
     source: mattpocock
