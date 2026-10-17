@@ -282,6 +282,14 @@ expectState('running with no running step', variant((s) => { s.steps[2].status =
   'status: running requires a step with status running');
 expectState('waiting with no waiting step', variant((s) => { s.status = 'waiting'; }),
   'status: waiting requires a step with status waiting');
+const issueFree = (spec) => variant((s) => { s.handoff.issue = null; s.handoff.spec = spec; s.handoff.branch = 'csv-export'; });
+expectStateOk('an issue-free workflow with a spec file', issueFree('docs/specs/csv-export.md'));
+expectState('spec', variant((s) => { delete s.handoff.spec; }), 'handoff.spec: missing');
+expectState('spec type', issueFree(7), 'handoff.spec: must be string | null, got 7');
+expectState('spec outside the repo', issueFree('/tmp/spec.md'),
+  'handoff.spec: must be a path relative to the target repo, got "/tmp/spec.md"');
+expectState('spec above the repo', issueFree('../spec.md'),
+  'handoff.spec: must be a path relative to the target repo, got "../spec.md"');
 expectStateOk('a covered step running with its covering step', variant((s) => { s.steps[3].status = 'running'; }));
 // The format is read from state.md, so a field added there is required here.
 const stateMd = path.join(tmp, STATE_MD);

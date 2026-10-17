@@ -127,6 +127,9 @@ const UTC = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d+)?Z$/;
 const isUtc = (v) => UTC.test(v) && new Date(Date.parse(v) || 0).toISOString().slice(0, 19) === v.slice(0, 19);
 if (isStr(state.updated_at) && !isUtc(state.updated_at))
   errors.push(`updated_at: must be ISO-8601 UTC (e.g. 2026-10-17T09:42:00Z), got ${json(state.updated_at)}`);
+const specFile = isObj(state.handoff) ? state.handoff.spec : null;
+if (isStr(specFile) && (path.isAbsolute(specFile) || path.normalize(specFile).split(path.sep)[0] === '..'))
+  errors.push(`handoff.spec: must be a path relative to the target repo, got ${json(specFile)}`);
 const steps = Array.isArray(state.steps) ? state.steps : [];
 const hasId = (s) => isObj(s) && isStr(s.id);
 // First step with each id; a missing covered_by target is only reported when every step has

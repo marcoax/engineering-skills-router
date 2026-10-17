@@ -76,6 +76,7 @@ The router writes this file in the **target repo** during a workflow so that ada
   ],
   "handoff": {
     "issue": { "number": 42, "url": "https://github.com/acme/app/issues/42" },
+    "spec": null,
     "tickets": [],
     "branch": "42-csv-export",
     "base_commit": "3f2a9c1e7b4d8f0a6c5e2b9d1f3a7c4e8b0d2f6a",
@@ -140,8 +141,9 @@ Step `status`:
 
 | Field | Type | Meaning |
 |---|---|---|
-| `issue` | `{number, url}` \| null | Spec issue, published or given as the task. |
+| `issue` | `{number, url}` \| null | Spec issue, published or given as the task; `null` in an issue-free workflow. |
+| `spec` | string \| null | Spec file, as a path relative to the target repo, when the spec is written as a file instead of an issue. |
 | `tickets` | `{number, url}[]` | Tickets published from the spec. |
-| `branch` | string \| null | Work branch, `<issue-number>-<slug>`. |
+| `branch` | string \| null | Work branch, `<issue-number>-<slug>`, or `<slug>` without an issue. |
 | `base_commit` | string \| null | `git rev-parse HEAD` just before implementation; the fixed point for both reviews. |
 | `pr` | `{number, url}` \| null | Opened pull request. |

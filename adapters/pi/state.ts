@@ -28,6 +28,7 @@ export type State = {
 	steps: Step[];
 	handoff: {
 		issue: Ref | null;
+		spec: string | null;
 		tickets: Ref[];
 		branch: string | null;
 		base_commit: string | null;
@@ -93,6 +94,7 @@ export function parseState(text: string): Parsed {
 			steps,
 			handoff: {
 				issue: ref(h.issue),
+				spec: strOrNull(h.spec),
 				tickets: Array.isArray(h.tickets) ? h.tickets.map(ref).filter((r): r is Ref => r !== null) : [],
 				branch: strOrNull(h.branch),
 				base_commit: strOrNull(h.base_commit),
@@ -194,7 +196,9 @@ export function detailLines(state: State, marked = -1, paint: Paint = plain): De
 	const refText = (r: Ref | null) => (r ? `#${r.number} ${r.url}`.trim() : "—");
 	lines.push(
 		paint("accent", "Handoff"),
-		`  issue    ${refText(h.issue)}`,
+		// An issue-free workflow shows its spec file instead of an empty issue.
+		...(h.issue || !h.spec ? [`  issue    ${refText(h.issue)}`] : []),
+		...(h.spec ? [`  spec     ${h.spec}`] : []),
 		`  tickets  ${h.tickets.length ? h.tickets.map((t) => `#${t.number}`).join(", ") : "—"}`,
 		`  branch   ${h.branch ?? "—"}`,
 		`  base     ${h.base_commit ?? "—"}`,
