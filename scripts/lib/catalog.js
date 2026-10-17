@@ -29,8 +29,12 @@ function projectSkills(target) {
     .map(([id, s]) => [id, { ...s, source: 'project', path: path.resolve(target, String(s?.path ?? '')) }]));
 }
 
-// Catalog skills, plus the target repo's project skills when a target is given.
-const skills = (target) => ({ ...(read('catalog/skills.yaml').skills || {}), ...projectSkills(target) });
+// Catalog skills, plus the target repo's project/ skills when a target is given. Other ids in
+// the project catalog are ignored here (validate-catalog --target reports them).
+const skills = (target) => ({
+  ...(read('catalog/skills.yaml').skills || {}),
+  ...Object.fromEntries(Object.entries(projectSkills(target)).filter(([id]) => id.startsWith('project/'))),
+});
 const categories = () => read('catalog/categories.yaml').categories || {};
 const rankings = () => read('catalog/rankings.yaml').rankings || {};
 const preferences = () => read('config/preferences.yaml').preferences || {};
