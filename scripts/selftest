@@ -119,10 +119,14 @@ for (const [skill, msg] of [
   [{ cats: '[not-a-category]' }, "docs/agents/skills.yaml: project/fw: invalid category 'not-a-category'"],
   [{ cats: '[]' }, 'docs/agents/skills.yaml: project/fw: no categories'],
   [{ id: 'acme/fw' }, "docs/agents/skills.yaml: acme/fw: id must start with 'project/'"],
+  [{ cats: '[framework-review, review]' }, "docs/agents/skills.yaml: project/fw: project skills may only fill 'framework-review', not 'review'"],
 ]) {
   const r = run('validate-catalog', '--target', targetRepo(projectSkill(skill)));
   if (r.ok || !r.out.includes(`error: ${msg}`)) fail(`validate-catalog --target, expected: ${msg}\ngot:\n${r.out}`);
 }
+// v1: even an unvalidated project skill tagged with another phase is not offered for it.
+if (run('list-skills', '--target', targetRepo(projectSkill({ cats: '[review]' })), 'review').out.includes('project/fw'))
+  fail('list-skills --target should offer project skills only for framework-review');
 
 fs.appendFileSync(path.join(tmp, 'catalog/skills.yaml'), `
   pstack/how:

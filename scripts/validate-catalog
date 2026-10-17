@@ -54,7 +54,11 @@ for (const [id, s] of Object.entries(project)) {
   const where = `${Catalog.PROJECT_CATALOG}: ${id}`;
   if (!id.startsWith('project/')) errors.push(`${where}: id must start with 'project/'`);
   if (!Catalog.available(s)) errors.push(`${where}: path not found ${path.relative(target, s.path)}`);
-  arr(s.categories).filter((c) => !has(categories, c)).forEach((c) => errors.push(`${where}: invalid category '${c}'`));
+  for (const c of arr(s.categories)) {
+    if (!has(categories, c)) errors.push(`${where}: invalid category '${c}'`);
+    else if (!Catalog.PROJECT_PHASES.includes(c))
+      errors.push(`${where}: project skills may only fill '${Catalog.PROJECT_PHASES.join("' | '")}', not '${c}'`);
+  }
   if (arr(s.categories).length === 0) errors.push(`${where}: no categories`);
 }
 

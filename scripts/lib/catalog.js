@@ -19,6 +19,8 @@ const read = (rel) => readFile(path.join(ROOT, rel));
 
 const sources = () => read('catalog/sources.yaml').sources || {};
 const PROJECT_CATALOG = 'docs/agents/skills.yaml';
+// v1: project skills fill only these phases.
+const PROJECT_PHASES = ['framework-review'];
 
 // The target repo's own skills, as project/<name> with source 'project' and an absolute path.
 function projectSkills(target) {
@@ -62,10 +64,11 @@ function candidates(category, allSkills = skills(), allRankings = rankings(), pr
   const rank = allRankings[category] || {};
   const pref = (prefs[category] || {}).prefer;
   const tagged = Object.keys(allSkills).filter((id) => arr(allSkills[id].categories).includes(category));
-  const project = tagged.filter((id) => allSkills[id].source === 'project');
+  const isProject = (id) => allSkills[id].source === 'project';
+  const project = PROJECT_PHASES.includes(category) ? tagged.filter(isProject) : [];
   const ordered = [['preference', pref], ['project', project], ['preferred', rank.preferred], ['fallback', rank.fallback]]
     .flatMap(([origin, ids]) => arr(ids).map((id) => [id, origin]));
-  const others = tagged.map((id) => [id, 'other']);
+  const others = tagged.filter((id) => !isProject(id)).map((id) => [id, 'other']);
   const excluded = arr(prefs.exclude);
   const seen = new Set();
   return [...ordered, ...others]
@@ -81,6 +84,6 @@ function candidates(category, allSkills = skills(), allRankings = rankings(), pr
 }
 
 module.exports = {
-  ROOT, PROJECT_CATALOG, arr, sources, skills, projectSkills, categories, rankings, preferences,
+  ROOT, PROJECT_CATALOG, PROJECT_PHASES, arr, sources, skills, projectSkills, categories, rankings, preferences,
   available, targetArg, upstreamPaths, candidates,
 };
