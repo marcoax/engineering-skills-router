@@ -108,6 +108,25 @@ test("replies use the selection syntax with positions in steps", () => {
 	assert.equal(replyFor(s, { kind: "swap", step: 9, alt: 0 }), undefined);
 });
 
+// A medium-risk workflow: review 2 and the comparison are optional and start off.
+const withOptional = () => {
+	const s = example();
+	const off = (id: string) => ({ ...s.steps[3], id, covered_by: null, optional: true, status: "skipped", outcome: "off (optional)" });
+	return { ...s, status: "selecting", steps: [...s.steps, off("review-2"), off("comparison")] };
+};
+
+test("optional steps: read, drawn as skipped, switched on and off", () => {
+	const s = parsed(withOptional());
+	assert.deepEqual(s.steps.map((x) => x.optional), [false, false, false, false, true, true]);
+	assert.equal(widgetLines(s)[5], "– 5. review-2  mattpocock/code-review");
+	assert.equal(replyFor(s, { kind: "switch", step: 4 }), "5on");
+	s.steps[4].status = "pending";
+	assert.equal(replyFor(s, { kind: "switch", step: 4 }), "5off");
+	assert.equal(replyFor(s, { kind: "switch", step: 0 }), undefined, "not optional");
+	assert.equal(replyFor(s, { kind: "switch", step: 9 }), undefined);
+	assert.ok(detailLines(s).lines.join("\n").includes("     optional · → off (optional)"));
+});
+
 test("details include every step field and the handoff", () => {
 	const { lines, stepStart } = detailLines(parsed(example()), 0);
 	const text = lines.join("\n");

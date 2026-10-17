@@ -94,6 +94,8 @@ class RouterOverlay implements Component {
 			this.send({ kind: "go" });
 		} else if (matchesKey(data, "a") || matchesKey(data, "b")) {
 			this.send({ kind: "swap", step: this.selected, alt: matchesKey(data, "a") ? 0 : 1 });
+		} else if (matchesKey(data, "o")) {
+			this.send({ kind: "switch", step: this.selected });
 		} else if (matchesKey(data, "e")) {
 			this.send({ kind: "edit" });
 		}

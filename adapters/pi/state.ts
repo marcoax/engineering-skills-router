@@ -14,6 +14,7 @@ export type Step = {
 	summary: string;
 	alternatives: Alternative[];
 	confirm: boolean;
+	optional: boolean;
 	covered_by: string | null;
 	model: string | null;
 	status: string;
@@ -76,6 +77,7 @@ export function parseState(text: string): Parsed {
 				? s.alternatives.filter(isObj).map((a) => ({ skill: str(a.skill), reason: str(a.reason) }))
 				: [],
 			confirm: s.confirm === true,
+			optional: s.optional === true,
 			covered_by: strOrNull(s.covered_by),
 			model: strOrNull(s.model),
 			status: s.status,
@@ -164,19 +166,26 @@ export function widgetLines(state: State, paint: Paint = plain): string[] {
 const LETTERS = "abcdefghijklmnopqrstuvwxyz";
 export type Choice =
 	| { kind: "go" | "edit" | "stop" | "pause" | "resume" }
-	| { kind: "swap"; step: number; alt: number };
+	| { kind: "swap"; step: number; alt: number }
+	| { kind: "switch"; step: number };
 
 // Panel keys per workflow status; a status without keys leaves the keyboard to the editor.
 export const KEYS: Record<string, string> = {
-	selecting: "enter go · ↑↓ step · a/b swap · e edit · p pause · x stop · esc editor",
+	selecting: "enter go · ↑↓ step · a/b swap · o on/off · e edit · p pause · x stop · esc editor",
 	running: "p pause after this step · esc editor",
 	waiting: "p pause · esc editor",
 	paused: "r resume · x stop · esc editor",
 };
 
 // Chat reply in the router's selection syntax. `step` and `alt` are 0-based indexes
-// into `steps` and that step's `alternatives`; undefined when the swap does not exist.
+// into `steps` and that step's `alternatives`; undefined when the swap does not exist
+// or the switched step is not optional. An optional step that is off is `skipped`.
 export function replyFor(state: State, choice: Choice): string | undefined {
+	if (choice.kind === "switch") {
+		const step = state.steps[choice.step];
+		if (!step?.optional) return undefined;
+		return `${choice.step + 1}${step.status === "skipped" ? "on" : "off"}`;
+	}
 	if (choice.kind !== "swap") return choice.kind;
 	if (!state.steps[choice.step]?.alternatives[choice.alt]) return undefined;
 	return `${choice.step + 1}${LETTERS[choice.alt]}`;
@@ -217,7 +226,8 @@ export function detailLines(state: State, marked = -1, paint: Paint = plain): De
 		s.alternatives.forEach((a, j) => lines.push(paint("dim", `     ${LETTERS[j]}) ${a.skill}: ${a.reason}`)));
 		if (s.confirm) lines.push(paint("muted", "     asks before starting"));
 		if (s.model) lines.push(paint("muted", `     model: ${s.model}`));
-		if (s.outcome) lines.push(`     → ${s.outcome}`);
+		if (s.optional) lines.push(paint("muted", "     optional") + (s.outcome ? ` · → ${s.outcome}` : ""));
+		else if (s.outcome) lines.push(`     → ${s.outcome}`);
 	});
 	return { lines, stepStart };
 }
