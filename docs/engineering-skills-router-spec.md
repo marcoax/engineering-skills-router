@@ -1,5 +1,7 @@
 # Engineering Skills Router — Project Specification
 
+> **Historical document.** This is the original V1 specification plus the V2 decisions (§34). Section numbering is not unique (several numbers repeat) and parts are superseded. The source of truth for behavior is `skills/engineering-router/SKILL.md`; for the state format, `skills/engineering-router/state.md`; for open work, `docs/backlog.md`. Where this file disagrees with them, they win.
+
 ## 1. Overview
 
 **engineering-skills-router** is a standalone repository that catalogs and routes AI coding skills from multiple public skill collections.

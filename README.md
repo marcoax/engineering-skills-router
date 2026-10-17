@@ -49,7 +49,7 @@ While running, the router keeps `.router/state.json` and one note per step in `.
 
 ## Install (any agent)
 
-For Claude Code, Codex, Cursor, OpenCode and the other agents the [skills CLI](https://github.com/vercel-labs/skills) supports. Needs Node 24+ and git.
+For Claude Code, Codex, Cursor, OpenCode and the other agents the [skills CLI](https://github.com/vercel-labs/skills) supports. Needs Node 22.18+ and git.
 
 ```sh
 npx skills add marcoax/engineering-skills-router
@@ -72,7 +72,7 @@ The workflow widget is Pi-only.
 
 ## Install (Pi)
 
-The repo is a Pi package: the router skill plus the workflow widget. Needs Node 24+ and git; `gh` lets the widget see merged PRs.
+The repo is a Pi package: the router skill plus the workflow widget. Needs Node 22.18+ and git; `gh` lets the widget see merged PRs.
 
 ```sh
 pi install git:github.com/marcoax/engineering-skills-router
@@ -128,6 +128,6 @@ Codex, Cursor, OpenCode: link or point the agent at `skills/engineering-router/S
 | `scripts/check-state <target-repo>` | checks the target repo's `.router/state.json` against `skills/engineering-router/state.md` |
 | `scripts/selftest` | checks the scripts against a scratch catalog and scratch state files, then runs the Pi adapter tests |
 
-Scripts need Node 24+; `scripts/setup` installs their only dependency (`yaml`).
+Scripts need Node 22.18+; `scripts/setup` installs their only dependency (`yaml`).
 
 Adding a collection: [docs/adding-a-source.md](docs/adding-a-source.md).
