@@ -108,7 +108,7 @@ test("replies use the selection syntax with positions in steps", () => {
 	assert.equal(replyFor(s, { kind: "swap", step: 9, alt: 0 }), undefined);
 });
 
-// A medium-risk workflow: review 2 and the comparison are optional and start off.
+// A workflow below high risk: review 2 and the comparison are optional and start off.
 const withOptional = () => {
 	const s = example();
 	const off = (id: string) => ({ ...s.steps[3], id, covered_by: null, optional: true, status: "skipped", outcome: "off (optional)" });

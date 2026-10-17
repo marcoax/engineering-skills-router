@@ -136,7 +136,7 @@ Step `status`:
 |---|---|
 | `pending` | Not started. |
 | `running` | In progress (for a covered step: its covering step is running it). |
-| `waiting` | Paused for the user: its confirmation point, a question raised while it runs, or, for the next step after implementation, the user's check of the result (that pause is not a step). |
+| `waiting` | Paused for the user: its confirmation point, a question raised while it runs, or, for the first step after implementation still to run, the user's check of the result (that pause is not a step). |
 | `done` | Finished; `outcome` set. |
 | `skipped` | Will not run (user declined, or no longer needed); `outcome` says why. |
 | `failed` | Could not finish; `outcome` says why. |

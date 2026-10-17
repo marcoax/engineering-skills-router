@@ -174,8 +174,8 @@ steps.forEach((s, i) => {
 });
 // Several steps may run at once (a covered step runs alongside its covering step). Between two
 // steps none runs, so a running workflow only needs a step left to run.
-const STEP_STATUSES = { running: ['running', 'pending'], waiting: ['waiting'] };
-for (const [status, allowed] of Object.entries(STEP_STATUSES)) {
+const STEP_STATUSES_FOR_WORKFLOW = { running: ['running', 'pending'], waiting: ['waiting'] };
+for (const [status, allowed] of Object.entries(STEP_STATUSES_FOR_WORKFLOW)) {
   if (state.status === status && !steps.some((s) => isObj(s) && allowed.includes(s.status)))
     errors.push(`status: ${status} requires a step with status ${allowed.join(' or ')}`);
 }

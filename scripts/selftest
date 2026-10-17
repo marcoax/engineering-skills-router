@@ -473,7 +473,7 @@ expectStateOk('optional steps that are off', variant((s) => {
 }));
 expectState('optional', variant((s) => { s.steps[3].optional = 'yes'; }), 'steps[3].optional: must be boolean, got "yes"');
 // Between two steps the workflow is still running: one step has ended, the next has not started.
-expectStateOk('running between two steps', variant((s) => { s.steps[2].status = 'done'; s.steps[2].outcome = 'Built'; }));
+expectStateOk('running between two steps', variant((s) => { s.steps[2].status = 'pending'; }));
 expectState('running with no step left', variant((s) => {
   s.steps[2].status = 'done';
   s.steps[2].outcome = 'Built';
@@ -481,12 +481,13 @@ expectState('running with no step left', variant((s) => {
   s.steps[3].outcome = 'off';
 }),
 'status: running requires a step with status running or pending');
-// The check after implementation is not a step: the next step waits instead.
+// The check after implementation is not a step: the next step to run waits instead.
+const pullRequest = { id: 'pull-request', phases: ['pull-request'], skill: 'mattpocock/pr', reason: 'r', summary: 's',
+  alternatives: [], confirm: true, covered_by: null, model: null, status: 'pending', outcome: null };
 expectStateOk('the check after implementation', variant((s) => {
   s.status = 'waiting';
-  s.steps[2].status = 'done';
-  s.steps[2].outcome = 'Built';
-  s.steps[3].status = 'waiting';
+  for (const step of s.steps.slice(2)) Object.assign(step, { status: 'done', outcome: 'Built' });
+  s.steps.push({ ...pullRequest, status: 'waiting' });
 }));
 expectState('waiting with no waiting step', variant((s) => { s.status = 'waiting'; }),
   'status: waiting requires a step with status waiting');
