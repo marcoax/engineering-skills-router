@@ -94,11 +94,12 @@ Done when every phase holds one `ok` skill or is marked missing.
 - A phase is **covered** when an earlier selected skill `invokes` a skill tagged with that phase (e.g. `mattpocock/implement` invokes `tdd` and `code-review`, so testing and review 1 are covered). Keep a covered review 1 as a step marked "inside" the covering step; drop other covered phases.
 - One skill filling two phases (e.g. `mattpocock/to-spec` = specification + issue-tracking) appears once.
 - `issue-tracking` gets no skill of its own: only a skill selected for another phase fills it. When the task is not an issue and the specification skill does not fill `issue-tracking` (it writes the spec as a file), the workflow is **issue-free**:
-  - Every phase takes the first fitting candidate without `requires: tracker-config` (so `addyosmani/planning-and-task-breakdown` for planning, not `mattpocock/to-tickets`, and never `mattpocock/implement-spec`). No skill then fills `issue-tracking`: drop it; it is not missing.
-  - The spec file takes the issue's place as `handoff.spec`, relative to the target repo.
-  - **branch** is `<slug>`, created right after the spec file exists. Commit the spec file on it first, so the PR's link resolves.
+  - Every phase and every alternative takes candidates without `requires: tracker-config` (so `addyosmani/planning-and-task-breakdown` for planning, not `mattpocock/to-tickets`, and never `mattpocock/implement-spec`). No skill then fills `issue-tracking`: drop it; it is not missing.
+  - The spec file takes the issue's place as `handoff.spec`, relative to the target repo: the path the specification skill names, else `docs/specs/<slug>.md`, where `<slug>` is a short kebab-case name for the task. Every step that needs the issue or spec (e.g. a review skill) gets this path.
+  - **specification** has no ⏸, since nothing is published; the skill's own approval gates still apply.
+  - **branch** is `<slug>`, created once the spec is approved. Commit the spec file on it first, so the PR's link resolves.
   - **review 2** checks the diff against the spec file.
-  - **pull request**: the body links the spec file, with no `Closes`.
+  - **pull request**: the body links the spec file on the branch (`<repo url>/blob/<branch>/<path>`; the bare path when there is no remote), with no `Closes`.
   - §1 resumes the workflow when the task names its `handoff.branch` or `handoff.spec`.
 - If any selected skill `requires: tracker-config` and the target repo has no `docs/agents/issue-tracker.md`, prepend the `setup` phase skill.
 
