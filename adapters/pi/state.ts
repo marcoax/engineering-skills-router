@@ -123,6 +123,7 @@ const SYMBOLS: Record<string, [string, Style]> = {
 	running: ["▶", "accent"],
 	pending: ["○", "muted"],
 	waiting: ["⏸", "warning"],
+	paused: ["⏸", "warning"],
 	skipped: ["–", "dim"],
 	failed: ["✗", "error"],
 	stopped: ["–", "dim"],
@@ -134,7 +135,15 @@ export function symbol(status: string, paint: Paint = plain): string {
 
 const skillLabel = (step: Step) => step.skill ?? "(router)";
 const inside = (step: Step) => (step.covered_by ? `  inside ${step.covered_by}` : "");
-const isClosed = (state: State) => state.status === "done" || state.status === "stopped";
+export const isClosed = (state: State) => state.status === "done" || state.status === "stopped";
+
+// Whether a workflow found at session start belongs to the past: stopped, or done with no PR
+// or with a merged/closed one. `prState` is gh's PR state; undefined (unknown) keeps it shown.
+export function hiddenAtStart(state: State, prState?: string): boolean {
+	if (state.status === "stopped") return true;
+	if (state.status !== "done") return false;
+	return !state.handoff.pr || prState === "MERGED" || prState === "CLOSED";
+}
 
 export function widgetLines(state: State, paint: Paint = plain): string[] {
 	const doneCount = state.steps.filter((s) => s.status === "done").length;
@@ -151,7 +160,17 @@ export function widgetLines(state: State, paint: Paint = plain): string[] {
 }
 
 const LETTERS = "abcdefghijklmnopqrstuvwxyz";
-export type Choice = { kind: "go" } | { kind: "edit" } | { kind: "stop" } | { kind: "swap"; step: number; alt: number };
+export type Choice =
+	| { kind: "go" | "edit" | "stop" | "pause" | "resume" }
+	| { kind: "swap"; step: number; alt: number };
+
+// Panel keys per workflow status; a status without keys leaves the keyboard to the editor.
+export const KEYS: Record<string, string> = {
+	selecting: "enter go · ↑↓ step · a/b swap · e edit · p pause · x stop · esc editor",
+	running: "p pause after this step · esc editor",
+	waiting: "p pause · esc editor",
+	paused: "r resume · x stop · esc editor",
+};
 
 // Chat reply in the router's selection syntax. `step` and `alt` are 0-based indexes
 // into `steps` and that step's `alternatives`; undefined when the swap does not exist.

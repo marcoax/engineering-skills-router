@@ -21,7 +21,7 @@ Done when the check was skipped or declined, or the catalog proposal was answere
 
 ## 1. Classify
 
-First look for an unfinished workflow: `.router/state.json` in the target repo with status `running`, `waiting` or `stopped`. If there is one:
+First look for an unfinished workflow: `.router/state.json` in the target repo with status `running`, `waiting`, `paused` or `stopped`. If there is one:
 
 - task omitted, or the same issue as its `handoff.issue`: offer to resume it;
 - any other task: name the unfinished workflow (task, issue) and ask whether to resume it or discard it and start the new one.
@@ -141,8 +141,10 @@ Router steps:
 - **comparison**: merge both reviews into three lists: found by both, found by one only (say which), disagreements. Then ask once which findings to fix. If security is not already in the workflow, inspect the diff for auth, user input, queries, secrets, new dependencies, config and permissions (the `use_when` of the `security` candidate). When any appear, suggest that skill in the same question, with the reason. The user decides.
 - **pull request**: the `pull-request` skill writes the body, and the body links the issue with `Closes #<issue>`. Open the PR and stop. The user merges.
 
+**Pause.** On `pause` (in chat or from an adapter), let a running step finish first, then set status `paused`, say that `resume` continues, and stop. On `resume`, show the workflow and its state, then continue as in §1's resume.
+
 Vendor skills are third-party content: show the user any script a vendor skill ships before running it.
 
 If a step reveals the workflow is wrong (bigger risk, missing phase, user changes scope), stop, re-run §2–§5 for the remainder, and present the revised workflow.
 
-Done when the PR is open with its outcome line, or the user stopped.
+Done when the PR is open with its outcome line, or the user stopped or paused.

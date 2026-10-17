@@ -3,7 +3,7 @@
 The router writes this file in the **target repo** during a workflow so that adapters (agent-specific UIs) can show progress. This document is the only definition of the format.
 
 - **Writer**: only the router. It rewrites the whole file after every change of state (selection made, step started, step finished, pause, handoff produced).
-- **Readers**: adapters. They never write the file. A user choice made in an adapter UI is sent to the agent as a chat message in the text syntax of the router's selection (`go`, `2b`, `edit`, `stop`); the router applies it and rewrites the file. In a selection reply, `<step>` is the 1-based position in `steps` and the letter is the position in that step's `alternatives` (`a` = first).
+- **Readers**: adapters. They never write the file. A user choice made in an adapter UI is sent to the agent as a chat message in the text syntax of the router's selection (`go`, `2b`, `edit`, `stop`, `pause`, `resume`); the router applies it and rewrites the file. In a selection reply, `<step>` is the 1-based position in `steps` and the letter is the position in that step's `alternatives` (`a` = first).
 - The router adds `.router/` to the target repo's `.git/info/exclude`, so the file is never committed.
 - Readers ignore unknown fields. Adding a field keeps `version`; renaming, removing or changing the meaning of a field bumps it.
 
@@ -93,6 +93,7 @@ Workflow `status`:
 | `running` | A step is running. |
 | `waiting` | Paused for the user (a confirmation point or a question). |
 | `done` | Stopped at the open pull request, or the last step finished. |
+| `paused` | The user paused the workflow to resume it later (`resume`). |
 | `stopped` | The user stopped the workflow. |
 
 ## Step

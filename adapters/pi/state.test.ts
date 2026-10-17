@@ -4,7 +4,7 @@ import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
 import { test } from "node:test";
-import { currentStep, detailLines, findRepoRoot, parseState, readState, replyFor, symbol, widgetLines, type State } from "./state.ts";
+import { currentStep, detailLines, findRepoRoot, hiddenAtStart, parseState, readState, replyFor, symbol, widgetLines, type State } from "./state.ts";
 
 // The documented example is the fixture, so the test follows the contract.
 const ROOT = path.resolve(import.meta.dirname, "../..");
@@ -70,11 +70,26 @@ test("widget: one line once the workflow is closed", () => {
 	assert.deepEqual(widgetLines(parsed(stopped)), ["– router stopped · 2/3 done"]);
 });
 
+test("at session start only finished workflows are hidden", () => {
+	const withStatus = (status: string, pr: unknown = null) => parsed({ ...example(), status, handoff: { pr } });
+	for (const status of ["selecting", "running", "waiting", "paused"]) assert.equal(hiddenAtStart(withStatus(status)), false, status);
+	assert.equal(hiddenAtStart(withStatus("stopped")), true);
+	assert.equal(hiddenAtStart(withStatus("done")), true, "done without PR");
+	const done = withStatus("done", { number: 57, url: "u" });
+	assert.equal(hiddenAtStart(done), false, "PR state unknown");
+	assert.equal(hiddenAtStart(done, "OPEN"), false);
+	assert.equal(hiddenAtStart(done, "MERGED"), true);
+	assert.equal(hiddenAtStart(done, "CLOSED"), true);
+	assert.equal(symbol("paused"), "⏸");
+});
+
 test("replies use the selection syntax with positions in steps", () => {
 	const s = parsed(example());
 	assert.equal(replyFor(s, { kind: "go" }), "go");
 	assert.equal(replyFor(s, { kind: "edit" }), "edit");
 	assert.equal(replyFor(s, { kind: "stop" }), "stop");
+	assert.equal(replyFor(s, { kind: "pause" }), "pause");
+	assert.equal(replyFor(s, { kind: "resume" }), "resume");
 	assert.equal(replyFor(s, { kind: "swap", step: 0, alt: 0 }), "1a");
 	assert.equal(replyFor(s, { kind: "swap", step: 0, alt: 1 }), undefined);
 	assert.equal(replyFor(s, { kind: "swap", step: 1, alt: 0 }), undefined);

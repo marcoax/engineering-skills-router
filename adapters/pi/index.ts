@@ -1,11 +1,26 @@
 // Pi adapter for the engineering router: renders `.router/state.json` of the session's
 // repo as a widget above the editor and a right-hand overlay with the skill selection.
 // It never writes the state file; choices go to the agent as chat messages.
+import { execFile } from "node:child_process";
 import * as fs from "node:fs";
 import * as path from "node:path";
 import type { ExtensionAPI, ExtensionContext, Theme } from "@earendil-works/pi-coding-agent";
 import { type Component, Key, matchesKey, type OverlayHandle, type TUI, truncateToWidth, wrapTextWithAnsi } from "@earendil-works/pi-tui";
-import { type Choice, currentStep, detailLines, findRepoRoot, type Paint, readState, replyFor, STATE_FILE, type State, widgetLines } from "./state.ts";
+import {
+	type Choice,
+	currentStep,
+	detailLines,
+	findRepoRoot,
+	hiddenAtStart,
+	isClosed,
+	KEYS,
+	type Paint,
+	readState,
+	replyFor,
+	STATE_FILE,
+	type State,
+	widgetLines,
+} from "./state.ts";
 
 const SHORTCUT = Key.ctrlAlt("w");
 const WIDGET = "engineering-router";
@@ -17,6 +32,7 @@ class RouterOverlay implements Component {
 	private selected = 0;
 	private top = 0;
 	private confirmStop = false;
+	private status: string | undefined;
 	private tui: TUI;
 	private theme: Theme;
 	private getState: () => State | undefined;
@@ -27,6 +43,7 @@ class RouterOverlay implements Component {
 		this.tui = tui;
 		this.theme = theme;
 		this.getState = getState;
+		this.status = getState()?.status;
 		this.send = send;
 		this.close = close;
 	}
@@ -35,28 +52,40 @@ class RouterOverlay implements Component {
 		return state.status === "selecting" && this.handle?.isFocused() === true;
 	}
 
-	// Called on every state file change.
+	// Called on every state file change; a new status hands the keyboard back to the editor.
 	update(state: State): void {
 		this.selected = Math.min(this.selected, Math.max(0, state.steps.length - 1));
-		if (state.status !== "selecting") {
+		if (state.status !== this.status) {
 			this.confirmStop = false;
 			if (this.handle?.isFocused()) this.handle.unfocus();
 		}
+		this.status = state.status;
 		this.tui.requestRender();
 	}
 
-	// Only reached while the overlay has focus, i.e. during the selection.
+	// Only reached while the overlay has focus, i.e. in a status with KEYS.
 	handleInput(data: string): void {
 		const state = this.getState();
 		if (matchesKey(data, SHORTCUT)) return this.close();
+		const status = state?.status ?? "";
 		if (matchesKey(data, "escape")) {
 			this.confirmStop = false;
 			this.handle?.unfocus();
-		} else if (!state || state.status !== "selecting") {
+		} else if (!state || !KEYS[status]) {
 			return;
 		} else if (this.confirmStop) {
 			this.confirmStop = false;
 			if (matchesKey(data, "x")) this.send({ kind: "stop" });
+		} else if (matchesKey(data, "p") && status !== "paused") {
+			this.send({ kind: "pause" });
+			this.handle?.unfocus();
+		} else if (matchesKey(data, "r") && status === "paused") {
+			this.send({ kind: "resume" });
+			this.handle?.unfocus();
+		} else if (matchesKey(data, "x") && (status === "selecting" || status === "paused")) {
+			this.confirmStop = true;
+		} else if (status !== "selecting") {
+			return;
 		} else if (matchesKey(data, "up")) {
 			this.selected = Math.max(0, this.selected - 1);
 		} else if (matchesKey(data, "down")) {
@@ -67,8 +96,6 @@ class RouterOverlay implements Component {
 			this.send({ kind: "swap", step: this.selected, alt: matchesKey(data, "a") ? 0 : 1 });
 		} else if (matchesKey(data, "e")) {
 			this.send({ kind: "edit" });
-		} else if (matchesKey(data, "x")) {
-			this.confirmStop = true;
 		}
 		this.tui.requestRender();
 	}
@@ -92,10 +119,11 @@ class RouterOverlay implements Component {
 			lineAt.push(body.length);
 			body.push(...wrap(line));
 		}
-		const footer = choosing
+		const keys = this.handle?.isFocused() ? KEYS[state.status] : undefined;
+		const footer = keys
 			? this.confirmStop
 				? paint("warning", " press x again to stop · any other key cancels")
-				: paint("dim", " enter go · ↑↓ step · a/b swap · e edit · x stop · esc editor")
+				: paint("dim", ` ${keys}`)
 			: paint("dim", ` ${SHORTCUT} close`);
 
 		// Keep the selected (or active) step in view: 2 border rows and the footer take 3.
@@ -125,6 +153,8 @@ export default function (pi: ExtensionAPI) {
 	let warnedVersion: string | undefined;
 	let overlay: RouterOverlay | undefined;
 	let ui: ExtensionContext["ui"] | undefined;
+	// A finished workflow found at session start (hiddenAtStart) stays hidden until a new one begins.
+	let hideClosed = false;
 
 	const reload = () => {
 		if (!ui) return;
@@ -137,7 +167,8 @@ export default function (pi: ExtensionAPI) {
 			warnedVersion = undefined;
 		}
 		state = parsed.kind === "ok" ? parsed.state : undefined;
-		const shown = state;
+		if (state && !isClosed(state)) hideClosed = false;
+		const shown = state && !(hideClosed && isClosed(state)) ? state : undefined;
 		ui.setWidget(
 			WIDGET,
 			shown
@@ -146,6 +177,7 @@ export default function (pi: ExtensionAPI) {
 							[
 								...widgetLines(shown, paintWith(theme)),
 								...(shown.status === "selecting" ? [theme.fg("warning", `${SHORTCUT} or /router-panel: choose skills`)] : []),
+								...(shown.status === "paused" ? [theme.fg("warning", `${SHORTCUT} or /router-panel: r resume · x stop`)] : []),
 							].map((l) => truncateToWidth(l, width)),
 						invalidate() {},
 					})
@@ -170,6 +202,19 @@ export default function (pi: ExtensionAPI) {
 		ui = ctx.ui;
 		root = findRepoRoot(ctx.cwd);
 		file = path.join(root, STATE_FILE);
+		const initial = readState(root);
+		hideClosed = initial.kind === "ok" && hiddenAtStart(initial.state);
+		const pr = initial.kind === "ok" && initial.state.status === "done" ? initial.state.handoff.pr : null;
+		if (pr) {
+			// Shown while gh answers; hidden only once gh says merged/closed and the same workflow is still there.
+			const session = ctx.ui;
+			execFile("gh", ["pr", "view", pr.url || String(pr.number), "--json", "state", "-q", ".state"], { cwd: root, timeout: 15000 }, (err, out) => {
+				if (err || ui !== session || state?.status !== "done" || state.handoff.pr?.number !== pr.number) return;
+				if (!hiddenAtStart(state, out.trim())) return;
+				hideClosed = true;
+				reload();
+			});
+		}
 		// Polling stat works before `.router/` exists and across whole-file rewrites.
 		fs.watchFile(file, { interval: 1000 }, reload);
 		reload();
@@ -201,7 +246,7 @@ export default function (pi: ExtensionAPI) {
 				onHandle: (handle) => {
 					if (!overlay) return;
 					overlay.handle = handle;
-					if (state?.status === "selecting") handle.focus();
+					if (state && KEYS[state.status]) handle.focus();
 				},
 			},
 		);
