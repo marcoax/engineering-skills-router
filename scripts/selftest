@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Runs the scripts against a scratch copy of the catalog to check error detection and
-// preference ordering, then the root resolver and the Pi adapter tests. Leaves the real
-// catalog untouched.
+// preference ordering, then the root resolver, check-state and the Pi adapter tests. Leaves
+// the real catalog untouched.
 const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
@@ -10,7 +10,8 @@ const { spawnSync } = require('node:child_process');
 const ROOT = path.resolve(__dirname, '..');
 const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'router-selftest-'));
 process.on('exit', () => fs.rmSync(tmp, { recursive: true, force: true }));
-for (const dir of ['catalog', 'scripts']) fs.cpSync(path.join(ROOT, dir), path.join(tmp, dir), { recursive: true });
+const STATE_MD = 'skills/engineering-router/state.md';
+for (const dir of ['catalog', 'scripts', 'skills']) fs.cpSync(path.join(ROOT, dir), path.join(tmp, dir), { recursive: true });
 fs.mkdirSync(path.join(tmp, 'config'));
 for (const dir of ['vendors', 'node_modules']) fs.symlinkSync(path.join(ROOT, dir), path.join(tmp, dir));
 
@@ -183,6 +184,74 @@ const resolvedOutput = (root, how) => `root: ${root}\nfound: ${how}\nexit 0`;
   fs.rmSync(path.join(env.ENGINEERING_ROUTER_HOME, 'catalog'), { recursive: true });
   expectResolve('candidates without catalog skipped', c.resolve(env), resolvedOutput(data, 'data-dir'));
 }
+
+// check-state: the example in state.md must pass; each broken variant must name its error.
+const stateExample = () => JSON.parse(fs.readFileSync(path.join(tmp, STATE_MD), 'utf8').match(/```json\n([\s\S]*?)```/)[1]);
+const checkState = (state) => {
+  const dir = fs.mkdtempSync(path.join(tmp, 'target-'));
+  if (state !== undefined) {
+    fs.mkdirSync(path.join(dir, '.router'));
+    fs.writeFileSync(path.join(dir, '.router/state.json'), typeof state === 'string' ? state : JSON.stringify(state));
+  }
+  return run('check-state', dir);
+};
+if (!checkState(stateExample()).ok) fail(`state.md example should pass check-state\n${checkState(stateExample()).out}`);
+const expectState = (label, state, ...msgs) => {
+  const r = checkState(state);
+  const missing = msgs.filter((m) => !r.out.includes(`error: ${m}`));
+  if (r.ok || missing.length > 0) fail(`check-state, ${label}: expected\n  error: ${missing.join('\n  error: ')}\ngot:\n${r.out}`);
+};
+expectState('missing file', undefined, '.router/state.json: not found');
+expectState('invalid JSON', '{"version": 1,', 'invalid JSON:');
+expectState('other version', { version: 2 }, 'version: unsupported version 2, state.md defines version 1');
+if (checkState({ version: 2 }).out.match(/^error:/gm).length !== 1) fail('check-state, other version: should stop at the version');
+expectState('no version', { task: 'x' }, 'version: missing');
+const variant = (mutate) => { const s = stateExample(); mutate(s); return s; };
+expectState('fields and types', variant((s) => {
+  delete s.task;
+  s.steps[0].confirm = 'yes';
+  s.steps[1].phases = 'x';
+  s.steps[2].skill = 7;
+  s.handoff.issue.number = '42';
+  s.handoff.tickets = [{ number: 1 }];
+  delete s.handoff.pr;
+}),
+'task: missing',
+'steps[0].confirm: must be boolean, got "yes"',
+'steps[1].phases: must be string[], got "x"',
+'steps[2].skill: must be string | null, got 7',
+'handoff.issue.number: must be integer, got "42"',
+'handoff.tickets[0].url: missing',
+'handoff.pr: missing');
+expectState('enums', variant((s) => { s.risk = 'low'; s.status = 'finished'; s.steps[2].status = 'blocked'; }),
+  'risk: must be "medium" | "high", got "low"',
+  'status: must be one of selecting | running | waiting | done | paused | stopped, got "finished"',
+  'steps[2].status: must be one of pending | running | waiting | done | skipped | failed, got "blocked"');
+expectState('rules from the prose', variant((s) => {
+  s.updated_at = '2026-10-17 09:42';
+  s.steps[0].alternatives.push({ skill: 'x', reason: 'r' }, { skill: 'a/b', reason: 'r' });
+  s.steps[1].id = 'specification';
+  s.steps[1].outcome = null;
+  s.steps[2].covered_by = 'nowhere';
+  s.steps[2].skill = 'code-review';
+  s.steps[2].model = 'opus';
+}),
+'updated_at: must be ISO-8601 UTC (e.g. 2026-10-17T09:42:00Z), got "2026-10-17 09:42"',
+'steps[0].alternatives: at most two, got 3',
+"steps[0].alternatives[1].skill: must be 'source/name', got \"x\"",
+'steps[1].id: duplicate step id "specification"',
+'steps[1].outcome: required when status is done',
+'steps[2].covered_by: no step with id "nowhere"',
+"steps[2].skill: must be 'source/name', got \"code-review\"",
+"steps[2].model: must be 'provider/model-id', got \"opus\"");
+// The format is read from state.md, so a field added there is required here.
+const stateMd = path.join(tmp, STATE_MD);
+const stateMdText = fs.readFileSync(stateMd, 'utf8');
+fs.writeFileSync(stateMd, stateMdText.replace(/^\| `outcome` .*$/m, '$&\n| `effort` | integer \\| null | Test field. |'));
+expectState('field added to state.md', stateExample(), 'steps[0].effort: missing');
+fs.writeFileSync(stateMd, stateMdText);
+const extra = variant((s) => { s.extra = 1; s.steps[0].extra = {}; s.handoff.issue.extra = null; });
+if (!checkState(extra).ok) fail(`check-state should ignore unknown fields\n${checkState(extra).out}`);
 
 const adapter = spawnSync(process.execPath, ['--test', path.join(ROOT, 'adapters/pi/state.test.ts')], { encoding: 'utf8' });
 if (adapter.status !== 0) fail(`Pi adapter tests\n${adapter.stdout}${adapter.stderr}`);

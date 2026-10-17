@@ -102,7 +102,8 @@ Codex, Cursor, OpenCode: link or point the agent at `skills/engineering-router/S
 | `scripts/list-skills [phase ...]` | ranked candidates per phase with availability |
 | `scripts/validate-catalog [--verbose]` | checks sources, paths, ids, categories, rankings, preferences; `--verbose` lists uncataloged upstream skills |
 | `scripts/update` | pulls vendor submodules, prints added/removed skills; never edits the catalog |
-| `scripts/selftest` | checks the scripts against a scratch catalog, then runs the Pi adapter tests |
+| `scripts/check-state <target-repo>` | checks the target repo's `.router/state.json` against `skills/engineering-router/state.md` |
+| `scripts/selftest` | checks the scripts against a scratch catalog and scratch state files, then runs the Pi adapter tests |
 
 Scripts need Node 24+; `scripts/setup` installs their only dependency (`yaml`).
 

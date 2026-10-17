@@ -48,6 +48,19 @@ The router writes this file in the **target repo** during a workflow so that ada
       "outcome": "On 42-csv-export"
     },
     {
+      "id": "implementation",
+      "phases": ["implementation"],
+      "skill": "mattpocock/implement",
+      "reason": "one spec, implemented in this session",
+      "summary": "Build the CSV export test-first, then run review 1",
+      "alternatives": [],
+      "confirm": true,
+      "covered_by": null,
+      "model": null,
+      "status": "running",
+      "outcome": null
+    },
+    {
       "id": "review-1",
       "phases": ["review"],
       "skill": "mattpocock/code-review",
@@ -65,7 +78,7 @@ The router writes this file in the **target repo** during a workflow so that ada
     "issue": { "number": 42, "url": "https://github.com/acme/app/issues/42" },
     "tickets": [],
     "branch": "42-csv-export",
-    "base_commit": null,
+    "base_commit": "3f2a9c1e7b4d8f0a6c5e2b9d1f3a7c4e8b0d2f6a",
     "pr": null
   }
 }

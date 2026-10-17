@@ -21,9 +21,9 @@ const parsed = (obj: unknown): State => {
 test("parses the state.md example", () => {
 	const s = parsed(example());
 	assert.equal(s.status, "running");
-	assert.deepEqual(s.steps.map((x) => x.id), ["specification", "branch", "review-1"]);
+	assert.deepEqual(s.steps.map((x) => x.id), ["specification", "branch", "implementation", "review-1"]);
 	assert.equal(s.steps[1].skill, null);
-	assert.equal(s.steps[2].covered_by, "implementation");
+	assert.equal(s.steps[3].covered_by, "implementation");
 	assert.equal(s.handoff.issue?.number, 42);
 });
 
@@ -54,10 +54,11 @@ test("symbols per status", () => {
 
 test("widget: one line per step, router and covered labels", () => {
 	const lines = widgetLines(parsed(example()));
-	assert.equal(lines.length, 4);
+	assert.equal(lines.length, 5);
 	assert.equal(lines[1], "✓ 1. specification  mattpocock/to-spec");
 	assert.equal(lines[2], "✓ 2. branch  (router)");
-	assert.equal(lines[3], "○ 3. review-1  mattpocock/code-review  inside implementation");
+	assert.equal(lines[3], "▶ 3. implementation  mattpocock/implement");
+	assert.equal(lines[4], "○ 4. review-1  mattpocock/code-review  inside implementation");
 });
 
 test("widget: one line once the workflow is closed", () => {
@@ -67,7 +68,7 @@ test("widget: one line once the workflow is closed", () => {
 	assert.deepEqual(widgetLines(parsed(done)), ["✓ router done · PR #57"]);
 	const stopped = example();
 	stopped.status = "stopped";
-	assert.deepEqual(widgetLines(parsed(stopped)), ["– router stopped · 2/3 done"]);
+	assert.deepEqual(widgetLines(parsed(stopped)), ["– router stopped · 2/4 done"]);
 });
 
 test("at session start only finished workflows are hidden", () => {
@@ -102,8 +103,8 @@ test("details include every step field and the handoff", () => {
 	for (const part of ["▸ ✓ 1. specification", "why: decisions already settled", "a) addyosmani/spec-driven-development", "→ Published #42", "asks before starting", "branch   42-csv-export", "#42 https://github.com/acme/app/issues/42"]) {
 		assert.ok(text.includes(part), part);
 	}
-	assert.equal(stepStart.length, 3);
-	assert.ok(lines[stepStart[2]].includes("review-1"));
+	assert.equal(stepStart.length, 4);
+	assert.ok(lines[stepStart[3]].includes("review-1"));
 });
 
 test("current step follows the active one", () => {
