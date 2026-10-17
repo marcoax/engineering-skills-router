@@ -13,7 +13,7 @@
   },
   "pi": {
     "skills": [
-      "./router"
+      "./skills"
     ],
     "extensions": [
       "./adapters/pi/index.ts"

@@ -20,6 +20,23 @@ const run = (script, ...args) => {
   return { ok: r.status === 0, out: r.stdout + r.stderr };
 };
 
+// Layout: the skills CLI and Pi must both discover exactly one skill, under skills/.
+const skillFiles = [];
+const walk = (dir) => {
+  for (const e of fs.readdirSync(dir, { withFileTypes: true })) {
+    if (e.name.startsWith('.') || (dir === ROOT && ['vendors', 'node_modules'].includes(e.name))) continue;
+    const p = path.join(dir, e.name);
+    if (e.isDirectory()) walk(p);
+    else if (e.name === 'SKILL.md') skillFiles.push(path.relative(ROOT, p));
+  }
+};
+walk(ROOT);
+if (skillFiles.length !== 1 || !skillFiles[0].startsWith(`skills${path.sep}`)) {
+  fail(`expected exactly one SKILL.md outside vendors/, under skills/; found: ${skillFiles.join(', ') || 'none'}`);
+}
+const piSkills = JSON.parse(fs.readFileSync(path.join(ROOT, 'package.json'), 'utf8')).pi?.skills ?? [];
+if (!piSkills.includes('./skills')) fail(`package.json pi.skills should name ./skills; found: ${JSON.stringify(piSkills)}`);
+
 if (!run('validate-catalog').ok) fail('clean catalog should validate');
 
 fs.writeFileSync(prefsFile, `preferences:

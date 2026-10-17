@@ -14,7 +14,7 @@ While running, the router keeps `.router/state.json` and one note per step in `.
 
 | Path | What |
 |---|---|
-| `router/engineering-router/SKILL.md` | the router skill |
+| `skills/engineering-router/SKILL.md` | the router skill |
 | `catalog/sources.yaml` | vendor repos and where their skills live |
 | `catalog/skills.yaml` | project-owned metadata per skill (phases, use_when, invokes) |
 | `catalog/rankings.yaml` | default + fallback skill per phase |
@@ -58,12 +58,12 @@ Claude Code:
 
 ```sh
 mkdir -p ~/.claude/skills
-ln -s "$PWD/router/engineering-router" ~/.claude/skills/engineering-router
+ln -s "$PWD/skills/engineering-router" ~/.claude/skills/engineering-router
 ```
 
 Then `/engineering-router <task>` in any repo (or `/engineering-router` alone to resume). For one project only, link into that project's `.claude/skills/` instead. Update with `git pull && scripts/setup` in the clone.
 
-Codex, Cursor, OpenCode: link or point the agent at `router/engineering-router/SKILL.md` with whatever skill/rule mechanism it offers.
+Codex, Cursor, OpenCode: link or point the agent at `skills/engineering-router/SKILL.md` with whatever skill/rule mechanism it offers.
 
 ## Scripts
 
