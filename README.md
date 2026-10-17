@@ -1,6 +1,6 @@
 # engineering-skills-router
 
-Routes an engineering task to the smallest workflow of skills drawn from several public collections, without installing or modifying any user-level skill. Spec: [docs/engineering-skills-router-spec.md](docs/engineering-skills-router-spec.md).
+Routes an engineering task to the smallest workflow of skills drawn from several public collections, without installing or modifying any user-level skill. Why it is built this way: [design rationale](docs/engineering-skills-router-spec.md).
 
 ```text
 task → classify → phases → one skill per phase → dedupe → show workflow → run
