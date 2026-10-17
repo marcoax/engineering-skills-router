@@ -31,6 +31,15 @@ skills:
 
 When one fits the task, the workflow gets a `framework-review` step after the reviews: the change is checked against the project's own conventions, and its findings join the comparison. A repo without the file gets no such step. Only project skills fill `framework-review`, and for now they fill no other phase; `scripts/validate-catalog --target <repo>` checks the file.
 
+**Personal skills.** Your own skills can be candidates too. Set `personal_path` in `config/preferences.yaml` to the folder that holds them (a leading `~` is your home dir; a relative path resolves against the router checkout), then copy `config/personal-skills.example.yaml` to `config/personal-skills.yaml` (git-ignored) and list them there, in the format of `catalog/skills.yaml` with ids `personal/<name>` and paths relative to `personal_path`, inside it:
+
+```yaml
+preferences:
+  personal_path: ~/my-skills
+```
+
+They fill any phase but `framework-review`, after the ranked vendor skills; rank one first with `prefer` (`catalog/rankings.yaml` stays vendor-only). The router reads them in place and never writes there. They are not pinned: editing one changes the next workflow. One named like a cataloged vendor skill (`personal/tdd` next to `mattpocock/tdd`) is skipped with a warning, never used in its place. `scripts/validate-catalog` checks the file. A Pi package update wipes `config/`, so keep them in a personal clone, as for preferences.
+
 While running, the router keeps `.router/state.json` and one note per step in `.router/steps/` in the target repo (git-excluded). Where the agent supports subagents, each skill step runs in a fresh subagent on the session's model; steps that talk with the user (requirements, specification, setup) stay in the main session. An unfinished workflow can be resumed later, also from a new session.
 
 ## Layout
@@ -44,6 +53,7 @@ While running, the router keeps `.router/state.json` and one note per step in `.
 | `catalog/rankings.yaml` | default + fallback skill per phase |
 | `catalog/categories.yaml` | the phases |
 | `config/preferences.example.yaml` | template for personal overrides (`config/preferences.yaml`, git-ignored) |
+| `config/personal-skills.example.yaml` | template for your own skills (`config/personal-skills.yaml`, git-ignored) |
 | `adapters/pi/` | Pi extension: workflow widget and panel from `.router/state.json` |
 | `vendors/` | git submodules, never edited |
 
@@ -123,7 +133,7 @@ Codex, Cursor, OpenCode: link or point the agent at `skills/engineering-router/S
 | Script | Does |
 |---|---|
 | `scripts/list-skills [--target <repo>] [phase ...]` | ranked candidates per phase with availability; `--target` adds the repo's project skills |
-| `scripts/validate-catalog [--target <repo>] [--verbose]` | checks sources, paths, ids, categories, rankings, preferences; `--target` also checks the repo's `docs/agents/skills.yaml`; `--verbose` lists uncataloged upstream skills |
+| `scripts/validate-catalog [--target <repo>] [--verbose]` | checks sources, paths, ids, categories, rankings, preferences, personal skills; `--target` also checks the repo's `docs/agents/skills.yaml`; `--verbose` lists uncataloged upstream skills |
 | `scripts/update` | pulls vendor submodules, prints added/removed skills; never edits the catalog |
 | `scripts/check-state <target-repo>` | checks the target repo's `.router/state.json` against `skills/engineering-router/state.md` |
 | `scripts/selftest` | checks the scripts against a scratch catalog and scratch state files, then runs the Pi adapter tests |

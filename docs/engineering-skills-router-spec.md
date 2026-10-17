@@ -1214,7 +1214,7 @@ Before execution, each step shows its default skill and at most two alternatives
 
 ### 34.5 Vendor copies and updates
 
-- The router always reads skills from `vendors/` at pinned commits, never from user-installed copies (confirms §6).
+- The router always reads skills from `vendors/` at pinned commits, never from user-installed copies (confirms §6). The one exception is the `personal` source: the user's own skills, listed in `config/personal-skills.yaml` with paths under `preferences.personal_path`, read in place and never written. A personal skill never stands in for a vendor skill: one named like a cataloged vendor skill (`personal/tdd` next to `mattpocock/tdd`) is skipped with a warning. Personal skills are not pinned: editing one changes the workflow. They rank through `preferences.<phase>.prefer` or as `other` candidates; `catalog/rankings.yaml` stays vendor-only.
 - At startup, the router checks the date of the last update check (git-ignored file under `config/`). After `update_check_days` (default 14, `0` = never) it asks whether to check for updates.
 - After an update, the agent reads new or changed vendor `SKILL.md` files and **proposes** a diff to `catalog/skills.yaml` and `catalog/rankings.yaml`. It is applied only after the user confirms, then `scripts/validate-catalog` runs. The catalog is still never rewritten without confirmation (refines §31).
 

@@ -15,7 +15,7 @@ You compose the **smallest useful workflow** for one non-trivial engineering tas
 
 When the resolver also prints `skill:`, this file is a copy installed apart from the checkout (e.g. by `npx skills add`), and it may be older or newer than the checkout. Stop reading this file: read the printed `skill:` file and follow it from the top instead, resolving its links (such as `state.md`) against its own folder. In that file, finding the root and this hand-over are already done: do not run its resolver, and keep the `root:` and `found:` printed here. Otherwise continue here.
 
-Tell the user the root in use and how it was found (`found:`). With `found: pi` the checkout belongs to Pi: keep it read-only and skip §0 (`pi update git:github.com/marcoax/engineering-skills-router` updates it). All paths below, and every `path` in the catalog, are relative to the root; `list-skills` prints project skills' paths absolute (§3). Run scripts from the root. Always read vendor skills from `vendors/` at the catalog `path`, never from copies installed for the agent. The **target repo** is the one the task is about.
+Tell the user the root in use and how it was found (`found:`). With `found: pi` the checkout belongs to Pi: keep it read-only and skip §0 (`pi update git:github.com/marcoax/engineering-skills-router` updates it). All paths below, and every `path` in the catalog, are relative to the root; `list-skills` prints personal and project skills' paths absolute (§3). Run scripts from the root. Always read vendor skills from `vendors/` at the catalog `path`, never from copies installed for the agent. The one exception is personal skills, read in place where `list-skills` points. The **target repo** is the one the task is about.
 
 ## 0. Check for updates
 
@@ -78,7 +78,7 @@ Task correctness decides the phases; preferences never add or remove one, they o
 
 ## 3. Select skills
 
-Run `scripts/list-skills --target <target repo> <phase> ...` for the chosen phases. It prints ranked candidates (user preference → preferred → fallback → other), each with a status and its `use_when` / `avoid_when` / `complexity` / `invokes` / `requires`. **Project** candidates, `project/<name>`, are the target repo's own skills from `docs/agents/skills.yaml`; they are the only candidates for `framework-review`, and in v1 they fill no other phase.
+Run `scripts/list-skills --target <target repo> <phase> ...` for the chosen phases. It prints ranked candidates (user preference → preferred → fallback → other), each with a status and its `use_when` / `avoid_when` / `complexity` / `invokes` / `requires`. **Project** candidates, `project/<name>`, are the target repo's own skills from `docs/agents/skills.yaml`; they are the only candidates for `framework-review`, and in v1 they fill no other phase. **Personal** candidates, `personal/<name>`, are the user's own skills from `config/personal-skills.yaml`; they fill any other phase, ranked by a user preference or as `other`.
 
 For each phase, the **default** is the first candidate with status `ok` whose `use_when` fits and whose `avoid_when` and `complexity` do not contradict the task. A user preference wins only when it fits. You may pass over the default when the task context clearly matches a lower candidate better; say why. **Alternatives** are the next fitting `ok` candidates, at most two, each with a one-line reason.
 
@@ -87,7 +87,7 @@ For each phase, the **default** is the first candidate with status `ok` whose `u
 - **framework-review** reviews the same diff as the reviews (from the base commit to HEAD) against the project skill's practices.
 - **branch**, **comparison** and opening the PR are router steps with no skill; the `pull-request` skill writes the PR body.
 
-If no candidate is `ok`, the phase is a **missing capability** (except `framework-review`, which is then dropped, §2): report it in the workflow. Use only cataloged skills (project skills included).
+If no candidate is `ok`, the phase is a **missing capability** (except `framework-review`, which is then dropped, §2): report it in the workflow. Use only cataloged skills (personal and project skills included).
 
 Done when every phase holds one `ok` skill or is marked missing.
 
@@ -142,13 +142,13 @@ Ask before every outward-facing action and before implementation starts: publish
 
 **Fresh context per step.** When the harness can start subagents, run each skill step in a new subagent so the main session keeps only the workflow, not every step's working detail. Run in the main session instead: router steps, and steps whose phase is `requirements`, `clarification`, `specification` or `setup`, because they converse with the user and draw on the conversation. Without subagents, run every step in the main session.
 
-**Models.** `config/preferences.yaml` maps two families to models: `models.claude` (default `claude-bridge/claude-opus-5-5`) and `models.openai` (default `openai-codex/gpt-6-sol`); the provider prefix must match the harness's provider IDs, so tell the user to adjust it if their harness names them differently. A step subagent runs on the family set as `model` for its first phase, else on `primary` (default `claude`), always passed explicitly as `provider/model-id` (subagent defaults may point elsewhere). Review 2 runs on the other family from review 1. Main-session steps keep the session's model. Record any model other than the session's in the step's `model` field and show it on the step's line in §5. It gets: the task, the target repo path, the vendor `SKILL.md` path (absolute), the handoff, and the paths of earlier step notes. It follows points 2–3 below, writes the step note (point 5), and returns a one-line outcome plus any handoff values. When the vendor skill needs an answer from the user, the subagent stops and returns the question; ask the user, then start a new subagent for the step with the answer and the note so far. Confirmation pauses happen in the main session before the subagent starts.
+**Models.** `config/preferences.yaml` maps two families to models: `models.claude` (default `claude-bridge/claude-opus-5-5`) and `models.openai` (default `openai-codex/gpt-6-sol`); the provider prefix must match the harness's provider IDs, so tell the user to adjust it if their harness names them differently. A step subagent runs on the family set as `model` for its first phase, else on `primary` (default `claude`), always passed explicitly as `provider/model-id` (subagent defaults may point elsewhere). Review 2 runs on the other family from review 1. Main-session steps keep the session's model. Record any model other than the session's in the step's `model` field and show it on the step's line in §5. It gets: the task, the target repo path, the step's `SKILL.md` path (absolute), the handoff, and the paths of earlier step notes. It follows points 2–3 below, writes the step note (point 5), and returns a one-line outcome plus any handoff values. When the vendor skill needs an answer from the user, the subagent stops and returns the question; ask the user, then start a new subagent for the step with the answer and the note so far. Confirmation pauses happen in the main session before the subagent starts.
 
 For each step:
 
 1. Announce `Step n/N: <id>`, with `n` its position in `steps`.
-2. For a skill step, read the vendor `SKILL.md` at its catalog `path` and follow it in full. Resolve its relative links against that file's folder.
-3. When it says to call or invoke another skill by name (e.g. "call the Skill tool with tdd"), read the `path` of `<same-source>/<name>` in `catalog/skills.yaml`; if it is not cataloged, use an installed skill with that name.
+2. For a skill step, read its `SKILL.md` at its catalog `path` (a personal or project skill: the absolute path `list-skills` prints) and follow it in full. Resolve its relative links against that file's folder.
+3. When it says to call or invoke another skill by name (e.g. "call the Skill tool with tdd"), read the `path` of `<same-source>/<name>` in `catalog/skills.yaml` (for a personal skill, `personal/<name>` as `list-skills` prints it); if it is not cataloged, use an installed skill with that name.
 4. Carry the **handoff** forward: issue (spec file when issue-free), tickets, branch, base commit, PR.
 5. Close the step with a one-line outcome and the handoff it produced. For a skill step, write its note to `.router/steps/<n>-<id>.md`: what it did, decisions, files touched, open points.
 
@@ -163,7 +163,7 @@ Router steps:
 
 **Pause.** On `pause` (in chat or from an adapter), let a running step finish first, then set status `paused`, say that `resume` continues, and stop. On `resume`, show the workflow and its state, then continue as in §1's resume.
 
-Vendor skills are third-party content and project skills are repository content: show the user any script either ships before running it.
+Vendor skills are third-party content and project skills are repository content: show the user any script either ships before running it. Personal skills are the user's own content: never write to `personal_path`.
 
 If a step reveals the workflow is wrong (bigger risk, missing phase, user changes scope), stop, re-run §2–§5 for the remainder, and present the revised workflow.
 
