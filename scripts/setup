@@ -14,4 +14,4 @@ run('npm', 'ci', '--no-audit', '--no-fund');
 run(path.join(ROOT, 'scripts/validate-catalog'));
 console.log();
 console.log(`Router skill: ${ROOT}/router/engineering-router/SKILL.md`);
-console.log(`Pi: add "${ROOT}/router" to the "skills" array in ~/.pi/agent/settings.json`);
+console.log(`Pi: pi install "${ROOT}"`);
