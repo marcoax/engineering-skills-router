@@ -8,7 +8,7 @@ task → classify → phases → one skill per phase → dedupe → show workflo
 
 Default backbone: **requirements → spec + GitHub issue → tickets → implement + test → review**, trimmed or extended by task type and risk. Requirements (a grilling session) runs after any code-understanding step, so its questions build on the code; it is skipped only when the task is an issue or spec that already settles the decisions.
 
-**Without GitHub issues.** To keep the spec as a file in the target repo instead, prefer a skill that writes it as one, in `config/preferences.yaml`:
+**Without GitHub issues.** To keep the spec as a file in the target repo instead, prefer a specification skill that writes one, in `config/preferences.yaml`:
 
 ```yaml
 preferences:
@@ -16,7 +16,7 @@ preferences:
     prefer: [addyosmani/spec-driven-development]
 ```
 
-The workflow then has no issue: planning breaks the spec into tasks without publishing tickets, the branch is `<slug>`, review 2 checks the diff against the spec file, and the PR links the spec file instead of closing an issue.
+The preference only picks the skill; since no selected skill then publishes an issue, the workflow has none. Every step uses skills that need no issue tracker (planning breaks the spec into tasks without publishing tickets), the branch is `<slug>` and starts by committing the spec file, review 2 checks the diff against the spec file, and the PR links it instead of closing an issue.
 
 While running, the router keeps `.router/state.json` and one note per step in `.router/steps/` in the target repo (git-excluded). Where the agent supports subagents, each skill step runs in a fresh subagent on the session's model; steps that talk with the user (requirements, specification, setup) stay in the main session. An unfinished workflow can be resumed later, also from a new session.
 
