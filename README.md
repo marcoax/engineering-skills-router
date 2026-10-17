@@ -41,7 +41,7 @@ This installs one skill, `engineering-router`, without its catalog, scripts or v
 
 When none exists, the first run asks before cloning the repo with its submodules into the last of these and running `scripts/setup` there; decline and it stops. Nothing is written into agent skill folders. The router always says which checkout it uses and how it found it.
 
-**Preferences** live in `config/preferences.yaml` of that checkout, so `~/.local/share/engineering-skills-router/config/preferences.yaml` after a first-run fetch. To keep them in a clone you control, or to edit the catalog, clone and set up as in the Pi section's **Personal preferences**, then `export ENGINEERING_ROUTER_HOME=/path/to/clone`.
+**Preferences** live in `config/preferences.yaml` of that checkout, so `~/.local/share/engineering-skills-router/config/preferences.yaml` after a first-run fetch. With the Pi checkout, `pi update` wipes them, so use a personal clone instead. To keep them in a clone you control, or to edit the catalog, clone and set up as in the Pi section's **Personal preferences**, then `export ENGINEERING_ROUTER_HOME=/path/to/clone`.
 
 **Updating.** `npx skills update` refreshes only the skill folder. The checkout is updated by the router's own vendor update check, or by `git pull && scripts/setup` in it (`pi update` for the Pi checkout).
 
