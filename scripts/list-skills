@@ -3,7 +3,8 @@
 //   no args  one line per phase with its ranked candidates
 //   phases   full detail (use_when, avoid_when, invokes, requires) for each candidate
 //   --target also ranks the target repo's own skills (docs/agents/skills.yaml) as project/<name>
-// Status: ok | missing (file not found) | excluded (user preference) | unknown (not cataloged)
+// Status: ok | missing (file not found, or a project path outside the target)
+//   | excluded (user preference) | unknown (not cataloged)
 const Catalog = require('./lib/catalog');
 
 const { target, args } = Catalog.targetArg(process.argv.slice(2));

@@ -22,11 +22,18 @@ const PROJECT_CATALOG = 'docs/agents/skills.yaml';
 // v1: project skills fill only these phases.
 const PROJECT_PHASES = ['framework-review'];
 
-// The target repo's own skills, as project/<name> with source 'project' and an absolute path.
+// The target repo's own skills, with source 'project' and the path resolved against the target.
+// A path that is absolute or leads outside the target is flagged `outside` and never available.
 function projectSkills(target) {
   if (!target) return {};
   return Object.fromEntries(Object.entries(readFile(path.join(target, PROJECT_CATALOG)).skills || {})
-    .map(([id, s]) => [id, { ...s, source: 'project', path: path.resolve(target, String(s?.path ?? '')) }]));
+    .map(([id, s]) => {
+      const declaredPath = String(s?.path ?? '');
+      const resolved = path.resolve(target, declaredPath);
+      const rel = path.relative(target, resolved);
+      const outside = path.isAbsolute(declaredPath) || rel === '..' || rel.startsWith(`..${path.sep}`);
+      return [id, { ...s, source: 'project', path: resolved, declaredPath, outside }];
+    }));
 }
 
 // Catalog skills, plus the target repo's project/ skills when a target is given. Other ids in
@@ -40,7 +47,7 @@ const rankings = () => read('catalog/rankings.yaml').rankings || {};
 const preferences = () => read('config/preferences.yaml').preferences || {};
 
 // Catalog paths are relative to ROOT; project paths are already absolute.
-const available = (skill) => !!skill && isFile(path.resolve(ROOT, String(skill.path ?? '')));
+const available = (skill) => !!skill && !skill.outside && isFile(path.resolve(ROOT, String(skill.path ?? '')));
 
 // Takes `--target <path>` out of a script's argv. Exits when the path is not a directory.
 function targetArg(argv) {

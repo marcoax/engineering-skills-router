@@ -127,6 +127,18 @@ for (const [skill, msg] of [
   const r = run('validate-catalog', '--target', targetRepo(projectSkill(skill)));
   if (r.ok || !r.out.includes(`error: ${msg}`)) fail(`validate-catalog --target, expected: ${msg}\ngot:\n${r.out}`);
 }
+// A project path must stay inside the target, even when the file it names exists.
+const outsideSkill = path.join(tmp, 'outside/SKILL.md');
+fs.mkdirSync(path.dirname(outsideSkill));
+fs.writeFileSync(outsideSkill, '# outside\n');
+for (const skillPath of [outsideSkill, '../outside/SKILL.md']) {
+  const repo = targetRepo(projectSkill({ skillPath }));
+  const r = run('validate-catalog', '--target', repo);
+  const msg = `docs/agents/skills.yaml: project/fw: path outside the target repo: ${skillPath}`;
+  if (r.ok || !r.out.includes(`error: ${msg}`)) fail(`validate-catalog --target, expected: ${msg}\ngot:\n${r.out}`);
+  ({ out } = run('list-skills', '--target', repo, 'framework-review'));
+  if (!/^1\. project\/fw {2}\[project, missing\]$/m.test(out)) fail(`list-skills --target should list ${skillPath} as missing\n${out}`);
+}
 // v1: even an unvalidated project skill tagged with another phase is not offered for it.
 if (run('list-skills', '--target', targetRepo(projectSkill({ cats: '[review]' })), 'review').out.includes('project/fw'))
   fail('list-skills --target should offer project skills only for framework-review');

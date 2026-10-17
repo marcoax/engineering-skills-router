@@ -53,7 +53,8 @@ for (const [id, s] of Object.entries(skills)) {
 for (const [id, s] of Object.entries(project)) {
   const where = `${Catalog.PROJECT_CATALOG}: ${id}`;
   if (!id.startsWith('project/')) errors.push(`${where}: id must start with 'project/'`);
-  if (!Catalog.available(s)) errors.push(`${where}: path not found ${path.relative(target, s.path)}`);
+  if (s.outside) errors.push(`${where}: path outside the target repo: ${s.declaredPath}`);
+  else if (!Catalog.available(s)) errors.push(`${where}: path not found ${s.declaredPath}`);
   for (const c of arr(s.categories)) {
     if (!has(categories, c)) errors.push(`${where}: invalid category '${c}'`);
     else if (!Catalog.PROJECT_PHASES.includes(c))
