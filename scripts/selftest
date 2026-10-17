@@ -422,10 +422,16 @@ expectState('fields and types', variant((s) => {
 'handoff.issue.number: must be integer, got "42"',
 'handoff.tickets[0].url: missing',
 'handoff.pr: missing');
-expectState('enums', variant((s) => { s.risk = 'low'; s.status = 'finished'; s.steps[2].status = 'blocked'; }),
-  'risk: must be "medium" | "high", got "low"',
+expectState('enums', variant((s) => { s.risk = 'trivial'; s.status = 'finished'; s.steps[2].status = 'blocked'; }),
+  'risk: must be "low" | "medium" | "high", got "trivial"',
   'status: must be one of selecting | running | waiting | done | paused | stopped, got "finished"',
   'steps[2].status: must be one of pending | running | waiting | done | skipped | failed, got "blocked"');
+// A low-risk task gets a workflow when the user asks for one anyway.
+expectStateOk('a low-risk workflow', variant((s) => { s.risk = 'low'; }));
+// complexity was added within version 1: a state written before it still passes.
+expectStateOk('a state without complexity', variant((s) => { delete s.complexity; }));
+expectState('complexity', variant((s) => { s.complexity = 'tiny'; }),
+  'complexity: must be "low" | "medium" | "high", got "tiny"');
 expectState('rules from the prose', variant((s) => {
   s.updated_at = '2026-10-17 09:42';
   s.steps[0].alternatives.push({ skill: 'x', reason: 'r' }, { skill: 'a/b', reason: 'r' });
@@ -466,8 +472,22 @@ expectStateOk('optional steps that are off', variant((s) => {
   s.steps[3] = { ...s.steps[3], covered_by: null, optional: true, status: 'skipped', outcome: 'off (optional)' };
 }));
 expectState('optional', variant((s) => { s.steps[3].optional = 'yes'; }), 'steps[3].optional: must be boolean, got "yes"');
-expectState('running with no running step', variant((s) => { s.steps[2].status = 'pending'; }),
-  'status: running requires a step with status running');
+// Between two steps the workflow is still running: one step has ended, the next has not started.
+expectStateOk('running between two steps', variant((s) => { s.steps[2].status = 'done'; s.steps[2].outcome = 'Built'; }));
+expectState('running with no step left', variant((s) => {
+  s.steps[2].status = 'done';
+  s.steps[2].outcome = 'Built';
+  s.steps[3].status = 'skipped';
+  s.steps[3].outcome = 'off';
+}),
+'status: running requires a step with status running or pending');
+// The check after implementation is not a step: the next step waits instead.
+expectStateOk('the check after implementation', variant((s) => {
+  s.status = 'waiting';
+  s.steps[2].status = 'done';
+  s.steps[2].outcome = 'Built';
+  s.steps[3].status = 'waiting';
+}));
 expectState('waiting with no waiting step', variant((s) => { s.status = 'waiting'; }),
   'status: waiting requires a step with status waiting');
 const issueFree = (spec) => variant((s) => { s.handoff.issue = null; s.handoff.spec = spec; s.handoff.branch = 'csv-export'; });

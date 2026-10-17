@@ -172,10 +172,12 @@ steps.forEach((s, i) => {
   if (['done', 'skipped', 'failed'].includes(s.status) && !(isStr(s.outcome) && s.outcome.trim()))
     errors.push(`${where}.outcome: required when status is ${s.status}`);
 });
-// Several steps may run at once (a covered step runs alongside its covering step).
-for (const status of ['running', 'waiting']) {
-  if (state.status === status && !steps.some((s) => isObj(s) && s.status === status))
-    errors.push(`status: ${status} requires a step with status ${status}`);
+// Several steps may run at once (a covered step runs alongside its covering step). Between two
+// steps none runs, so a running workflow only needs a step left to run.
+const STEP_STATUSES = { running: ['running', 'pending'], waiting: ['waiting'] };
+for (const [status, allowed] of Object.entries(STEP_STATUSES)) {
+  if (state.status === status && !steps.some((s) => isObj(s) && allowed.includes(s.status)))
+    errors.push(`status: ${status} requires a step with status ${allowed.join(' or ')}`);
 }
 
 errors.forEach((e) => console.log(`error: ${e}`));
