@@ -108,7 +108,7 @@ Workflow `status`:
 | `alternatives` | `{skill, reason}[]` | At most two other `ok` candidates, each with a one-line reason. After a swap, the previous skill takes the swapped alternative's place. |
 | `confirm` | boolean | `true` when the router pauses for the user before this step (outward-facing action or start of implementation). |
 | `covered_by` | string \| null | `id` of the step whose skill runs this one internally (e.g. review 1 inside implementation). |
-| `model` | string \| null | `provider/model-id` when the step runs on a model other than the session's (review 2). |
+| `model` | string \| null | `provider/model-id` when the step runs on a model other than the session's (review 2, or a per-phase `model` preference). |
 | `status` | string | Step status, see below. |
 | `outcome` | string \| null | One-line result once the step ends. |
 

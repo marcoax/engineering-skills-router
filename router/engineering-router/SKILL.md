@@ -45,7 +45,7 @@ Done when type, risk and properties are set, each with its reason.
 Start from the **default flow** (`⏸` = confirmation point, `[ ]` = conditional):
 
 ```text
-requirements → specification + issue ⏸ → [planning ⏸] → branch → ⏸ implementation
+requirements → specification + issue ⏸ → [planning ⏸] → branch → ⏸ implementation → [⏸ your check]
 → review 1 → review 2 → comparison → [security] → [independent-review] → pull request ⏸ → stop
 ```
 
@@ -74,7 +74,7 @@ Run `scripts/list-skills <phase> ...` for the chosen phases. It prints ranked ca
 For each phase, the **default** is the first candidate with status `ok` whose `use_when` fits and whose `avoid_when` and `complexity` do not contradict the task. A user preference wins only when it fits. You may pass over the default when the task context clearly matches a lower candidate better; say why. **Alternatives** are the next fitting `ok` candidates, at most two, each with a one-line reason.
 
 - **review 1** is the `review` phase.
-- **review 2** takes the first fitting `ok` `review` candidate other than review 1's skill. It runs on `second_review_model` from `config/preferences.yaml` (default `openai-codex/gpt-6-sol`). It always runs: a different model and different axes are not a duplicate.
+- **review 2** takes the first fitting `ok` `review` candidate other than review 1's skill. It runs on the model family opposite to review 1's (see §6). It always runs: a different model and different axes are not a duplicate.
 - **branch**, **comparison** and opening the PR are router steps with no skill; the `pull-request` skill writes the PR body.
 
 If no candidate is `ok`, the phase is a **missing capability**: report it in the workflow. Use only cataloged skills.
@@ -124,7 +124,7 @@ Ask before every outward-facing action and before implementation starts: publish
 
 **Fresh context per step.** When the harness can start subagents, run each skill step in a new subagent so the main session keeps only the workflow, not every step's working detail. Run in the main session instead: router steps, and steps whose phase is `requirements`, `clarification`, `specification` or `setup`, because they converse with the user and draw on the conversation. Without subagents, run every step in the main session.
 
-A step subagent runs on the session's model, passed explicitly as `provider/model-id` (subagent defaults may point elsewhere); only review 2 uses another model. It gets: the task, the target repo path, the vendor `SKILL.md` path (absolute), the handoff, and the paths of earlier step notes. It follows points 2–3 below, writes the step note (point 5), and returns a one-line outcome plus any handoff values. When the vendor skill needs an answer from the user, the subagent stops and returns the question; ask the user, then start a new subagent for the step with the answer and the note so far. Confirmation pauses happen in the main session before the subagent starts.
+**Models.** `config/preferences.yaml` maps two families to models: `models.claude` (default `claude-bridge/claude-opus-5-5`) and `models.openai` (default `openai-codex/gpt-6-sol`). A step subagent runs on the family set as `model` for its first phase, else on `primary` (default `claude`), always passed explicitly as `provider/model-id` (subagent defaults may point elsewhere). Review 2 runs on the other family from review 1. Main-session steps keep the session's model. Record any model other than the session's in the step's `model` field and show it on the step's line in §5. It gets: the task, the target repo path, the vendor `SKILL.md` path (absolute), the handoff, and the paths of earlier step notes. It follows points 2–3 below, writes the step note (point 5), and returns a one-line outcome plus any handoff values. When the vendor skill needs an answer from the user, the subagent stops and returns the question; ask the user, then start a new subagent for the step with the answer and the note so far. Confirmation pauses happen in the main session before the subagent starts.
 
 For each step:
 
@@ -134,10 +134,12 @@ For each step:
 4. Carry the **handoff** forward: issue, tickets, branch, base commit, PR.
 5. Close the step with a one-line outcome and the handoff it produced. For a skill step, write its note to `.router/steps/<n>-<id>.md`: what it did, decisions, files touched, open points.
 
+**Your check.** When the implementation step ends, ask once whether the user wants to check the result before the reviews continue: `check | continue`. On `check`, set status `waiting`, list the files changed since the base commit and how to try the change (commands, page, test), then wait. Fix what the user reports, commit it, and continue on `continue`. This is a pause, not a step: it is not in `steps`.
+
 Router steps:
 
 - **branch**: right after the issue exists, create `<issue-number>-<slug>` from the current default branch. Before implementation, record `git rev-parse HEAD` as the base commit: the fixed point for both reviews. With `implement-spec`, tell it this branch is its integration branch.
-- **review 2**: start a subagent on `second_review_model` that runs the review 2 skill on `git diff <base commit>...HEAD` against the issue. If the harness cannot run another model, say so and ask: skip it, or run it on the current model.
+- **review 2**: start a subagent on the family opposite to review 1's that runs the review 2 skill on `git diff <base commit>...HEAD` against the issue. If the harness cannot run another model, say so and ask: skip it, or run it on the current model.
 - **comparison**: merge both reviews into three lists: found by both, found by one only (say which), disagreements. Then ask once which findings to fix. If security is not already in the workflow, inspect the diff for auth, user input, queries, secrets, new dependencies, config and permissions (the `use_when` of the `security` candidate). When any appear, suggest that skill in the same question, with the reason. The user decides.
 - **pull request**: the `pull-request` skill writes the body, and the body links the issue with `Closes #<issue>`. Open the PR and stop. The user merges.
 

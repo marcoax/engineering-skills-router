@@ -1196,7 +1196,7 @@ The router is meant for non-trivial work. When a task classifies as low risk, th
 | branch | `<issue-number>-<slug>`, created right after the issue is published. With `implement-spec`, its integration branch is this branch. |
 | implementation | `mattpocock/implement-spec` when there are 3+ tickets and at least 2 can run in parallel; otherwise `mattpocock/implement`. |
 | review 1 | `mattpocock/code-review` (runs inside `implement` / `implement-spec`). Default for the `review` phase; `addyosmani/code-review-and-quality` becomes the first fallback (amends §10, §18). |
-| review 2 | Always. A subagent on a model from a different provider (`second_review_model` in `config/preferences.yaml`, default `openai-codex/gpt-6-sol`) runs `addyosmani/code-review-and-quality` on the same diff and issue. Not a duplicate under §15: different model, different review axes. |
+| review 2 | Always. A subagent on the model family opposite to review 1's (`models.claude` / `models.openai` in `config/preferences.yaml`) runs `addyosmani/code-review-and-quality` on the same diff and issue. Not a duplicate under §15: different model, different review axes. |
 | comparison | The router merges both reviews: findings from both, findings from one only, disagreements. |
 | security | Part of the workflow from the start when the task is security- or data-sensitive. Otherwise, after the reviews, the router inspects the diff (auth, user input, queries, secrets, new dependencies, config, permissions) and suggests `addyosmani/security-and-hardening` with the reason; the user decides. |
 | independent review | `pstack/interrogate` added for high risk. |

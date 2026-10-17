@@ -25,9 +25,13 @@ if (!run('validate-catalog').ok) fail('clean catalog should validate');
 fs.writeFileSync(prefsFile, `preferences:
   review:
     prefer: [addyosmani/code-review-and-quality]
+    model: openai
   exclude: [mattpocock/code-review]
   update_check_days: 0
-  second_review_model: openai-codex/gpt-6-sol
+  models:
+    claude: claude-bridge/claude-opus-5-5
+    openai: openai-codex/gpt-6-sol
+  primary: claude
 `);
 if (!run('validate-catalog').ok) fail('valid preferences should validate');
 let { out } = run('list-skills', 'review');
@@ -40,7 +44,10 @@ if (run('validate-catalog').ok) fail('unknown preferred skill should fail');
 for (const [line, msg] of [
   ['update_check_days: -1', 'update_check_days: must be an integer >= 0'],
   ['update_check_days: soon', 'update_check_days: must be an integer >= 0'],
-  ['second_review_model: gpt', "second_review_model: must be 'provider/model-id'"],
+  ['models:\n    claude: opus', "models.claude: must be 'provider/model-id'"],
+  ['models:\n    gemini: google/gemini', "models: unknown family 'gemini'"],
+  ['primary: gemini', 'primary: must be claude | openai'],
+  ['implementation:\n    model: anthropic/claude-sonnet-5-5', 'implementation.model: must be claude | openai'],
 ]) {
   fs.writeFileSync(prefsFile, `preferences:\n  ${line}\n`);
   const r = run('validate-catalog');

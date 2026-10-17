@@ -50,17 +50,29 @@ for (const [cat, r] of Object.entries(rankings)) {
   }
 }
 
+const isModel = (v) => typeof v === 'string' && /^[^\s/]+\/\S+$/.test(v);
+const FAMILIES = ['claude', 'openai'];
+const isFamily = (v) => FAMILIES.includes(v);
 for (const [key, value] of Object.entries(prefs)) {
   if (key === 'update_check_days') {
     if (!Number.isInteger(value) || value < 0)
       errors.push(`preferences.update_check_days: must be an integer >= 0 (0 = never), got ${JSON.stringify(value)}`);
     continue;
   }
-  if (key === 'second_review_model') {
-    if (typeof value !== 'string' || !/^[^\s/]+\/\S+$/.test(value))
-      errors.push(`preferences.second_review_model: must be 'provider/model-id', got ${JSON.stringify(value)}`);
+  if (key === 'models') {
+    for (const [family, model] of Object.entries(value || {})) {
+      if (!isFamily(family)) errors.push(`preferences.models: unknown family '${family}', use ${FAMILIES.join(' | ')}`);
+      else if (!isModel(model)) errors.push(`preferences.models.${family}: must be 'provider/model-id', got ${JSON.stringify(model)}`);
+    }
     continue;
   }
+  if (key === 'primary') {
+    if (!isFamily(value)) errors.push(`preferences.primary: must be ${FAMILIES.join(' | ')}, got ${JSON.stringify(value)}`);
+    continue;
+  }
+  const model = key === 'exclude' ? undefined : (value || {}).model;
+  if (model !== undefined && !isFamily(model))
+    errors.push(`preferences.${key}.model: must be ${FAMILIES.join(' | ')}, got ${JSON.stringify(model)}`);
   const ids = key === 'exclude' ? arr(value) : arr((value || {}).prefer);
   if (key !== 'exclude' && !has(categories, key)) errors.push(`preferences: unknown phase '${key}'`);
   ids.forEach((id) => { if (!has(skills, id)) errors.push(`preferences.${key}: unknown skill ${id}`); });
