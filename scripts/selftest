@@ -110,6 +110,19 @@ const projectSkill = ({ id = 'project/fw', skillPath = '.claude/skills/fw/SKILL.
   if (run('list-skills', '--target', repo).out !== run('list-skills').out) fail('list-skills --target without a project catalog should change nothing');
   if (!run('validate-catalog', '--target', repo).ok) fail('validate-catalog --target without a project catalog should pass');
 }
+if (!run('validate-catalog', '--target', targetRepo(projectSkill())).ok) fail('valid project catalog should validate');
+fs.writeFileSync(prefsFile, 'preferences:\n  framework-review:\n    prefer: [project/fw]\n');
+if (!run('validate-catalog', '--target', targetRepo(projectSkill())).ok) fail('a preference may name a project skill of the target');
+fs.rmSync(prefsFile);
+for (const [skill, msg] of [
+  [{ skillPath: '.claude/skills/nope/SKILL.md' }, 'docs/agents/skills.yaml: project/fw: path not found .claude/skills/nope/SKILL.md'],
+  [{ cats: '[not-a-category]' }, "docs/agents/skills.yaml: project/fw: invalid category 'not-a-category'"],
+  [{ cats: '[]' }, 'docs/agents/skills.yaml: project/fw: no categories'],
+  [{ id: 'acme/fw' }, "docs/agents/skills.yaml: acme/fw: id must start with 'project/'"],
+]) {
+  const r = run('validate-catalog', '--target', targetRepo(projectSkill(skill)));
+  if (r.ok || !r.out.includes(`error: ${msg}`)) fail(`validate-catalog --target, expected: ${msg}\ngot:\n${r.out}`);
+}
 
 fs.appendFileSync(path.join(tmp, 'catalog/skills.yaml'), `
   pstack/how:
