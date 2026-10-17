@@ -1,0 +1,175 @@
+#!/usr/bin/env node
+// Validates <target-repo>/.router/state.json against skills/engineering-router/state.md.
+// Exits 1 on errors. Does not check that skills are in the catalog (that varies per machine).
+const fs = require('node:fs');
+const path = require('node:path');
+
+const ROOT = path.resolve(__dirname, '..');
+const STATE_FILE = '.router/state.json';
+const target = process.argv[2];
+if (!target) {
+  console.error('usage: scripts/check-state <target-repo>');
+  process.exit(1);
+}
+const file = path.join(target, STATE_FILE);
+const fatal = (msg) => {
+  console.log(`error: ${msg}`);
+  process.exit(1);
+};
+const isObj = (v) => typeof v === 'object' && v !== null && !Array.isArray(v);
+const isStr = (v) => typeof v === 'string';
+const json = (v) => JSON.stringify(v);
+
+if (!fs.existsSync(file)) fatal(`${STATE_FILE}: not found in ${target}`);
+let state;
+try {
+  state = JSON.parse(fs.readFileSync(file, 'utf8'));
+} catch (e) {
+  fatal(`invalid JSON: ${e.message}`);
+}
+const spec = fs.readFileSync(path.join(ROOT, 'skills/engineering-router/state.md'), 'utf8');
+const VERSION = Number(spec.match(/^# .*format v(\d+)/m)[1]);
+if (!isObj(state)) fatal('top level: must be an object');
+if (!Object.hasOwn(state, 'version')) fatal('version: missing');
+if (state.version !== VERSION) fatal(`version: unsupported version ${json(state.version)}, state.md defines version ${VERSION}`);
+const errors = [];
+
+// The format comes from state.md: each "## <Name>" section's Field/Type table defines the
+// object type <Name> ("Top level" is the root), and a Value table under a line naming
+// `<field>` lists that field's allowed values. Type cells are unions of the PRIMITIVES,
+// "literal", T[], {key, ...} and section names.
+const cells = (line) => line.split(/(?<!\\)\|/).slice(1, -1).map((c) => c.trim().replace(/\\\|/g, '|').replace(/`/g, ''));
+const types = {};
+for (const [, name, body] of spec.matchAll(/^## (.+)\n([\s\S]*?)(?=^## |(?![\s\S]))/gm)) {
+  let label = '';
+  let table = null;
+  for (const line of body.split('\n')) {
+    if (!line.startsWith('|')) {
+      table = null;
+      if (line.trim()) label = line;
+      continue;
+    }
+    const row = cells(line);
+    if (!table) table = { header: row[0] };
+    else if (/^-+$/.test(row[0])) continue;
+    else if (table.header === 'Field') (types[name] ??= {})[row[0]] = { type: row[1], values: null };
+    else if (table.header === 'Value') {
+      const field = types[name]?.[label.match(/`(\w+)`/)?.[1]];
+      if (field) (field.values ??= []).push(row[0]);
+    }
+  }
+}
+
+const PRIMITIVES = {
+  null: (v) => v === null,
+  string: isStr,
+  integer: Number.isInteger,
+  boolean: (v) => typeof v === 'boolean',
+};
+// Inline objects ({number, url}) name their keys only; state.md uses them for strings
+// except issue/PR numbers.
+const INLINE_TYPES = { number: 'integer' };
+
+// A parsed type is { text, alts }: its source text (for messages) and its alternatives.
+function parseType(text) {
+  const alts = text.split(' | ').map((alt) => {
+    alt = alt.trim();
+    if (Object.hasOwn(PRIMITIVES, alt)) return { kind: alt };
+    if (/^".*"$/.test(alt)) return { kind: 'literal', value: JSON.parse(alt) };
+    if (alt.endsWith('[]')) return { kind: 'array', item: parseType(alt.slice(0, -2)) };
+    if (/^\{.*\}$/.test(alt)) {
+      const fields = Object.fromEntries(alt.slice(1, -1).split(',').map((k) => k.trim())
+        .map((k) => [k, { type: parseType(INLINE_TYPES[k] ?? 'string'), values: null }]));
+      return { kind: 'object', fields };
+    }
+    if (!types[alt]) throw new Error(`state.md: unknown type '${alt}'`);
+    return { kind: 'object', fields: types[alt] };
+  });
+  return { text, alts };
+}
+for (const fields of Object.values(types)) for (const field of Object.values(fields)) field.type = parseType(field.type);
+
+const matches = (v, alt) => {
+  if (alt.kind === 'literal') return v === alt.value;
+  if (alt.kind === 'array') return Array.isArray(v);
+  if (alt.kind === 'object') return isObj(v);
+  return PRIMITIVES[alt.kind](v);
+};
+const childPath = (where, key) => (where ? `${where}.${key}` : key);
+
+function checkFields(obj, fields, where) {
+  for (const [key, field] of Object.entries(fields)) {
+    const at = childPath(where, key);
+    if (!Object.hasOwn(obj, key)) errors.push(`${at}: missing`);
+    else checkValue(obj[key], field.type, at, field.values);
+  }
+}
+
+function checkValue(v, type, where, values = null) {
+  const alt = type.alts.find((a) => matches(v, a));
+  if (!alt) return errors.push(`${where}: must be ${type.text}, got ${json(v)}`);
+  if (alt.kind === 'array') v.forEach((item, i) => checkValue(item, alt.item, `${where}[${i}]`));
+  if (alt.kind === 'object') checkFields(v, alt.fields, where);
+  if (values && isStr(v) && !values.includes(v)) errors.push(`${where}: must be one of ${values.join(' | ')}, got ${json(v)}`);
+}
+
+checkFields(state, types['Top level'], '');
+
+// Rules state.md states in prose. Each runs only on values of the right type, which
+// the table check above already reported otherwise.
+const checkPattern = (v, where, re, shape) => {
+  if (isStr(v) && !re.test(v)) errors.push(`${where}: must be '${shape}', got ${json(v)}`);
+};
+const SKILL_ID = /^[\w.-]+\/[\w.-]+$/;
+const MODEL_ID = /^[^\s/]+\/\S+$/;
+const UTC = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d+)?Z$/;
+// Date.parse rolls impossible dates over (02-30 becomes 03-02), so round-trip the date-time part.
+const isUtc = (v) => UTC.test(v) && new Date(Date.parse(v) || 0).toISOString().slice(0, 19) === v.slice(0, 19);
+if (isStr(state.updated_at) && !isUtc(state.updated_at))
+  errors.push(`updated_at: must be ISO-8601 UTC (e.g. 2026-10-17T09:42:00Z), got ${json(state.updated_at)}`);
+const steps = Array.isArray(state.steps) ? state.steps : [];
+const hasId = (s) => isObj(s) && isStr(s.id);
+// First step with each id; a missing covered_by target is only reported when every step has
+// a string id, since a malformed step may be the one it points to.
+const byId = new Map(steps.filter(hasId).reverse().map((s) => [s.id, s]));
+const allHaveIds = steps.every(hasId);
+const seen = new Set();
+steps.forEach((s, i) => {
+  if (!isObj(s)) return;
+  const where = `steps[${i}]`;
+  if (isStr(s.id) && seen.has(s.id)) errors.push(`${where}.id: duplicate step id ${json(s.id)}`);
+  seen.add(s.id);
+  checkPattern(s.skill, `${where}.skill`, SKILL_ID, 'source/name');
+  checkPattern(s.model, `${where}.model`, MODEL_ID, 'provider/model-id');
+  if (isStr(s.covered_by)) {
+    const cover = byId.get(s.covered_by);
+    if (s.covered_by === s.id) errors.push(`${where}.covered_by: a step cannot cover itself`);
+    else if (cover?.skill === null) errors.push(`${where}.covered_by: step ${json(s.covered_by)} has no skill to run it`);
+    else if (!cover && allHaveIds) errors.push(`${where}.covered_by: no step with id ${json(s.covered_by)}`);
+  }
+  if (Array.isArray(s.alternatives)) {
+    if (s.alternatives.length > 2) errors.push(`${where}.alternatives: at most two, got ${s.alternatives.length}`);
+    if (s.skill === null && s.alternatives.length > 0) errors.push(`${where}.alternatives: must be empty when skill is null`);
+    const altSkills = new Set();
+    s.alternatives.forEach((a, j) => {
+      if (!isObj(a)) return;
+      const at = `${where}.alternatives[${j}].skill`;
+      checkPattern(a.skill, at, SKILL_ID, 'source/name');
+      if (!isStr(a.skill)) return;
+      if (a.skill === s.skill) errors.push(`${at}: same as the step's skill ${json(a.skill)}`);
+      else if (altSkills.has(a.skill)) errors.push(`${at}: duplicate alternative ${json(a.skill)}`);
+      altSkills.add(a.skill);
+    });
+  }
+  if (['done', 'skipped', 'failed'].includes(s.status) && !(isStr(s.outcome) && s.outcome.trim()))
+    errors.push(`${where}.outcome: required when status is ${s.status}`);
+});
+// Several steps may run at once (a covered step runs alongside its covering step).
+for (const status of ['running', 'waiting']) {
+  if (state.status === status && !steps.some((s) => isObj(s) && s.status === status))
+    errors.push(`status: ${status} requires a step with status ${status}`);
+}
+
+errors.forEach((e) => console.log(`error: ${e}`));
+console.log(errors.length === 0 ? `state OK (${file})` : `${errors.length} error(s)`);
+process.exit(errors.length === 0 ? 0 : 1);
