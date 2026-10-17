@@ -1,6 +1,6 @@
 #!/usr/bin/env node
-// Runs the scripts against a scratch copy of the catalog to check error detection and
-// preference ordering, then the root resolver, check-state and the Pi adapter tests. Leaves
+// Runs the scripts against a scratch copy of the catalog and scratch target repos to check
+// error detection, preference ordering and project catalogs, then the root resolver, check-state and the Pi adapter tests. Leaves
 // the real catalog untouched.
 const fs = require('node:fs');
 const os = require('node:os');
