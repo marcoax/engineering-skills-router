@@ -85,8 +85,8 @@ const targetRepo = (yaml) => {
   }
   return dir;
 };
-const projectSkill = ({ id = 'project/fw', skillPath = '.claude/skills/fw/SKILL.md', cats = '[framework-review]' } = {}) =>
-  `  ${id}:\n    path: ${skillPath}\n    categories: ${cats}\n    use_when:\n      - change touches fw code\n`;
+const projectSkill = ({ id = 'project/fw', skillPath = '.claude/skills/fw/SKILL.md', cats = '[framework-review]', extra = '' } = {}) =>
+  `  ${id}:\n    path: ${skillPath}\n    categories: ${cats}\n    use_when:\n      - change touches fw code\n${extra}`;
 {
   const repo = targetRepo(projectSkill());
   ({ out } = run('list-skills', '--target', repo, 'framework-review'));
@@ -139,8 +139,11 @@ for (const [skill, msg] of [
   [{ cats: '[]' }, 'docs/agents/skills.yaml: project/fw: no categories'],
   [{ id: 'acme/fw' }, "docs/agents/skills.yaml: acme/fw: id must start with 'project/'"],
   [{ cats: '[framework-review, review]' }, "docs/agents/skills.yaml: project/fw: project skills may only fill 'framework-review', not 'review'"],
+  [{ extra: '    complexity: [huge]\n' }, "docs/agents/skills.yaml: project/fw: invalid complexity 'huge'"],
+  [{ extra: '    invokes: [nobody/nothing]\n' }, 'docs/agents/skills.yaml: project/fw: invokes unknown skill nobody/nothing'],
+  [[{}, {}], 'docs/agents/skills.yaml: duplicate skill id: project/fw'],
 ]) {
-  const r = run('validate-catalog', '--target', targetRepo(projectSkill(skill)));
+  const r = run('validate-catalog', '--target', targetRepo([skill].flat().map(projectSkill).join('')));
   if (r.ok || !r.out.includes(`error: ${msg}`)) fail(`validate-catalog --target, expected: ${msg}\ngot:\n${r.out}`);
 }
 // A project path must stay inside the target, even when the file it names exists.
