@@ -80,6 +80,11 @@ rankings:
     preferred: [pstack/interrogate]
     fallback: [pstack/blast-radius]
 
+  # Filled only by the target repo's own skills (docs/agents/skills.yaml).
+  framework-review:
+    preferred: []
+    fallback: []
+
   documentation:
     preferred: [addyosmani/documentation-and-adrs]
     fallback: [mattpocock/domain-modeling, pstack/technical-writing]

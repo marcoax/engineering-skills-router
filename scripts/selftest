@@ -74,6 +74,43 @@ for (const [line, msg] of [
 }
 fs.rmSync(prefsFile);
 
+// Project catalog: a scratch target repo lists its own skill in docs/agents/skills.yaml.
+const targetRepo = (yaml) => {
+  const dir = fs.mkdtempSync(path.join(tmp, 'project-'));
+  fs.mkdirSync(path.join(dir, '.claude/skills/fw'), { recursive: true });
+  fs.writeFileSync(path.join(dir, '.claude/skills/fw/SKILL.md'), '# fw\n');
+  if (yaml !== undefined) {
+    fs.mkdirSync(path.join(dir, 'docs/agents'), { recursive: true });
+    fs.writeFileSync(path.join(dir, 'docs/agents/skills.yaml'), `skills:\n${yaml}`);
+  }
+  return dir;
+};
+const projectSkill = ({ id = 'project/fw', skillPath = '.claude/skills/fw/SKILL.md', cats = '[framework-review]' } = {}) =>
+  `  ${id}:\n    path: ${skillPath}\n    categories: ${cats}\n    use_when:\n      - change touches fw code\n`;
+{
+  const repo = targetRepo(projectSkill());
+  ({ out } = run('list-skills', '--target', repo, 'framework-review'));
+  if (!/^1\. project\/fw {2}\[project, ok\]$/m.test(out)) fail(`list-skills --target should list project/fw as ok\n${out}`);
+  if (!out.includes(`path: ${path.join(repo, '.claude/skills/fw/SKILL.md')}`)) fail(`project path should resolve against the target\n${out}`);
+
+  // Project skills rank after the user preference and before the catalog ranking.
+  const rankingsFile = path.join(tmp, 'catalog/rankings.yaml');
+  const rankingsText = fs.readFileSync(rankingsFile, 'utf8');
+  fs.writeFileSync(rankingsFile, rankingsText.replace(/(framework-review:\n {4}preferred: )\[\]/, '$1[mattpocock/code-review]'));
+  fs.writeFileSync(prefsFile, 'preferences:\n  framework-review:\n    prefer: [addyosmani/code-review-and-quality]\n');
+  ({ out } = run('list-skills', '--target', repo, 'framework-review'));
+  const order = [...out.matchAll(/^\d+\. (\S+) {2}\[(\w+)/gm)].map((m) => `${m[1]} ${m[2]}`).join(', ');
+  if (order !== 'addyosmani/code-review-and-quality preference, project/fw project, mattpocock/code-review preferred')
+    fail(`list-skills --target: expected preference, project, preferred; got ${order}`);
+  fs.writeFileSync(rankingsFile, rankingsText);
+  fs.rmSync(prefsFile);
+}
+{
+  const repo = targetRepo();
+  if (run('list-skills', '--target', repo).out !== run('list-skills').out) fail('list-skills --target without a project catalog should change nothing');
+  if (!run('validate-catalog', '--target', repo).ok) fail('validate-catalog --target without a project catalog should pass');
+}
+
 fs.appendFileSync(path.join(tmp, 'catalog/skills.yaml'), `
   pstack/how:
     source: pstack

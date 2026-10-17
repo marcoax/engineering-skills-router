@@ -1,4 +1,5 @@
-// Shared loader for catalog/*.yaml and config/preferences.yaml. Node stdlib + yaml.
+// Shared loader for catalog/*.yaml, config/preferences.yaml and a target repo's
+// docs/agents/skills.yaml. Node stdlib + yaml.
 const fs = require('node:fs');
 const path = require('node:path');
 const YAML = require('yaml');
@@ -13,18 +14,39 @@ const isFile = (p) => {
 };
 
 // uniqueKeys: false so duplicate skill ids reach validate-catalog's own check instead of throwing.
-function read(rel) {
-  const file = path.join(ROOT, rel);
-  return isFile(file) ? (YAML.parse(fs.readFileSync(file, 'utf8'), { uniqueKeys: false }) || {}) : {};
-}
+const readFile = (file) => (isFile(file) ? (YAML.parse(fs.readFileSync(file, 'utf8'), { uniqueKeys: false }) || {}) : {});
+const read = (rel) => readFile(path.join(ROOT, rel));
 
 const sources = () => read('catalog/sources.yaml').sources || {};
-const skills = () => read('catalog/skills.yaml').skills || {};
+const PROJECT_CATALOG = 'docs/agents/skills.yaml';
+
+// The target repo's own skills, as project/<name> with source 'project' and an absolute path.
+function projectSkills(target) {
+  if (!target) return {};
+  return Object.fromEntries(Object.entries(readFile(path.join(target, PROJECT_CATALOG)).skills || {})
+    .map(([id, s]) => [id, { ...s, source: 'project', path: path.resolve(target, String(s?.path ?? '')) }]));
+}
+
+// Catalog skills, plus the target repo's project skills when a target is given.
+const skills = (target) => ({ ...(read('catalog/skills.yaml').skills || {}), ...projectSkills(target) });
 const categories = () => read('catalog/categories.yaml').categories || {};
 const rankings = () => read('catalog/rankings.yaml').rankings || {};
 const preferences = () => read('config/preferences.yaml').preferences || {};
 
-const available = (skill) => !!skill && isFile(path.join(ROOT, String(skill.path ?? '')));
+// Catalog paths are relative to ROOT; project paths are already absolute.
+const available = (skill) => !!skill && isFile(path.resolve(ROOT, String(skill.path ?? '')));
+
+// Takes `--target <path>` out of a script's argv. Exits when the path is not a directory.
+function targetArg(argv) {
+  const i = argv.indexOf('--target');
+  if (i === -1) return { target: undefined, args: argv };
+  const target = argv[i + 1] && path.resolve(argv[i + 1]);
+  if (!target || !fs.statSync(target, { throwIfNoEntry: false })?.isDirectory()) {
+    console.error(`--target: not a directory: ${argv[i + 1] ?? '(none)'}`);
+    process.exit(1);
+  }
+  return { target, args: argv.filter((_, j) => j !== i && j !== i + 1) };
+}
 
 // Repo-relative SKILL.md paths currently present upstream for one source.
 function upstreamPaths(source) {
@@ -34,16 +56,16 @@ function upstreamPaths(source) {
     .sort();
 }
 
-// Ordered candidates for a phase: user preference, catalog preferred, fallback,
-// then any other cataloged skill tagged with the phase.
+// Ordered candidates for a phase: user preference, project skills, catalog preferred,
+// fallback, then any other cataloged skill tagged with the phase.
 function candidates(category, allSkills = skills(), allRankings = rankings(), prefs = preferences()) {
   const rank = allRankings[category] || {};
   const pref = (prefs[category] || {}).prefer;
-  const ordered = [['preference', pref], ['preferred', rank.preferred], ['fallback', rank.fallback]]
+  const tagged = Object.keys(allSkills).filter((id) => arr(allSkills[id].categories).includes(category));
+  const project = tagged.filter((id) => allSkills[id].source === 'project');
+  const ordered = [['preference', pref], ['project', project], ['preferred', rank.preferred], ['fallback', rank.fallback]]
     .flatMap(([origin, ids]) => arr(ids).map((id) => [id, origin]));
-  const others = Object.keys(allSkills)
-    .filter((id) => arr(allSkills[id].categories).includes(category))
-    .map((id) => [id, 'other']);
+  const others = tagged.map((id) => [id, 'other']);
   const excluded = arr(prefs.exclude);
   const seen = new Set();
   return [...ordered, ...others]
@@ -58,4 +80,7 @@ function candidates(category, allSkills = skills(), allRankings = rankings(), pr
     });
 }
 
-module.exports = { ROOT, arr, sources, skills, categories, rankings, preferences, available, upstreamPaths, candidates };
+module.exports = {
+  ROOT, PROJECT_CATALOG, arr, sources, skills, projectSkills, categories, rankings, preferences,
+  available, targetArg, upstreamPaths, candidates,
+};
