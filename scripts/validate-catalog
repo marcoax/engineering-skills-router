@@ -23,6 +23,9 @@ const project = Catalog.projectSkills(target);
 const categories = Catalog.categories();
 const rankings = Catalog.rankings();
 const has = (obj, key) => Object.hasOwn(obj, key);
+// Personal ids left out for a vendor namesake, each mapped to that namesake.
+const skipped = Object.fromEntries(Object.keys(personal).filter((id) => id.startsWith('personal/'))
+  .map((id) => [id, Catalog.namesake(id, vendor)]).filter(([, namesake]) => namesake));
 
 // YAML keeps only one of two duplicate keys, so check the raw text.
 const duplicateIds = (file) => {
@@ -86,9 +89,8 @@ else if (personalPath && !fs.statSync(personalPath, { throwIfNoEntry: false })?.
 if (fs.existsSync(personalFile) && !personalPath) errors.push(`${Catalog.PERSONAL_CATALOG}: needs preferences.personal_path`);
 for (const [id, s] of Object.entries(personal)) {
   const where = `${Catalog.PERSONAL_CATALOG}: ${id}`;
-  const twin = Catalog.namesake(id, vendor);
   if (!id.startsWith('personal/')) errors.push(`${where}: id must start with 'personal/'`);
-  else if (twin) { warnings.push(`${where}: skipped, same name as ${twin}`); continue; }
+  else if (has(skipped, id)) { warnings.push(`${where}: skipped, same name as ${skipped[id]}`); continue; }
   checkSkill(where, s, skills, 'personal_path');
   arr(s.categories).filter((c) => Catalog.PROJECT_PHASES.includes(c))
     .forEach((c) => errors.push(`${where}: only project skills may fill '${c}'`));
@@ -132,7 +134,10 @@ for (const [key, value] of Object.entries(prefs)) {
     errors.push(`preferences.${key}.model: must be ${FAMILIES.join(' | ')}, got ${JSON.stringify(model)}`);
   const ids = key === 'exclude' ? arr(value) : arr((value || {}).prefer);
   if (key !== 'exclude' && !has(categories, key)) errors.push(`preferences: unknown phase '${key}'`);
-  ids.forEach((id) => { if (!has(skills, id)) errors.push(`preferences.${key}: unknown skill ${id}`); });
+  ids.forEach((id) => {
+    if (has(skipped, id)) errors.push(`preferences.${key}: ${id} is skipped, same name as ${skipped[id]}`);
+    else if (!has(skills, id)) errors.push(`preferences.${key}: unknown skill ${id}`);
+  });
 }
 
 const cataloged = Object.values(vendor).map((s) => s.path);
@@ -145,6 +150,6 @@ if (uncataloged.length > 0) {
   if (verbose) uncataloged.forEach((p) => console.log(`  ${p}`));
 }
 console.log(errors.length === 0
-  ? `catalog OK (${Object.keys(vendor).length} skills${fs.existsSync(personalFile) ? ` + ${Object.keys(personal).length} personal` : ''}${target ? ` + ${Object.keys(project).length} project` : ''}, ${warnings.length} warning(s))`
+  ? `catalog OK (${Object.keys(vendor).length} skills${fs.existsSync(personalFile) ? ` + ${Object.keys(personal).filter((id) => has(skills, id)).length} personal` : ''}${target ? ` + ${Object.keys(project).length} project` : ''}, ${warnings.length} warning(s))`
   : `${errors.length} error(s)`);
 process.exit(errors.length === 0 ? 0 : 1);

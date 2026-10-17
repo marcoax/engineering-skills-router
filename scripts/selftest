@@ -201,6 +201,13 @@ if (run('list-skills', 'testing').out.includes('personal/tdd')) fail('list-skill
   const r = run('validate-catalog');
   const msg = 'warning: config/personal-skills.yaml: personal/tdd: skipped, same name as mattpocock/tdd';
   if (!r.ok || !r.out.includes(msg)) fail(`validate-catalog, expected: ${msg}\ngot:\n${r.out}`);
+  if (!/catalog OK \(\d+ skills \+ 0 personal,/.test(r.out)) fail(`the OK line should not count a skipped personal skill\n${r.out}`);
+}
+for (const key of ['testing:\n    prefer', 'exclude']) {
+  withPersonal(personalSkill({ id: 'personal/tdd', cats: '[testing]' }), `  personal_path: ${personalDir}\n  ${key}: [personal/tdd]\n`);
+  const r = run('validate-catalog');
+  const msg = `error: preferences.${key.split(':')[0]}: personal/tdd is skipped, same name as mattpocock/tdd`;
+  if (r.ok || !r.out.includes(msg)) fail(`validate-catalog, expected: ${msg}\ngot:\n${r.out}`);
 }
 for (const [skill, msg, prefs] of [
   [{ skillPath: 'nope/SKILL.md' }, 'config/personal-skills.yaml: personal/notes: path not found nope/SKILL.md'],
