@@ -22,7 +22,9 @@ preferences:
   update_check_days: 14
 
   # The two model families, as provider/model-id. Steps run on `primary`;
-  # review 2 runs on the family opposite to review 1.
+  # review 2 runs on the family opposite to review 1. The provider part
+  # (claude-bridge, openai-codex) is a local name: set it to the provider ID
+  # your harness uses, or subagents will fail to start.
   models:
     claude: claude-bridge/claude-opus-5-5
     openai: openai-codex/gpt-6-sol
