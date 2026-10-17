@@ -35,7 +35,10 @@ test("ignores unknown fields and fills optional ones", () => {
 });
 
 // An issue-free workflow: the spec is a file in the target repo instead of an issue.
-const specFile = () => ({ ...example(), handoff: { ...example().handoff, issue: null, spec: "docs/specs/csv-export.md", branch: "csv-export" } });
+const specFile = () => {
+	const s = example();
+	return { ...s, handoff: { ...s.handoff, issue: null, spec: "docs/specs/csv-export.md", branch: "csv-export" } };
+};
 
 test("keeps the spec file of an issue-free workflow", () => {
 	assert.equal(parsed(specFile()).handoff.spec, "docs/specs/csv-export.md");
