@@ -1,5 +1,6 @@
 #!/usr/bin/env node
-// Prints the router's repo root (the checkout holding catalog/) and how it was found.
+// Prints the router's repo root (the checkout holding catalog/) and how it was found, plus
+// `skill: <root>/skills/engineering-router/SKILL.md` when that file exists outside this folder.
 // Run as `node <skill-dir>/resolve-root.js`. Reads only; never writes anything.
 const fs = require('node:fs');
 const os = require('node:os');

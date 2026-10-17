@@ -189,12 +189,12 @@ const skillOf = (root) => path.join(root, SKILL_DIR, 'SKILL.md');
 
 {
   // A lone copy delegates to the checkout's own skill, so the two cannot drift apart.
+  // Delegation is path-based, not content-based, so identical copies (as here) still delegate.
   const c = resolverCase();
   const repo = c.checkout(path.join(c.home, DATA_DIR), { withSkill: true });
-  const theirs = path.join(repo, SKILL_DIR, 'SKILL.md');
-  fs.appendFileSync(theirs, '\nNewer checkout.\n');
-  expectResolve('lone copy, checkout with its skill', c.resolve(), resolvedOutput(repo, 'data-dir', theirs));
-  expectResolve('checkout skill it delegates to', c.resolve({}, path.dirname(theirs)), resolvedOutput(repo, 'skill-dir'));
+  const checkoutSkill = skillOf(repo);
+  expectResolve('lone copy, checkout with its skill', c.resolve(), resolvedOutput(repo, 'data-dir', checkoutSkill));
+  expectResolve('checkout skill it delegates to', c.resolve({}, path.dirname(checkoutSkill)), resolvedOutput(repo, 'skill-dir'));
 }
 
 // check-state: the example in state.md must pass; each broken variant must name its error.
