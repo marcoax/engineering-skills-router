@@ -8,7 +8,7 @@ import { currentStep, detailLines, findRepoRoot, hiddenAtStart, parseState, read
 
 // The documented example is the fixture, so the test follows the contract.
 const ROOT = path.resolve(import.meta.dirname, "../..");
-const doc = fs.readFileSync(path.join(ROOT, "router/engineering-router/state.md"), "utf8");
+const doc = fs.readFileSync(path.join(ROOT, "skills/engineering-router/state.md"), "utf8");
 const exampleText = doc.match(/```json\n([\s\S]*?)```/)![1];
 const example = () => JSON.parse(exampleText);
 

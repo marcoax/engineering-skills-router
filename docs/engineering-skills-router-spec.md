@@ -308,7 +308,7 @@ The router may override the default ranking when the task context suggests a bet
 The main skill lives in:
 
 ```text
-router/engineering-router/SKILL.md
+skills/engineering-router/SKILL.md
 ```
 
 Its responsibilities are:
@@ -1222,8 +1222,8 @@ Scripts are Node, with the `yaml` package as the only dependency (replaces the V
 
 ### 34.7 Architecture and the Pi adapter
 
-- The skill (`router/engineering-router/SKILL.md`) stays the agent-neutral core: it classifies, selects and executes.
-- During a workflow it writes its state to `.router/state.json` in the target repo: steps, chosen skill, alternatives, status per step, handoff (issue, branch, base commit, PR). The format is defined in `router/engineering-router/state.md`.
+- The skill (`skills/engineering-router/SKILL.md`) stays the agent-neutral core: it classifies, selects and executes.
+- During a workflow it writes its state to `.router/state.json` in the target repo: steps, chosen skill, alternatives, status per step, handoff (issue, branch, base commit, PR). The format is defined in `skills/engineering-router/state.md`.
 - `adapters/pi/` holds a Pi extension that reads that file and renders:
   - a compact widget above the editor: the steps with status (✓ done, ▶ running, ○ pending) and skill;
   - an overlay anchored right at 50% width, toggled by a shortcut, with details per step and the initial selection UI of §34.4.

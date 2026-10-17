@@ -14,7 +14,8 @@ While running, the router keeps `.router/state.json` and one note per step in `.
 
 | Path | What |
 |---|---|
-| `router/engineering-router/SKILL.md` | the router skill |
+| `skills/engineering-router/SKILL.md` | the router skill |
+| `skills/engineering-router/resolve-root.js` | finds the router checkout the skill works from |
 | `catalog/sources.yaml` | vendor repos and where their skills live |
 | `catalog/skills.yaml` | project-owned metadata per skill (phases, use_when, invokes) |
 | `catalog/rankings.yaml` | default + fallback skill per phase |
@@ -22,6 +23,29 @@ While running, the router keeps `.router/state.json` and one note per step in `.
 | `config/preferences.example.yaml` | template for personal overrides (`config/preferences.yaml`, git-ignored) |
 | `adapters/pi/` | Pi extension: workflow widget and panel from `.router/state.json` |
 | `vendors/` | git submodules, never edited |
+
+## Install (any agent)
+
+For Claude Code, Codex, Cursor, OpenCode and the other agents the [skills CLI](https://github.com/vercel-labs/skills) supports. Needs Node 24+ and git.
+
+```sh
+npx skills add marcoax/engineering-skills-router
+```
+
+This installs one skill, `engineering-router`, without its catalog, scripts or vendor skills. On each run the router looks for a full checkout and uses the first it finds:
+
+1. the checkout the skill folder sits in (clone and link installs, below);
+2. `$ENGINEERING_ROUTER_HOME`, for a personal clone;
+3. the Pi package checkout, `~/.pi/agent/git/github.com/marcoax/engineering-skills-router` (used read-only, so one copy of the vendors serves both);
+4. `~/.local/share/engineering-skills-router` (`$XDG_DATA_HOME/engineering-skills-router` when that is set).
+
+When none exists, the first run asks before cloning the repo with its submodules into the last of these and running `scripts/setup` there; decline and it stops. Nothing is written into agent skill folders. The router always says which checkout it uses and how it found it.
+
+**Preferences** live in `config/preferences.yaml` of that checkout, so `~/.local/share/engineering-skills-router/config/preferences.yaml` after a first-run fetch. With the Pi checkout, package updates wipe them, so use a personal clone instead. To keep them in a clone you control, or to edit the catalog, clone and set up as in the Pi section's **Personal preferences**, then `export ENGINEERING_ROUTER_HOME=/path/to/clone`.
+
+**Updating.** `npx skills update` refreshes only the skill folder. The checkout is updated by the router's own vendor update check, or by `git pull && scripts/setup` in it (for the Pi checkout, use the package update command in [Install (Pi)](#install-pi)).
+
+The workflow widget is Pi-only.
 
 ## Install (Pi)
 
@@ -31,11 +55,17 @@ The repo is a Pi package: the router skill plus the workflow widget. Needs Node 
 pi install git:github.com/marcoax/engineering-skills-router
 ```
 
-Pi clones it into `~/.pi/agent/git/`, and `npm install` fetches the vendor submodules (`postinstall`). Only the router is loaded, not the vendor skills. `pi update` moves it to the latest commit.
+Pi clones it into `~/.pi/agent/git/`, and `npm install` fetches the vendor submodules (`postinstall`). Only the router is loaded, not the vendor skills. To update only this package:
+
+```sh
+pi update git:github.com/marcoax/engineering-skills-router
+```
+
+Plain `pi update` updates Pi itself, not the router.
 
 Then, in Pi, `/reload` and `/skill:engineering-router <task>`. Run it with no task, or with the same issue, to resume an unfinished workflow. To try it for one session without installing: `pi -e git:github.com/marcoax/engineering-skills-router`.
 
-**Personal preferences.** `pi update` resets the installed clone (`git clean -fdx`), so a `config/preferences.yaml` there is lost. To keep preferences, or to edit the catalog, install from your own clone instead (Pi loads a local path without copying or cleaning it):
+**Personal preferences.** Updating the Pi package resets the installed clone (`git clean -fdx`), so a `config/preferences.yaml` there is lost. To keep preferences, or to edit the catalog, install from your own clone instead (Pi loads a local path without copying or cleaning it):
 
 ```sh
 git clone --recurse-submodules https://github.com/marcoax/engineering-skills-router && cd engineering-skills-router
@@ -50,20 +80,20 @@ Update that clone with `git pull && scripts/setup`.
 
 The extension reads `.router/state.json` in the session's repo and shows the steps above the editor. `ctrl+alt+w` (or `/router-panel`, for keyboard layouts where the shortcut arrives as another key) toggles a details panel on the right half. While a workflow is open, the panel takes the keyboard: during the skill selection `↑`/`↓` step, `enter` go, `a`/`b` swap the step's skill, `e` edit; `p` pauses (a running step finishes first); on a paused workflow `r` resumes; `x x` stops; `esc` goes back to the editor. At session start, a stopped workflow, or a done one with no PR or a merged/closed PR (checked with `gh`), is not shown. Choices are sent as chat messages; the extension never writes the state file.
 
-### Other agents
+## Install from a clone (other agents)
 
-Clone and set up once, as above (`git clone --recurse-submodules ...`, `scripts/setup`), then link the router skill into the agent's skills folder. There is no widget outside Pi.
+Instead of `npx skills add`, clone and set up once, as in **Personal preferences** above (`git clone --recurse-submodules ...`, `scripts/setup`), then link the router skill into the agent's skills folder. The router then uses that clone directly.
 
 Claude Code:
 
 ```sh
 mkdir -p ~/.claude/skills
-ln -s "$PWD/router/engineering-router" ~/.claude/skills/engineering-router
+ln -s "$PWD/skills/engineering-router" ~/.claude/skills/engineering-router
 ```
 
 Then `/engineering-router <task>` in any repo (or `/engineering-router` alone to resume). For one project only, link into that project's `.claude/skills/` instead. Update with `git pull && scripts/setup` in the clone.
 
-Codex, Cursor, OpenCode: link or point the agent at `router/engineering-router/SKILL.md` with whatever skill/rule mechanism it offers.
+Codex, Cursor, OpenCode: link or point the agent at `skills/engineering-router/SKILL.md` with whatever skill/rule mechanism it offers.
 
 ## Scripts
 

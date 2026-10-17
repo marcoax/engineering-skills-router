@@ -1,5 +1,5 @@
 // UI-independent logic of the Pi adapter: reads `.router/state.json` (format in
-// router/engineering-router/state.md) and turns it into lines and chat replies.
+// skills/engineering-router/state.md) and turns it into lines and chat replies.
 // No Pi imports, so it runs under plain Node for the tests.
 import * as fs from "node:fs";
 import * as path from "node:path";

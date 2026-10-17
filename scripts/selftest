@@ -1,6 +1,7 @@
 #!/usr/bin/env node
-// Runs the scripts against a scratch copy of the catalog to check error detection
-// and preference ordering, then the Pi adapter tests. Leaves the real catalog untouched.
+// Runs the scripts against a scratch copy of the catalog to check error detection and
+// preference ordering, then the root resolver and the Pi adapter tests. Leaves the real
+// catalog untouched.
 const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
@@ -19,6 +20,23 @@ const run = (script, ...args) => {
   const r = spawnSync(path.join(tmp, 'scripts', script), args, { encoding: 'utf8' });
   return { ok: r.status === 0, out: r.stdout + r.stderr };
 };
+
+// Layout: the skills CLI and Pi must both discover exactly one skill, under skills/.
+const skillFiles = [];
+const walk = (dir) => {
+  for (const e of fs.readdirSync(dir, { withFileTypes: true })) {
+    if (e.name.startsWith('.') || (dir === ROOT && ['vendors', 'node_modules'].includes(e.name))) continue;
+    const p = path.join(dir, e.name);
+    if (e.isDirectory()) walk(p);
+    else if (e.name === 'SKILL.md') skillFiles.push(path.relative(ROOT, p));
+  }
+};
+walk(ROOT);
+if (skillFiles.length !== 1 || !skillFiles[0].startsWith(`skills${path.sep}`)) {
+  fail(`expected exactly one SKILL.md outside vendors/, under skills/; found: ${skillFiles.join(', ') || 'none'}`);
+}
+const piSkills = JSON.stringify(JSON.parse(fs.readFileSync(path.join(ROOT, 'package.json'), 'utf8')).pi?.skills);
+if (piSkills !== '["./skills"]') fail(`package.json pi.skills should be exactly ["./skills"]; found: ${piSkills}`);
 
 if (!run('validate-catalog').ok) fail('clean catalog should validate');
 
@@ -72,6 +90,99 @@ const blocks = fs.readFileSync(path.join(ROOT, 'catalog/skills.yaml'), 'utf8').s
 fs.writeFileSync(skillsFile, blocks.filter((b) => !b.startsWith('  mattpocock/grilling:')).join('\n\n'));
 ({ out } = run('validate-catalog'));
 if (!out.includes('mattpocock/grill-me: calls uncataloged skill mattpocock/grilling')) fail('expected: calls uncataloged skill');
+
+// Resolver: each case copies the skill folder alone into a scratch dir with a fake HOME and
+// a clean env, then checks what root the resolver prints and how it says it found it.
+const SKILL_DIR = 'skills/engineering-router';
+const PI_REPO = 'git/github.com/marcoax/engineering-skills-router';
+const DATA_DIR = '.local/share/engineering-skills-router';
+const resolverCase = () => {
+  const dir = fs.realpathSync(fs.mkdtempSync(path.join(tmp, 'resolve-')));
+  const home = path.join(dir, 'home');
+  const lone = path.join(home, '.agents/skills/engineering-router');
+  fs.cpSync(path.join(ROOT, SKILL_DIR), lone, { recursive: true });
+  // A minimal checkout (catalog/skills.yaml), with the skill folder inside when withSkill is set.
+  const checkout = (p, { withSkill = false } = {}) => {
+    fs.mkdirSync(path.join(p, 'catalog'), { recursive: true });
+    fs.writeFileSync(path.join(p, 'catalog/skills.yaml'), 'skills: {}\n');
+    if (withSkill) fs.cpSync(lone, path.join(p, SKILL_DIR), { recursive: true });
+    return p;
+  };
+  const resolve = (env = {}, skillDir = lone) => {
+    const r = spawnSync(process.execPath, [path.join(skillDir, 'resolve-root.js')], {
+      encoding: 'utf8', env: { PATH: process.env.PATH, HOME: home, ...env },
+    });
+    return `${r.stdout}${r.stderr}exit ${r.status}`;
+  };
+  return { dir, home, checkout, resolve };
+};
+const expectResolve = (label, got, want) => {
+  if (got !== want) fail(`resolver, ${label}\nexpected:\n${want}\ngot:\n${got}`);
+};
+const resolvedOutput = (root, how) => `root: ${root}\nfound: ${how}\nexit 0`;
+
+{
+  const c = resolverCase();
+  const repo = c.checkout(path.join(c.dir, 'repo'), { withSkill: true });
+  const link = path.join(c.home, '.claude/skills/engineering-router');
+  fs.mkdirSync(path.dirname(link), { recursive: true });
+  fs.symlinkSync(path.join(repo, SKILL_DIR), link);
+  expectResolve('linked install', c.resolve({}, link), resolvedOutput(repo, 'skill-dir'));
+}
+{
+  const c = resolverCase();
+  expectResolve('nothing found', c.resolve(), `missing\ndata-dir: ${path.join(c.home, DATA_DIR)}\nexit 2`);
+}
+{
+  const c = resolverCase();
+  const repo = c.checkout(path.join(c.dir, 'anywhere'));
+  expectResolve('ENGINEERING_ROUTER_HOME', c.resolve({ ENGINEERING_ROUTER_HOME: repo }), resolvedOutput(repo, 'env'));
+}
+{
+  const c = resolverCase();
+  const repo = c.checkout(path.join(c.home, '.pi/agent', PI_REPO), { withSkill: true });
+  expectResolve('Pi checkout', c.resolve(), resolvedOutput(repo, 'pi'));
+  expectResolve('Pi checkout, native skill', c.resolve({}, path.join(repo, SKILL_DIR)), resolvedOutput(repo, 'pi'));
+  expectResolve('Pi checkout, env', c.resolve({ ENGINEERING_ROUTER_HOME: repo }), resolvedOutput(repo, 'pi'));
+  const link = path.join(c.dir, 'pi-repo-link');
+  fs.symlinkSync(repo, link);
+  expectResolve('Pi checkout, symlinked env', c.resolve({ ENGINEERING_ROUTER_HOME: link }), resolvedOutput(link, 'pi'));
+  const customAgent = path.join(c.dir, 'pi-agent');
+  const custom = c.checkout(path.join(customAgent, PI_REPO), { withSkill: true });
+  expectResolve('Pi checkout, PI_CODING_AGENT_DIR',
+    c.resolve({ PI_CODING_AGENT_DIR: customAgent }), resolvedOutput(custom, 'pi'));
+  expectResolve('Pi checkout, native skill with PI_CODING_AGENT_DIR',
+    c.resolve({ PI_CODING_AGENT_DIR: customAgent }, path.join(custom, SKILL_DIR)), resolvedOutput(custom, 'pi'));
+  const agentLink = path.join(c.dir, 'pi-agent-link');
+  fs.symlinkSync(customAgent, agentLink);
+  expectResolve('Pi checkout, native skill with symlinked PI_CODING_AGENT_DIR',
+    c.resolve({ PI_CODING_AGENT_DIR: agentLink }, path.join(custom, SKILL_DIR)), resolvedOutput(custom, 'pi'));
+}
+{
+  const c = resolverCase();
+  const xdg = path.join(c.dir, 'xdg');
+  expectResolve('nothing found, XDG_DATA_HOME', c.resolve({ XDG_DATA_HOME: xdg }),
+    `missing\ndata-dir: ${xdg}/engineering-skills-router\nexit 2`);
+  const repo = c.checkout(path.join(c.home, DATA_DIR));
+  expectResolve('data-dir checkout', c.resolve(), resolvedOutput(repo, 'data-dir'));
+  const xdgRepo = c.checkout(path.join(xdg, 'engineering-skills-router'));
+  expectResolve('data-dir checkout, XDG_DATA_HOME', c.resolve({ XDG_DATA_HOME: xdg }),
+    resolvedOutput(xdgRepo, 'data-dir'));
+}
+{
+  const c = resolverCase();
+  const data = c.checkout(path.join(c.home, DATA_DIR));
+  const pi = c.checkout(path.join(c.home, '.pi/agent', PI_REPO));
+  const env = { ENGINEERING_ROUTER_HOME: c.checkout(path.join(c.dir, 'env-repo')) };
+  const repo = c.checkout(path.join(c.dir, 'repo'), { withSkill: true });
+  expectResolve('precedence, all present', c.resolve(env, path.join(repo, SKILL_DIR)),
+    resolvedOutput(repo, 'skill-dir'));
+  expectResolve('precedence, env over pi', c.resolve(env), resolvedOutput(env.ENGINEERING_ROUTER_HOME, 'env'));
+  expectResolve('precedence, pi over data-dir', c.resolve(), resolvedOutput(pi, 'pi'));
+  fs.rmSync(path.join(pi, 'catalog'), { recursive: true });
+  fs.rmSync(path.join(env.ENGINEERING_ROUTER_HOME, 'catalog'), { recursive: true });
+  expectResolve('candidates without catalog skipped', c.resolve(env), resolvedOutput(data, 'data-dir'));
+}
 
 const adapter = spawnSync(process.execPath, ['--test', path.join(ROOT, 'adapters/pi/state.test.ts')], { encoding: 'utf8' });
 if (adapter.status !== 0) fail(`Pi adapter tests\n${adapter.stdout}${adapter.stderr}`);

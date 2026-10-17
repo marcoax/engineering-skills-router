@@ -13,5 +13,5 @@ run('git', 'submodule', 'update', '--init', '--recursive');
 run('npm', 'ci', '--no-audit', '--no-fund');
 run(path.join(ROOT, 'scripts/validate-catalog'));
 console.log();
-console.log(`Router skill: ${ROOT}/router/engineering-router/SKILL.md`);
+console.log(`Router skill: ${ROOT}/skills/engineering-router/SKILL.md`);
 console.log(`Pi: pi install "${ROOT}"`);
