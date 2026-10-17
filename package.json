@@ -1,11 +1,37 @@
 {
   "name": "engineering-skills-router",
   "private": true,
-  "description": "Scripts for the engineering skills router catalog.",
+  "description": "Routes an engineering task to the smallest workflow of vendor skills. Pi package: router skill + workflow widget.",
+  "keywords": [
+    "pi-package"
+  ],
   "engines": {
     "node": ">=24"
   },
+  "scripts": {
+    "postinstall": "git submodule update --init --recursive"
+  },
+  "pi": {
+    "skills": [
+      "./router"
+    ],
+    "extensions": [
+      "./adapters/pi/index.ts"
+    ]
+  },
   "dependencies": {
     "yaml": "2.9.1"
+  },
+  "peerDependencies": {
+    "@earendil-works/pi-coding-agent": "*",
+    "@earendil-works/pi-tui": "*"
+  },
+  "peerDependenciesMeta": {
+    "@earendil-works/pi-coding-agent": {
+      "optional": true
+    },
+    "@earendil-works/pi-tui": {
+      "optional": true
+    }
   }
 }

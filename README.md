@@ -23,32 +23,36 @@ While running, the router keeps `.router/state.json` and one note per step in `.
 | `adapters/pi/` | Pi extension: workflow widget and panel from `.router/state.json` |
 | `vendors/` | git submodules, never edited |
 
-## Setup
+## Install (Pi)
+
+The repo is a Pi package: the router skill plus the workflow widget. Needs Node 24+ and git; `gh` lets the widget see merged PRs.
 
 ```sh
-git clone --recurse-submodules <url> && cd engineering-skills-router
+pi install git:github.com/marcoax/engineering-skills-router
+```
+
+Pi clones it into `~/.pi/agent/git/`, and `npm install` fetches the vendor submodules (`postinstall`). Only the router is loaded, not the vendor skills. `pi update` moves it to the latest commit.
+
+Then, in Pi, `/reload` and `/skill:engineering-router <task>`. Run it with no task, or with the same issue, to resume an unfinished workflow. To try it for one session without installing: `pi -e git:github.com/marcoax/engineering-skills-router`.
+
+**Personal preferences.** `pi update` resets the installed clone (`git clean -fdx`), so a `config/preferences.yaml` there is lost. To keep preferences, or to edit the catalog, install from your own clone instead (Pi loads a local path without copying or cleaning it):
+
+```sh
+git clone --recurse-submodules https://github.com/marcoax/engineering-skills-router && cd engineering-skills-router
 scripts/setup
+cp config/preferences.example.yaml config/preferences.yaml   # optional
+pi install "$PWD"
 ```
 
-### Pi
+Update that clone with `git pull && scripts/setup`.
 
-Add the router folder (only the router, so vendor skills are not auto-loaded) to `~/.pi/agent/settings.json`:
+### The workflow widget
 
-```json
-"skills": ["/absolute/path/to/engineering-skills-router/router"]
-```
+The extension reads `.router/state.json` in the session's repo and shows the steps above the editor. `ctrl+alt+w` (or `/router-panel`, for keyboard layouts where the shortcut arrives as another key) toggles a details panel on the right half. While a workflow is open, the panel takes the keyboard: during the skill selection `↑`/`↓` step, `enter` go, `a`/`b` swap the step's skill, `e` edit; `p` pauses (a running step finishes first); on a paused workflow `r` resumes; `x x` stops; `esc` goes back to the editor. At session start, a stopped workflow, or a done one with no PR or a merged/closed PR (checked with `gh`), is not shown. Choices are sent as chat messages; the extension never writes the state file.
 
-Then `/reload` and run `/skill:engineering-router <task>`. Run it with no task, or with the same issue, to resume an unfinished workflow.
+### Other agents
 
-Optional workflow view: add the adapter extension in the same file.
-
-```json
-"extensions": ["/absolute/path/to/engineering-skills-router/adapters/pi"]
-```
-
-It reads `.router/state.json` in the session's repo and shows the steps above the editor. `ctrl+alt+w` (or `/router-panel`, for keyboard layouts where the shortcut arrives as another key) toggles a details panel on the right half. While a workflow is open, the panel takes the keyboard: during the skill selection `↑`/`↓` step, `enter` go, `a`/`b` swap the step's skill, `e` edit; `p` pauses (a running step finishes first); on a paused workflow `r` resumes; `x x` stops; `esc` goes back to the editor. At session start, a stopped workflow, or a done one with no PR or a merged/closed PR (checked with `gh`), is not shown. Choices are sent as chat messages; the extension never writes the state file. To try it for one session without installing, start Pi in the target repo with `pi -e /absolute/path/to/engineering-skills-router/adapters/pi`.
-
-Other agents (Claude Code, Codex, Cursor, OpenCode): point the agent at `router/engineering-router/SKILL.md` with whatever skill/rule mechanism it offers.
+Claude Code, Codex, Cursor, OpenCode: clone with `--recurse-submodules`, run `scripts/setup`, and point the agent at `router/engineering-router/SKILL.md` with whatever skill/rule mechanism it offers. There is no widget outside Pi.
 
 ## Scripts
 
