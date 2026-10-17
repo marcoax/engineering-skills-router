@@ -1,4 +1,5 @@
 .DS_Store
 config/preferences.yaml
+config/personal-skills.yaml
 node_modules/
 config/.last-update-check

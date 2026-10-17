@@ -1,0 +1,18 @@
+# Copy to config/personal-skills.yaml (git-ignored) to offer your own skills as candidates.
+# Needs preferences.personal_path in config/preferences.yaml: the folder that holds them.
+# The scripts only read from that folder.
+#
+# Same fields as catalog/skills.yaml (source is implied). Ids are personal/<name>; path is
+# relative to personal_path and must stay inside it. Not pinned: editing a skill there changes
+# the workflow. A <name> equal to a cataloged vendor skill's (personal/tdd vs mattpocock/tdd)
+# is skipped with a warning. Personal skills may fill any phase but framework-review; rank one
+# first with preferences.<phase>.prefer.
+
+skills:
+
+  personal/release-notes:
+    path: release-notes/SKILL.md
+    categories: [documentation, release]
+    use_when:
+      - a release needs user-facing notes
+    complexity: [low, medium]

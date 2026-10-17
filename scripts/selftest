@@ -180,6 +180,12 @@ if (!out.includes(`path: ${path.join(personalDir, 'notes/SKILL.md')}`)) fail(`pe
 {
   const r = run('validate-catalog');
   if (!r.ok || !/catalog OK \(\d+ skills \+ 1 personal,/.test(r.out)) fail(`valid personal catalog should validate\n${r.out}`);
+  // The shipped example validates once its skill exists.
+  fs.mkdirSync(path.join(personalDir, 'release-notes'));
+  fs.writeFileSync(path.join(personalDir, 'release-notes/SKILL.md'), '# release-notes\n');
+  fs.copyFileSync(path.join(ROOT, 'config/personal-skills.example.yaml'), personalFile);
+  const example = run('validate-catalog');
+  if (!example.ok) fail(`config/personal-skills.example.yaml should validate\n${example.out}`);
 }
 withPersonal(personalSkill(), `  personal_path: ${personalDir}\n  documentation:\n    prefer: [personal/notes]\n  exclude: [personal/notes]\n`);
 if (!run('validate-catalog').ok) fail('preferences should accept personal ids');
