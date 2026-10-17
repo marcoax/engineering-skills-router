@@ -86,8 +86,10 @@ const targetRepo = (yaml) => {
   }
   return dir;
 };
-const projectSkill = ({ id = 'project/fw', skillPath = '.claude/skills/fw/SKILL.md', cats = '[framework-review]', extra = '' } = {}) =>
-  `  ${id}:\n    path: ${skillPath}\n    categories: ${cats}\n    use_when:\n      - change touches fw code\n${extra}`;
+// One catalog entry, shaped the same in the project and the personal catalog.
+const skillEntry = ({ id, skillPath, cats, extra = '' }) =>
+  `  ${id}:\n    path: ${skillPath}\n    categories: ${cats}\n    use_when:\n      - the task fits\n${extra}`;
+const projectSkill = (o = {}) => skillEntry({ id: 'project/fw', skillPath: '.claude/skills/fw/SKILL.md', cats: '[framework-review]', ...o });
 {
   const repo = targetRepo(projectSkill());
   ({ out } = run('list-skills', '--target', repo, 'framework-review'));
@@ -168,7 +170,7 @@ const personalDir = path.join(tmp, 'personal');
 fs.mkdirSync(path.join(personalDir, 'notes'), { recursive: true });
 fs.writeFileSync(path.join(personalDir, 'notes/SKILL.md'), '# notes\n');
 const personalFile = path.join(tmp, 'config/personal-skills.yaml');
-const personalSkill = (o = {}) => projectSkill({ id: 'personal/notes', skillPath: 'notes/SKILL.md', cats: '[documentation]', ...o });
+const personalSkill = (o = {}) => skillEntry({ id: 'personal/notes', skillPath: 'notes/SKILL.md', cats: '[documentation]', ...o });
 const withPersonal = (yaml, prefs = `  personal_path: ${personalDir}\n`) => {
   fs.writeFileSync(prefsFile, `preferences:\n${prefs}`);
   fs.writeFileSync(personalFile, `skills:\n${yaml}`);
