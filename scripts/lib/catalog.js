@@ -70,7 +70,8 @@ function upstreamPaths(source) {
 }
 
 // Ordered candidates for a phase: user preference, catalog preferred, fallback, then any other
-// cataloged skill tagged with the phase. A project phase lists only the target's project skills.
+// cataloged skill tagged with the phase. A project phase lists only the target's project skills,
+// and no other phase lists them.
 function candidates(category, allSkills = skills(), allRankings = rankings(), prefs = preferences()) {
   const rank = allRankings[category] || {};
   const pref = (prefs[category] || {}).prefer;
@@ -78,9 +79,9 @@ function candidates(category, allSkills = skills(), allRankings = rankings(), pr
   const isProject = (id) => allSkills[id]?.source === 'project';
   const ordered = PROJECT_PHASES.includes(category)
     ? tagged.filter(isProject).map((id) => [id, 'project'])
-    : [['preference', pref], ['preferred', rank.preferred], ['fallback', rank.fallback],
-      ['other', tagged.filter((id) => !isProject(id))]]
-      .flatMap(([origin, ids]) => arr(ids).map((id) => [id, origin]));
+    : [['preference', pref], ['preferred', rank.preferred], ['fallback', rank.fallback], ['other', tagged]]
+      .flatMap(([origin, ids]) => arr(ids).map((id) => [id, origin]))
+      .filter(([id]) => !isProject(id));
   const excluded = arr(prefs.exclude);
   const seen = new Set();
   return ordered

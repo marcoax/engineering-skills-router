@@ -122,8 +122,16 @@ const projectSkill = ({ id = 'project/fw', skillPath = '.claude/skills/fw/SKILL.
 if (run('list-skills', '--target', targetRepo(projectSkill({ id: 'mattpocock/code-review', cats: '[review]' })), 'review').out
   !== run('list-skills', 'review').out) fail('list-skills --target should ignore project entries with catalog ids');
 if (!run('validate-catalog', '--target', targetRepo(projectSkill())).ok) fail('valid project catalog should validate');
-fs.writeFileSync(prefsFile, 'preferences:\n  framework-review:\n    prefer: [project/fw]\n');
-if (!run('validate-catalog', '--target', targetRepo(projectSkill())).ok) fail('a preference may name a project skill of the target');
+// Preferences name catalog skills only, so one cannot carry a project skill into another phase.
+fs.writeFileSync(prefsFile, 'preferences:\n  review:\n    prefer: [project/fw]\n');
+{
+  const repo = targetRepo(projectSkill());
+  const r = run('validate-catalog', '--target', repo);
+  if (r.ok || !r.out.includes('error: preferences.review: unknown skill project/fw'))
+    fail(`validate-catalog --target should reject a preference for a project skill\n${r.out}`);
+  if (run('list-skills', '--target', repo, 'review').out.includes('project/fw'))
+    fail('list-skills --target should not offer a preferred project skill for review');
+}
 fs.rmSync(prefsFile);
 for (const [skill, msg] of [
   [{ skillPath: '.claude/skills/nope/SKILL.md' }, 'docs/agents/skills.yaml: project/fw: path not found .claude/skills/nope/SKILL.md'],

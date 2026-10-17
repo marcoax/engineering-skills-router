@@ -102,7 +102,7 @@ for (const [key, value] of Object.entries(prefs)) {
     errors.push(`preferences.${key}.model: must be ${FAMILIES.join(' | ')}, got ${JSON.stringify(model)}`);
   const ids = key === 'exclude' ? arr(value) : arr((value || {}).prefer);
   if (key !== 'exclude' && !has(categories, key)) errors.push(`preferences: unknown phase '${key}'`);
-  ids.forEach((id) => { if (!has(skills, id) && !has(project, id)) errors.push(`preferences.${key}: unknown skill ${id}`); });
+  ids.forEach((id) => { if (!has(skills, id)) errors.push(`preferences.${key}: unknown skill ${id}`); });
 }
 
 const cataloged = Object.values(skills).map((s) => s.path);
