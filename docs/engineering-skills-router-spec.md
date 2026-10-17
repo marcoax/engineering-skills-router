@@ -17,7 +17,7 @@ Skill collections (pstack, Matt Pocock, Addy Osmani) overlap and none covers eve
 
 Running every fitting skill costs time, tokens and user attention for little extra confidence. So the router picks one skill per required phase and drops what the task does not need.
 
-- **Low risk stops.** A small task gets no workflow: the router says so and offers to do it directly. The flow is for medium and high risk, where a spec, an issue and reviews pay for themselves.
+- **Low risk stops.** A small task gets no workflow: the router says so and offers to do it directly. The flow is for medium and high risk, where a spec, an issue and reviews pay for themselves; a user who wants it for a low-risk task gets it as at medium risk.
 - **One default flow, trimmed by type.** Requirements → spec + issue → tickets → implementation → reviews → PR. Task type changes only the front (debugging, code-understanding); the part from branch to PR stays the same, so every workflow ends the same way.
 - **Requirements runs after code-understanding**, so its questions build on what the code shows.
 - **Task correctness decides the phases.** Preferences only rank skills; they never add or remove a phase, so a favourite skill cannot inflate a small task.
