@@ -120,7 +120,9 @@ const resolverCase = () => {
 const expectResolve = (label, got, want) => {
   if (got !== want) fail(`resolver, ${label}\nexpected:\n${want}\ngot:\n${got}`);
 };
-const resolvedOutput = (root, how) => `root: ${root}\nfound: ${how}\nexit 0`;
+// `skill` is the checkout's own SKILL.md, printed when the resolver runs from a copy outside it.
+const resolvedOutput = (root, how, skill) => `root: ${root}\nfound: ${how}\n${skill ? `skill: ${skill}\n` : ''}exit 0`;
+const skillOf = (root) => path.join(root, SKILL_DIR, 'SKILL.md');
 
 {
   const c = resolverCase();
@@ -142,16 +144,16 @@ const resolvedOutput = (root, how) => `root: ${root}\nfound: ${how}\nexit 0`;
 {
   const c = resolverCase();
   const repo = c.checkout(path.join(c.home, '.pi/agent', PI_REPO), { withSkill: true });
-  expectResolve('Pi checkout', c.resolve(), resolvedOutput(repo, 'pi'));
+  expectResolve('Pi checkout', c.resolve(), resolvedOutput(repo, 'pi', skillOf(repo)));
   expectResolve('Pi checkout, native skill', c.resolve({}, path.join(repo, SKILL_DIR)), resolvedOutput(repo, 'pi'));
-  expectResolve('Pi checkout, env', c.resolve({ ENGINEERING_ROUTER_HOME: repo }), resolvedOutput(repo, 'pi'));
+  expectResolve('Pi checkout, env', c.resolve({ ENGINEERING_ROUTER_HOME: repo }), resolvedOutput(repo, 'pi', skillOf(repo)));
   const link = path.join(c.dir, 'pi-repo-link');
   fs.symlinkSync(repo, link);
-  expectResolve('Pi checkout, symlinked env', c.resolve({ ENGINEERING_ROUTER_HOME: link }), resolvedOutput(link, 'pi'));
+  expectResolve('Pi checkout, symlinked env', c.resolve({ ENGINEERING_ROUTER_HOME: link }), resolvedOutput(link, 'pi', skillOf(link)));
   const customAgent = path.join(c.dir, 'pi-agent');
   const custom = c.checkout(path.join(customAgent, PI_REPO), { withSkill: true });
   expectResolve('Pi checkout, PI_CODING_AGENT_DIR',
-    c.resolve({ PI_CODING_AGENT_DIR: customAgent }), resolvedOutput(custom, 'pi'));
+    c.resolve({ PI_CODING_AGENT_DIR: customAgent }), resolvedOutput(custom, 'pi', skillOf(custom)));
   expectResolve('Pi checkout, native skill with PI_CODING_AGENT_DIR',
     c.resolve({ PI_CODING_AGENT_DIR: customAgent }, path.join(custom, SKILL_DIR)), resolvedOutput(custom, 'pi'));
   const agentLink = path.join(c.dir, 'pi-agent-link');
@@ -183,6 +185,16 @@ const resolvedOutput = (root, how) => `root: ${root}\nfound: ${how}\nexit 0`;
   fs.rmSync(path.join(pi, 'catalog'), { recursive: true });
   fs.rmSync(path.join(env.ENGINEERING_ROUTER_HOME, 'catalog'), { recursive: true });
   expectResolve('candidates without catalog skipped', c.resolve(env), resolvedOutput(data, 'data-dir'));
+}
+
+{
+  // A lone copy delegates to the checkout's own skill, so the two cannot drift apart.
+  // Delegation is path-based, not content-based, so identical copies (as here) still delegate.
+  const c = resolverCase();
+  const repo = c.checkout(path.join(c.home, DATA_DIR), { withSkill: true });
+  const checkoutSkill = skillOf(repo);
+  expectResolve('lone copy, checkout with its skill', c.resolve(), resolvedOutput(repo, 'data-dir', checkoutSkill));
+  expectResolve('checkout skill it delegates to', c.resolve({}, path.dirname(checkoutSkill)), resolvedOutput(repo, 'skill-dir'));
 }
 
 // check-state: the example in state.md must pass; each broken variant must name its error.

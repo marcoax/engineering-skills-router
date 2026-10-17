@@ -7,13 +7,15 @@ argument-hint: "<task description, issue URL, or spec; omit to resume>"
 
 You compose the **smallest useful workflow** for one non-trivial engineering task by picking one vendor skill per required phase. The question is never "which collection is best" but "which skill fits this step of this task".
 
-**Repo root** is the router checkout (catalog, scripts, vendors) this skill works from. Find it before anything else with `node <this skill's folder>/resolve-root.js`, and use the `root:` it prints. Tell the user the root in use and how it was found (`found:`). When it prints `missing` instead, this skill was installed without its checkout:
+**Repo root** is the router checkout (catalog, scripts, vendors) this skill works from. Find it before anything else with `node <this skill's folder>/resolve-root.js`, and use the `root:` it prints. When it prints `missing` instead, this skill was installed without its checkout:
 
 - Explain that the router needs its catalog and vendor skills, and ask to fetch them into the printed `data-dir` with `git clone --recurse-submodules https://github.com/marcoax/engineering-skills-router <data-dir>`, then `<data-dir>/scripts/setup`. On yes, run both and the resolver again.
 - If that `data-dir` already exists (e.g. an interrupted clone), do not clone over it: tell the user, and offer to remove it and clone again, or to point `ENGINEERING_ROUTER_HOME` at a clone.
 - On no, stop: say the router cannot run without a checkout, and that `ENGINEERING_ROUTER_HOME` can point it at an existing clone.
 
-With `found: pi` the checkout belongs to Pi: keep it read-only and skip §0 (`pi update git:github.com/marcoax/engineering-skills-router` updates it). All paths below, and every `path` in the catalog, are relative to the root. Run scripts from the root. Always read vendor skills from `vendors/` at the catalog `path`, never from copies installed for the agent. The **target repo** is the one the task is about.
+When the resolver also prints `skill:`, this file is a copy installed apart from the checkout (e.g. by `npx skills add`), and it may be older or newer than the checkout. Stop reading this file: read the printed `skill:` file and follow it from the top instead, resolving its links (such as `state.md`) against its own folder. In that file, finding the root and this hand-over are already done: do not run its resolver, and keep the `root:` and `found:` printed here. Otherwise continue here.
+
+Tell the user the root in use and how it was found (`found:`). With `found: pi` the checkout belongs to Pi: keep it read-only and skip §0 (`pi update git:github.com/marcoax/engineering-skills-router` updates it). All paths below, and every `path` in the catalog, are relative to the root. Run scripts from the root. Always read vendor skills from `vendors/` at the catalog `path`, never from copies installed for the agent. The **target repo** is the one the task is about.
 
 ## 0. Check for updates
 
