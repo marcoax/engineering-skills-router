@@ -7,7 +7,7 @@ argument-hint: "<task description, issue URL, or spec; omit to resume>"
 
 You compose the **smallest useful workflow** for one non-trivial engineering task by picking one vendor skill per required phase. The question is never "which collection is best" but "which skill fits this step of this task".
 
-**Repo root** is the directory two levels above this file. All paths below, and every `path` in the catalog, are relative to it. Run scripts from the repo root. Always read vendor skills from `vendors/` at the catalog `path`, never from copies installed for the agent. The **target repo** is the one the task is about.
+**Repo root** is the directory two levels above this file, after resolving symlinks (`realpath`): agents often load it through a link in their skills folder. All paths below, and every `path` in the catalog, are relative to it. Run scripts from the repo root. Always read vendor skills from `vendors/` at the catalog `path`, never from copies installed for the agent. The **target repo** is the one the task is about.
 
 ## 0. Check for updates
 

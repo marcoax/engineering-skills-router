@@ -52,7 +52,18 @@ The extension reads `.router/state.json` in the session's repo and shows the ste
 
 ### Other agents
 
-Claude Code, Codex, Cursor, OpenCode: clone with `--recurse-submodules`, run `scripts/setup`, and point the agent at `router/engineering-router/SKILL.md` with whatever skill/rule mechanism it offers. There is no widget outside Pi.
+Clone and set up once, as above (`git clone --recurse-submodules ...`, `scripts/setup`), then link the router skill into the agent's skills folder. There is no widget outside Pi.
+
+Claude Code:
+
+```sh
+mkdir -p ~/.claude/skills
+ln -s "$PWD/router/engineering-router" ~/.claude/skills/engineering-router
+```
+
+Then `/engineering-router <task>` in any repo (or `/engineering-router` alone to resume). For one project only, link into that project's `.claude/skills/` instead. Update with `git pull && scripts/setup` in the clone.
+
+Codex, Cursor, OpenCode: link or point the agent at `router/engineering-router/SKILL.md` with whatever skill/rule mechanism it offers.
 
 ## Scripts
 
