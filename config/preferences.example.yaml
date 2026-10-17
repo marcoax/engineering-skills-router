@@ -19,7 +19,8 @@ preferences:
     - pstack/interrogate
 
   # Folder holding your own skills, listed in config/personal-skills.yaml
-  # (see config/personal-skills.example.yaml). A leading ~ is your home dir.
+  # (see config/personal-skills.example.yaml). A leading ~ is your home dir;
+  # a relative path resolves against this checkout.
   # personal_path: ~/my-skills
 
   # Days between update-check prompts at startup (default 14, 0 = never ask).
