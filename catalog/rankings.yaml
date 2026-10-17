@@ -1,0 +1,97 @@
+# Default choice per phase. Not a quality verdict: "preferred" is the default for
+# typical work, "fallback" is tried in order when the preferred skill is missing,
+# excluded, or a poor fit for the task. Every category in categories.yaml should appear.
+
+rankings:
+
+  requirements:
+    preferred: [mattpocock/grill-me]
+    fallback: [mattpocock/grill-with-docs, addyosmani/interview-me, addyosmani/idea-refine]
+
+  clarification:
+    preferred: [pstack/sharpen]
+    fallback: [mattpocock/grill-me, addyosmani/interview-me]
+
+  discovery:
+    preferred: [pstack/how]
+    fallback: [pstack/why, mattpocock/research]
+
+  code-understanding:
+    preferred: [pstack/how]
+    fallback: [pstack/why]
+
+  research:
+    preferred: [mattpocock/research]
+    fallback: []
+
+  prototype:
+    preferred: [mattpocock/prototype]
+    fallback: [pstack/arena]
+
+  architecture:
+    preferred: [pstack/architect]
+    fallback: [mattpocock/codebase-design, addyosmani/api-and-interface-design, mattpocock/improve-codebase-architecture]
+
+  specification:
+    preferred: [mattpocock/to-spec]
+    fallback: [addyosmani/spec-driven-development]
+
+  issue-tracking:
+    preferred: [mattpocock/to-spec]
+    fallback: [mattpocock/to-tickets, mattpocock/triage]
+
+  planning:
+    preferred: [mattpocock/to-tickets]
+    fallback: [addyosmani/planning-and-task-breakdown, pstack/architect]
+
+  multi-session:
+    preferred: [mattpocock/wayfinder]
+    fallback: [pstack/figure-it-out]
+
+  implementation:
+    preferred: [mattpocock/implement]
+    fallback: [mattpocock/implement-spec, addyosmani/incremental-implementation]
+
+  testing:
+    preferred: [mattpocock/tdd]
+    fallback: [addyosmani/test-driven-development, pstack/tdd]
+
+  debugging:
+    preferred: [mattpocock/diagnosing-bugs]
+    fallback: [addyosmani/debugging-and-error-recovery]
+
+  refactoring:
+    preferred: [addyosmani/code-simplification]
+    fallback: [mattpocock/improve-codebase-architecture]
+
+  performance:
+    preferred: [addyosmani/performance-optimization]
+    fallback: [mattpocock/diagnosing-bugs, pstack/benchmark-checklist]
+
+  security:
+    preferred: [addyosmani/security-and-hardening]
+    fallback: []
+
+  review:
+    preferred: [mattpocock/code-review]
+    fallback: [addyosmani/code-review-and-quality, pstack/interrogate]
+
+  independent-review:
+    preferred: [pstack/interrogate]
+    fallback: [pstack/blast-radius]
+
+  documentation:
+    preferred: [addyosmani/documentation-and-adrs]
+    fallback: [mattpocock/domain-modeling, pstack/technical-writing]
+
+  pull-request:
+    preferred: [mattpocock/pr]
+    fallback: [addyosmani/git-workflow-and-versioning]
+
+  release:
+    preferred: [addyosmani/shipping-and-launch]
+    fallback: []
+
+  setup:
+    preferred: [mattpocock/setup-matt-pocock-skills]
+    fallback: []

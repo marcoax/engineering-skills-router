@@ -1,0 +1,20 @@
+sources:
+
+  pstack:
+    repository: https://github.com/backnotprop/pstack
+    local_path: vendors/pstack
+    skill_globs:
+      - skills/*/SKILL.md
+
+  mattpocock:
+    repository: https://github.com/mattpocock/skills
+    local_path: vendors/mattpocock
+    skill_globs:
+      - skills/engineering/*/SKILL.md
+      - skills/productivity/*/SKILL.md
+
+  addyosmani:
+    repository: https://github.com/addyosmani/agent-skills
+    local_path: vendors/addyosmani
+    skill_globs:
+      - skills/*/SKILL.md

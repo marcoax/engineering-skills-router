@@ -1,0 +1,366 @@
+# Project-owned metadata about vendor skills. Vendor SKILL.md files are never edited.
+#
+# Fields:
+#   source      key in sources.yaml
+#   path        SKILL.md path, relative to the repo root
+#   categories  phases this skill can fill (see categories.yaml)
+#   use_when    signals that make it a good fit
+#   avoid_when  signals that make it a bad fit (optional)
+#   complexity  task sizes it suits: low | medium | high (optional, default: any)
+#   invokes     skills it already calls internally; their phases count as covered (optional)
+#   requires    preconditions in the target repo (optional)
+
+skills:
+
+  # ---------- mattpocock ----------
+
+  mattpocock/grill-me:
+    source: mattpocock
+    path: vendors/mattpocock/skills/productivity/grill-me/SKILL.md
+    categories: [requirements, clarification]
+    use_when:
+      - task is vague or a plan needs stress-testing
+      - important decisions are unresolved
+    complexity: [medium, high]
+
+  mattpocock/grill-with-docs:
+    source: mattpocock
+    path: vendors/mattpocock/skills/engineering/grill-with-docs/SKILL.md
+    categories: [requirements, clarification, documentation]
+    use_when:
+      - requirements are unclear and the target repo already has GLOSSARY.md or docs/adr/
+    avoid_when:
+      - target repo has neither GLOSSARY.md nor docs/adr/ (use grill-me)
+    complexity: [medium, high]
+
+  mattpocock/to-spec:
+    source: mattpocock
+    path: vendors/mattpocock/skills/engineering/to-spec/SKILL.md
+    categories: [specification, issue-tracking]
+    use_when:
+      - the conversation already contains the decisions and needs to become a spec issue
+      - spec should be published to the issue tracker (GitHub by default)
+    avoid_when:
+      - requirements have not been discussed yet (run a requirements skill first)
+    complexity: [medium, high]
+    requires: [tracker-config]
+
+  mattpocock/to-tickets:
+    source: mattpocock
+    path: vendors/mattpocock/skills/engineering/to-tickets/SKILL.md
+    categories: [planning, issue-tracking]
+    use_when:
+      - a spec exists and must be split into tracer-bullet tickets with blocking edges
+    avoid_when:
+      - change fits a single ticket
+    complexity: [medium, high]
+    requires: [tracker-config]
+
+  mattpocock/wayfinder:
+    source: mattpocock
+    path: vendors/mattpocock/skills/engineering/wayfinder/SKILL.md
+    categories: [multi-session, planning, issue-tracking]
+    use_when:
+      - work is too large for one agent session and the route is still foggy
+    avoid_when:
+      - the way to the destination is already clear
+    complexity: [high]
+    requires: [tracker-config]
+
+  mattpocock/implement:
+    source: mattpocock
+    path: vendors/mattpocock/skills/engineering/implement/SKILL.md
+    categories: [implementation]
+    use_when:
+      - a spec or a single ticket is ready to implement in this session
+    avoid_when:
+      - 3+ tickets with at least 2 runnable in parallel (use implement-spec)
+    invokes: [mattpocock/tdd, mattpocock/code-review]
+
+  mattpocock/implement-spec:
+    source: mattpocock
+    path: vendors/mattpocock/skills/engineering/implement-spec/SKILL.md
+    categories: [implementation]
+    use_when:
+      - 3+ tickets with at least 2 runnable in parallel, built on an integration branch
+    avoid_when:
+      - fewer than 3 tickets, no two runnable in parallel, or no subagent support
+    invokes: [mattpocock/tdd, mattpocock/code-review]
+    requires: [tracker-config]
+
+  mattpocock/tdd:
+    source: mattpocock
+    path: vendors/mattpocock/skills/engineering/tdd/SKILL.md
+    categories: [testing, implementation]
+    use_when:
+      - behavior can be driven test-first at an agreed seam
+      - bug fix needs a regression test
+
+  mattpocock/code-review:
+    source: mattpocock
+    path: vendors/mattpocock/skills/engineering/code-review/SKILL.md
+    categories: [review]
+    use_when:
+      - change should be checked against repo standards and the originating issue/spec
+      - a fixed point (commit, branch, merge-base) is known
+
+  mattpocock/diagnosing-bugs:
+    source: mattpocock
+    path: vendors/mattpocock/skills/engineering/diagnosing-bugs/SKILL.md
+    categories: [debugging, performance]
+    use_when:
+      - something is broken, throwing, failing or slow and the cause is unknown
+
+  mattpocock/triage:
+    source: mattpocock
+    path: vendors/mattpocock/skills/engineering/triage/SKILL.md
+    categories: [issue-tracking]
+    use_when:
+      - incoming issues or external PRs must be categorised and turned into agent-ready briefs
+    requires: [tracker-config]
+
+  mattpocock/improve-codebase-architecture:
+    source: mattpocock
+    path: vendors/mattpocock/skills/engineering/improve-codebase-architecture/SKILL.md
+    categories: [architecture, refactoring]
+    use_when:
+      - looking for deepening opportunities across the codebase, no specific target yet
+    complexity: [medium, high]
+
+  mattpocock/codebase-design:
+    source: mattpocock
+    path: vendors/mattpocock/skills/engineering/codebase-design/SKILL.md
+    categories: [architecture]
+    use_when:
+      - designing a single module interface or deciding where a seam goes
+
+  mattpocock/domain-modeling:
+    source: mattpocock
+    path: vendors/mattpocock/skills/engineering/domain-modeling/SKILL.md
+    categories: [documentation]
+    use_when:
+      - terminology, GLOSSARY.md or ADRs need writing or editing
+
+  mattpocock/prototype:
+    source: mattpocock
+    path: vendors/mattpocock/skills/engineering/prototype/SKILL.md
+    categories: [prototype]
+    use_when:
+      - a state model, logic or UI should be sanity-checked before committing to a design
+
+  mattpocock/research:
+    source: mattpocock
+    path: vendors/mattpocock/skills/engineering/research/SKILL.md
+    categories: [research, discovery]
+    use_when:
+      - a decision waits on facts from external docs or APIs
+
+  mattpocock/pr:
+    source: mattpocock
+    path: vendors/mattpocock/skills/engineering/pr/SKILL.md
+    categories: [pull-request]
+    use_when:
+      - a PR body must be written
+
+  mattpocock/setup-matt-pocock-skills:
+    source: mattpocock
+    path: vendors/mattpocock/skills/engineering/setup-matt-pocock-skills/SKILL.md
+    categories: [setup]
+    use_when:
+      - target repo has no docs/agents/issue-tracker.md and a tracker-config skill is selected
+
+  # ---------- pstack ----------
+
+  pstack/how:
+    source: pstack
+    path: vendors/pstack/skills/how/SKILL.md
+    categories: [code-understanding, discovery]
+    use_when:
+      - existing code must be understood before changing it
+      - placement or ownership question ("where should this live")
+
+  pstack/why:
+    source: pstack
+    path: vendors/pstack/skills/why/SKILL.md
+    categories: [code-understanding, discovery]
+    use_when:
+      - design rationale, regression history or postmortem context is needed
+
+  pstack/sharpen:
+    source: pstack
+    path: vendors/pstack/skills/sharpen/SKILL.md
+    categories: [clarification]
+    use_when:
+      - task is roughly clear but the right level of specification is not
+    complexity: [low, medium]
+
+  pstack/architect:
+    source: pstack
+    path: vendors/pstack/skills/architect/SKILL.md
+    categories: [architecture, planning]
+    use_when:
+      - types, signatures and module structure should be sketched before code
+    complexity: [medium, high]
+
+  pstack/arena:
+    source: pstack
+    path: vendors/pstack/skills/arena/SKILL.md
+    categories: [architecture, prototype]
+    use_when:
+      - one attempt would lock in the wrong shape and parallel candidates are affordable
+    complexity: [high]
+
+  pstack/figure-it-out:
+    source: pstack
+    path: vendors/pstack/skills/figure-it-out/SKILL.md
+    categories: [multi-session, planning]
+    use_when:
+      - large migration or ambitious change that needs an auditable playbook
+    complexity: [high]
+
+  pstack/tdd:
+    source: pstack
+    path: vendors/pstack/skills/tdd/SKILL.md
+    categories: [testing]
+    use_when:
+      - bug has an obvious cheap local test target
+    avoid_when:
+      - test path is unclear, expensive or integration-heavy
+
+  pstack/interrogate:
+    source: pstack
+    path: vendors/pstack/skills/interrogate/SKILL.md
+    categories: [independent-review, review]
+    use_when:
+      - high-risk change needs adversarial multi-model review
+    complexity: [high]
+
+  pstack/blast-radius:
+    source: pstack
+    path: vendors/pstack/skills/blast-radius/SKILL.md
+    categories: [independent-review]
+    use_when:
+      - small diff you don't trust; need to know what else it could break
+
+  pstack/benchmark-checklist:
+    source: pstack
+    path: vendors/pstack/skills/benchmark-checklist/SKILL.md
+    categories: [performance]
+    use_when:
+      - a measured speedup or regression is about to be reported
+
+  pstack/technical-writing:
+    source: pstack
+    path: vendors/pstack/skills/technical-writing/SKILL.md
+    categories: [documentation]
+    use_when:
+      - writing or reviewing docs, READMEs, RFCs
+
+  # ---------- addyosmani ----------
+
+  addyosmani/interview-me:
+    source: addyosmani
+    path: vendors/addyosmani/skills/interview-me/SKILL.md
+    categories: [requirements, clarification]
+    use_when:
+      - ask is underspecified ("build me X" without for whom or why)
+
+  addyosmani/idea-refine:
+    source: addyosmani
+    path: vendors/addyosmani/skills/idea-refine/SKILL.md
+    categories: [requirements]
+    use_when:
+      - raw idea needs divergent then convergent thinking before a plan
+
+  addyosmani/spec-driven-development:
+    source: addyosmani
+    path: vendors/addyosmani/skills/spec-driven-development/SKILL.md
+    categories: [specification]
+    use_when:
+      - a spec document (PRD) is needed in the repo rather than on the issue tracker
+    complexity: [medium, high]
+
+  addyosmani/planning-and-task-breakdown:
+    source: addyosmani
+    path: vendors/addyosmani/skills/planning-and-task-breakdown/SKILL.md
+    categories: [planning]
+    use_when:
+      - spec exists and must be broken into ordered tasks without publishing tickets
+
+  addyosmani/incremental-implementation:
+    source: addyosmani
+    path: vendors/addyosmani/skills/incremental-implementation/SKILL.md
+    categories: [implementation]
+    use_when:
+      - change touches many files and should land in thin verifiable slices
+
+  addyosmani/test-driven-development:
+    source: addyosmani
+    path: vendors/addyosmani/skills/test-driven-development/SKILL.md
+    categories: [testing]
+    use_when:
+      - logic or behavior change needs red-green-refactor
+
+  addyosmani/debugging-and-error-recovery:
+    source: addyosmani
+    path: vendors/addyosmani/skills/debugging-and-error-recovery/SKILL.md
+    categories: [debugging]
+    use_when:
+      - tests fail, build breaks, or behavior regressed
+
+  addyosmani/api-and-interface-design:
+    source: addyosmani
+    path: vendors/addyosmani/skills/api-and-interface-design/SKILL.md
+    categories: [architecture]
+    use_when:
+      - designing a public API, endpoint or cross-module contract
+
+  addyosmani/code-simplification:
+    source: addyosmani
+    path: vendors/addyosmani/skills/code-simplification/SKILL.md
+    categories: [refactoring]
+    use_when:
+      - code works but is harder to read or maintain than it should be
+
+  addyosmani/security-and-hardening:
+    source: addyosmani
+    path: vendors/addyosmani/skills/security-and-hardening/SKILL.md
+    categories: [security]
+    use_when:
+      - change touches auth, user input, queries or data storage, secrets, new dependencies, config, permissions, or external integrations
+
+  addyosmani/performance-optimization:
+    source: addyosmani
+    path: vendors/addyosmani/skills/performance-optimization/SKILL.md
+    categories: [performance]
+    use_when:
+      - performance requirements exist or a regression is suspected
+
+  addyosmani/code-review-and-quality:
+    source: addyosmani
+    path: vendors/addyosmani/skills/code-review-and-quality/SKILL.md
+    categories: [review]
+    use_when:
+      - implementation is complete and needs multi-axis pre-merge review
+      - second review of the same diff on a model from a different provider
+
+  addyosmani/documentation-and-adrs:
+    source: addyosmani
+    path: vendors/addyosmani/skills/documentation-and-adrs/SKILL.md
+    categories: [documentation]
+    use_when:
+      - architecture decision or public API change must be recorded
+
+  addyosmani/git-workflow-and-versioning:
+    source: addyosmani
+    path: vendors/addyosmani/skills/git-workflow-and-versioning/SKILL.md
+    categories: [pull-request]
+    use_when:
+      - messy working tree must become clean atomic commits before a PR
+
+  addyosmani/shipping-and-launch:
+    source: addyosmani
+    path: vendors/addyosmani/skills/shipping-and-launch/SKILL.md
+    categories: [release]
+    use_when:
+      - preparing a production deploy, staged rollout or rollback plan

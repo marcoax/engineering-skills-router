@@ -1,0 +1,21 @@
+# Copy to config/preferences.yaml (git-ignored) to customise routing.
+# Preferences pick WHICH suitable skill fills a phase; they never add or remove phases.
+
+preferences:
+
+  # Per-phase preferred skills, tried before the catalog ranking.
+  review:
+    prefer: [addyosmani/code-review-and-quality]
+
+  testing:
+    prefer: [mattpocock/tdd]
+
+  # Skills never to select.
+  exclude:
+    - pstack/interrogate
+
+  # Days between update-check prompts at startup (default 14, 0 = never ask).
+  update_check_days: 14
+
+  # Model for the second review, as provider/model-id; should be from another provider.
+  second_review_model: openai-codex/gpt-6-sol

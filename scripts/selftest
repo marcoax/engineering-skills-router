@@ -1,0 +1,64 @@
+#!/usr/bin/env node
+// Runs the scripts against a scratch copy of the catalog to check error detection
+// and preference ordering, then the Pi adapter tests. Leaves the real catalog untouched.
+const fs = require('node:fs');
+const os = require('node:os');
+const path = require('node:path');
+const { spawnSync } = require('node:child_process');
+
+const ROOT = path.resolve(__dirname, '..');
+const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'router-selftest-'));
+process.on('exit', () => fs.rmSync(tmp, { recursive: true, force: true }));
+for (const dir of ['catalog', 'scripts']) fs.cpSync(path.join(ROOT, dir), path.join(tmp, dir), { recursive: true });
+fs.mkdirSync(path.join(tmp, 'config'));
+for (const dir of ['vendors', 'node_modules']) fs.symlinkSync(path.join(ROOT, dir), path.join(tmp, dir));
+
+const prefsFile = path.join(tmp, 'config/preferences.yaml');
+const fail = (msg) => { console.log(`FAIL: ${msg}`); process.exit(1); };
+const run = (script, ...args) => {
+  const r = spawnSync(path.join(tmp, 'scripts', script), args, { encoding: 'utf8' });
+  return { ok: r.status === 0, out: r.stdout + r.stderr };
+};
+
+if (!run('validate-catalog').ok) fail('clean catalog should validate');
+
+fs.writeFileSync(prefsFile, `preferences:
+  review:
+    prefer: [addyosmani/code-review-and-quality]
+  exclude: [mattpocock/code-review]
+  update_check_days: 0
+  second_review_model: openai-codex/gpt-6-sol
+`);
+if (!run('validate-catalog').ok) fail('valid preferences should validate');
+let { out } = run('list-skills', 'review');
+if (!/^1\. addyosmani\/code-review-and-quality {2}\[preference, ok\]/m.test(out)) fail('preference should rank first');
+if (!out.includes('mattpocock/code-review  [preferred, excluded]')) fail('exclude should mark skill');
+
+fs.writeFileSync(prefsFile, 'preferences:\n  review:\n    prefer: [nobody/nothing]\n');
+if (run('validate-catalog').ok) fail('unknown preferred skill should fail');
+
+for (const [line, msg] of [
+  ['update_check_days: -1', 'update_check_days: must be an integer >= 0'],
+  ['update_check_days: soon', 'update_check_days: must be an integer >= 0'],
+  ['second_review_model: gpt', "second_review_model: must be 'provider/model-id'"],
+]) {
+  fs.writeFileSync(prefsFile, `preferences:\n  ${line}\n`);
+  const r = run('validate-catalog');
+  if (r.ok || !r.out.includes(msg)) fail(`expected: ${msg}`);
+}
+fs.rmSync(prefsFile);
+
+fs.appendFileSync(path.join(tmp, 'catalog/skills.yaml'), `
+  pstack/how:
+    source: pstack
+    path: vendors/pstack/skills/nope/SKILL.md
+    categories: [not-a-category]
+`);
+({ out } = run('validate-catalog'));
+for (const msg of ['duplicate skill id: pstack/how', 'path not found', "invalid category 'not-a-category'"]) {
+  if (!out.includes(msg)) fail(`expected: ${msg}`);
+}
+
+const adapter = spawnSync(process.execPath, ['--test', path.join(ROOT, 'adapters/pi/state.test.ts')], { encoding: 'utf8' });
+if (adapter.status !== 0) fail(`Pi adapter tests\n${adapter.stdout}${adapter.stderr}`);
+console.log('selftest OK');

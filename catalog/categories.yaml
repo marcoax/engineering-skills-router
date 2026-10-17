@@ -1,0 +1,25 @@
+# Engineering phases. Listed in the order they normally run in a workflow.
+categories:
+  requirements:        Clarify intent, scope and unresolved decisions with the user.
+  clarification:       Resolve a single ambiguity without a full interview.
+  discovery:           Explore unfamiliar territory (code, docs, prior decisions) before deciding.
+  code-understanding:  Explain how existing code works or why it is shaped that way.
+  research:            Gather facts from external primary sources.
+  prototype:           Build a throwaway artifact to answer a design question.
+  architecture:        Decide module shape, interfaces and boundaries before code.
+  specification:       Write down the expected behavior and boundaries.
+  issue-tracking:      Publish specs or tickets to the issue tracker (GitHub, GitLab, local).
+  planning:            Break work into ordered, implementable tasks.
+  multi-session:       Plan work too large for a single agent session.
+  implementation:      Write the code.
+  testing:             Drive or verify behavior with tests.
+  debugging:           Find and fix the root cause of a failure.
+  refactoring:         Restructure code without changing behavior.
+  performance:         Measure and improve speed or resource use.
+  security:            Audit and harden against vulnerabilities.
+  review:              General review of a finished change.
+  independent-review:  Adversarial or blast-radius review with a different purpose than the general review.
+  documentation:       Record decisions, ADRs and docs.
+  pull-request:        Open or describe a pull request.
+  release:             Prepare a production launch.
+  setup:               One-time repo configuration a skill depends on.

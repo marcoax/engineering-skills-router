@@ -1,0 +1,35 @@
+#!/usr/bin/env node
+// Usage: scripts/list-skills [phase ...]
+//   no args  one line per phase with its ranked candidates
+//   phases   full detail (use_when, avoid_when, invokes, requires) for each candidate
+// Status: ok | missing (file not found) | excluded (user preference) | unknown (not cataloged)
+const Catalog = require('./lib/catalog');
+
+const args = process.argv.slice(2);
+const categories = Catalog.categories();
+const known = Object.keys(categories);
+const phases = args.length === 0 ? known : args;
+const unknown = phases.filter((p) => !known.includes(p));
+if (unknown.length > 0) {
+  console.error(`Unknown phase(s): ${unknown.join(', ')}\nKnown: ${known.join(', ')}`);
+  process.exit(1);
+}
+
+for (const phase of phases) {
+  const list = Catalog.candidates(phase);
+  if (args.length === 0) {
+    console.log(`${phase.padEnd(20)} ` + list.map((c) => (c.status === 'ok' ? c.id : `(${c.id}: ${c.status})`)).join(', '));
+    continue;
+  }
+  console.log(`## ${phase}: ${categories[phase]}`);
+  list.forEach((c, i) => {
+    console.log(`${i + 1}. ${c.id}  [${c.origin}, ${c.status}]`);
+    if (!c.skill) return;
+    console.log(`   path: ${c.skill.path}`);
+    for (const key of ['use_when', 'avoid_when', 'complexity', 'invokes', 'requires']) {
+      const values = Catalog.arr(c.skill[key]);
+      if (values.length > 0) console.log(`   ${key}: ${values.join('; ')}`);
+    }
+  });
+  console.log();
+}

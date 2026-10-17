@@ -1,0 +1,17 @@
+#!/usr/bin/env node
+// Fetches vendor submodules at their pinned commits, installs the script dependency
+// and validates the catalog. Does not install anything into user-level agent directories.
+const path = require('node:path');
+const { spawnSync } = require('node:child_process');
+
+const ROOT = path.resolve(__dirname, '..');
+const run = (cmd, ...args) => {
+  if (spawnSync(cmd, args, { cwd: ROOT, stdio: 'inherit' }).status !== 0) process.exit(1);
+};
+
+run('git', 'submodule', 'update', '--init', '--recursive');
+run('npm', 'ci', '--no-audit', '--no-fund');
+run(path.join(ROOT, 'scripts/validate-catalog'));
+console.log();
+console.log(`Router skill: ${ROOT}/router/engineering-router/SKILL.md`);
+console.log(`Pi: add "${ROOT}/router" to the "skills" array in ~/.pi/agent/settings.json`);

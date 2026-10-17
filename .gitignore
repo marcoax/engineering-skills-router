@@ -1,0 +1,4 @@
+.DS_Store
+config/preferences.yaml
+node_modules/
+config/.last-update-check

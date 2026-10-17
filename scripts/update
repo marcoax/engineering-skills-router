@@ -1,0 +1,34 @@
+#!/usr/bin/env node
+// Pulls upstream vendor repos and reports added/removed skills. Never edits the catalog.
+// Records the check date (YYYY-MM-DD) in config/.last-update-check for the router's update prompt.
+const fs = require('node:fs');
+const path = require('node:path');
+const { spawnSync } = require('node:child_process');
+const Catalog = require('./lib/catalog');
+
+const sources = Catalog.sources();
+const before = Object.fromEntries(Object.entries(sources).map(([key, src]) => [key, Catalog.upstreamPaths(src)]));
+
+const git = spawnSync('git', ['submodule', 'update', '--init', '--remote', '--merge'], { cwd: Catalog.ROOT, stdio: 'inherit' });
+if (git.status !== 0) {
+  console.error('git submodule update failed');
+  process.exit(1);
+}
+fs.writeFileSync(path.join(Catalog.ROOT, 'config/.last-update-check'), `${new Date().toISOString().slice(0, 10)}\n`);
+
+const cataloged = Object.values(Catalog.skills()).map((s) => s.path);
+const minus = (a, b) => a.filter((x) => !b.includes(x));
+let changed = false;
+for (const [key, src] of Object.entries(sources)) {
+  const after = Catalog.upstreamPaths(src);
+  const added = minus(after, before[key]);
+  const removed = minus(before[key], after);
+  const gone = minus(cataloged.filter((p) => p.startsWith(`${src.local_path}/`)), after);
+  console.log(key);
+  if (added.length + removed.length + gone.length === 0) console.log('  no changes');
+  added.forEach((p) => console.log(`  + ${p}`));
+  removed.forEach((p) => console.log(`  - ${p}`));
+  minus(gone, removed).forEach((p) => console.log(`  ! cataloged but missing: ${p}`));
+  changed ||= added.length + removed.length + gone.length > 0;
+}
+console.log(changed ? '\nCatalog review required. Run scripts/validate-catalog.' : '\nCatalog up to date.');

@@ -1,0 +1,9 @@
+[submodule "vendors/pstack"]
+	path = vendors/pstack
+	url = https://github.com/backnotprop/pstack.git
+[submodule "vendors/mattpocock"]
+	path = vendors/mattpocock
+	url = https://github.com/mattpocock/skills.git
+[submodule "vendors/addyosmani"]
+	path = vendors/addyosmani
+	url = https://github.com/addyosmani/agent-skills.git
