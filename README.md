@@ -6,7 +6,9 @@ Routes an engineering task to the smallest workflow of skills drawn from several
 task → classify → phases → one skill per phase → dedupe → show workflow → run
 ```
 
-Default backbone: **requirements → spec + GitHub issue → tickets → implement + test → review**, trimmed or extended by task type and risk.
+Default backbone: **requirements → spec + GitHub issue → tickets → implement + test → review**, trimmed or extended by task type and risk. Requirements (a grilling session) runs after any code-understanding step, so its questions build on the code; it is skipped only when the task is an issue or spec that already settles the decisions.
+
+While running, the router keeps `.router/state.json` and one note per step in `.router/steps/` in the target repo (git-excluded). Where the agent supports subagents, each skill step runs in a fresh subagent on the session's model; steps that talk with the user (requirements, specification, setup) stay in the main session. An unfinished workflow can be resumed later, also from a new session.
 
 ## Layout
 
@@ -36,7 +38,7 @@ Add the router folder (only the router, so vendor skills are not auto-loaded) to
 "skills": ["/absolute/path/to/engineering-skills-router/router"]
 ```
 
-Then `/reload` and run `/skill:engineering-router <task>`.
+Then `/reload` and run `/skill:engineering-router <task>`. Run it with no task, or with the same issue, to resume an unfinished workflow.
 
 Optional workflow view: add the adapter extension in the same file.
 
@@ -44,7 +46,7 @@ Optional workflow view: add the adapter extension in the same file.
 "extensions": ["/absolute/path/to/engineering-skills-router/adapters/pi"]
 ```
 
-It reads `.router/state.json` in the session's repo and shows the steps above the editor. `ctrl+alt+w` toggles a details panel on the right half. While the router waits for the skill selection, the panel takes the keyboard: `↑`/`↓` step, `enter` go, `a`/`b` swap the step's skill, `e` edit, `x x` stop, `esc` back to the editor. Choices are sent as chat messages; the extension never writes the state file. To try it for one session without installing, start Pi in the target repo with `pi -e /absolute/path/to/engineering-skills-router/adapters/pi`.
+It reads `.router/state.json` in the session's repo and shows the steps above the editor. `ctrl+alt+w` (or `/router-panel`, for keyboard layouts where the shortcut arrives as another key) toggles a details panel on the right half. While the router waits for the skill selection, the panel takes the keyboard: `↑`/`↓` step, `enter` go, `a`/`b` swap the step's skill, `e` edit, `x x` stop, `esc` back to the editor. Choices are sent as chat messages; the extension never writes the state file. To try it for one session without installing, start Pi in the target repo with `pi -e /absolute/path/to/engineering-skills-router/adapters/pi`.
 
 Other agents (Claude Code, Codex, Cursor, OpenCode): point the agent at `router/engineering-router/SKILL.md` with whatever skill/rule mechanism it offers.
 

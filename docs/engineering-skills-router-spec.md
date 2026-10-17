@@ -1190,7 +1190,7 @@ The router is meant for non-trivial work. When a task classifies as low risk, th
 
 | Phase | Rule |
 |---|---|
-| requirements | `mattpocock/grill-me`; `mattpocock/grill-with-docs` only when the target repo already has `GLOSSARY.md` or `docs/adr/`. Skipped when the conversation already settled the decisions. |
+| requirements | `mattpocock/grill-me`; `mattpocock/grill-with-docs` only when the target repo already has `GLOSSARY.md` or `docs/adr/`. Runs by default, after debugging or code-understanding when present. Skipped only when the task is an issue or spec that already settles the decisions. |
 | specification + issue | `mattpocock/to-spec`, published to the tracker. Medium and high risk only. |
 | tickets | `mattpocock/to-tickets`, only when the spec splits into more than one ticket. |
 | branch | `<issue-number>-<slug>`, created right after the issue is published. With `implement-spec`, its integration branch is this branch. |

@@ -2,7 +2,7 @@
 name: engineering-router
 description: Route an engineering task to the smallest workflow of vendor skills (pstack, Matt Pocock, Addy Osmani), show it, then run it step by step.
 disable-model-invocation: true
-argument-hint: "<task description, issue URL, or spec>"
+argument-hint: "<task description, issue URL, or spec; omit to resume>"
 ---
 
 You compose the **smallest useful workflow** for one non-trivial engineering task by picking one vendor skill per required phase. The question is never "which collection is best" but "which skill fits this step of this task".
@@ -21,6 +21,13 @@ Done when the check was skipped or declined, or the catalog proposal was answere
 
 ## 1. Classify
 
+First look for an unfinished workflow: `.router/state.json` in the target repo with status `running`, `waiting` or `stopped`. If there is one:
+
+- task omitted, or the same issue as its `handoff.issue`: offer to resume it;
+- any other task: name the unfinished workflow (task, issue) and ask whether to resume it or discard it and start the new one.
+
+To resume, read the state and the notes in `.router/steps/`, check out `handoff.branch` if set, and continue at §6 from the first step not `done` or `skipped`, with the same skills. Discarding deletes `.router/state.json` and `.router/steps/`.
+
 Read the task (fetch it first if it is an issue URL or number). Record, each with a one-line reason:
 
 - **type**: bug | feature | refactor | architecture | performance | security | documentation | investigation | prototype | review | maintenance
@@ -38,11 +45,11 @@ Done when type, risk and properties are set, each with its reason.
 Start from the **default flow** (`⏸` = confirmation point, `[ ]` = conditional):
 
 ```text
-[requirements] → specification + issue ⏸ → [planning ⏸] → branch → ⏸ implementation
+requirements → specification + issue ⏸ → [planning ⏸] → branch → ⏸ implementation
 → review 1 → review 2 → comparison → [security] → [independent-review] → pull request ⏸ → stop
 ```
 
-- **requirements** only when intent or decisions are unresolved. If the conversation already settled them, start at specification.
+- **requirements** by default, after debugging or code-understanding when those are in the flow, so its questions build on what the code shows. Skip it only when the task is an issue or spec that already settles the decisions; say why. A short exchange in chat before the workflow does not count as settled.
 - **specification + issue**: skip when the task is already an issue; it becomes the handoff issue.
 - **planning** (tickets) only when the spec splits into more than one ticket.
 - **security** in the workflow from the start when the task is security- or data-sensitive. Otherwise it is decided after the reviews (§6).
@@ -113,13 +120,19 @@ A swap replaces the step's skill and keeps the old one as an alternative; show t
 
 Keep `.router/state.json` current: rewrite it whenever a step starts, pauses or ends, or a handoff value appears.
 
-Ask before every outward-facing action and before implementation starts: publishing the issue, publishing tickets, starting implementation, opening the PR. Run every other step without pausing, apart from the pauses vendor skills define themselves. For each step:
+Ask before every outward-facing action and before implementation starts: publishing the issue, publishing tickets, starting implementation, opening the PR. Run every other step without pausing, apart from the pauses vendor skills define themselves.
+
+**Fresh context per step.** When the harness can start subagents, run each skill step in a new subagent so the main session keeps only the workflow, not every step's working detail. Run in the main session instead: router steps, and steps whose phase is `requirements`, `clarification`, `specification` or `setup`, because they converse with the user and draw on the conversation. Without subagents, run every step in the main session.
+
+A step subagent runs on the session's model, passed explicitly as `provider/model-id` (subagent defaults may point elsewhere); only review 2 uses another model. It gets: the task, the target repo path, the vendor `SKILL.md` path (absolute), the handoff, and the paths of earlier step notes. It follows points 2–3 below, writes the step note (point 5), and returns a one-line outcome plus any handoff values. When the vendor skill needs an answer from the user, the subagent stops and returns the question; ask the user, then start a new subagent for the step with the answer and the note so far. Confirmation pauses happen in the main session before the subagent starts.
+
+For each step:
 
 1. Announce `Step n/N: <id>`, with `n` its position in `steps`.
 2. For a skill step, read the vendor `SKILL.md` at its catalog `path` and follow it in full. Resolve its relative links against that file's folder.
 3. When it says to call or invoke another skill by name (e.g. "call the Skill tool with tdd"), read the `path` of `<same-source>/<name>` in `catalog/skills.yaml`; if it is not cataloged, use an installed skill with that name.
 4. Carry the **handoff** forward: issue, tickets, branch, base commit, PR.
-5. Close the step with a one-line outcome and the handoff it produced.
+5. Close the step with a one-line outcome and the handoff it produced. For a skill step, write its note to `.router/steps/<n>-<id>.md`: what it did, decisions, files touched, open points.
 
 Router steps:
 

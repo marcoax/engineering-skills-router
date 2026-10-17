@@ -145,7 +145,7 @@ export default function (pi: ExtensionAPI) {
 						render: (width: number) =>
 							[
 								...widgetLines(shown, paintWith(theme)),
-								...(shown.status === "selecting" ? [theme.fg("warning", `${SHORTCUT}: choose skills`)] : []),
+								...(shown.status === "selecting" ? [theme.fg("warning", `${SHORTCUT} or /router-panel: choose skills`)] : []),
 							].map((l) => truncateToWidth(l, width)),
 						invalidate() {},
 					})
@@ -176,37 +176,38 @@ export default function (pi: ExtensionAPI) {
 	});
 	pi.on("session_shutdown", stop);
 
-	pi.registerShortcut(SHORTCUT, {
-		description: "Toggle the engineering router overlay",
-		handler: (ctx) => {
-			// With the overlay focused, its handleInput gets the shortcut instead.
-			if (overlay) return overlay.close();
-			if (!state) return ctx.ui.notify(`engineering-router: no workflow in ${root || ctx.cwd}`, "info");
-			const send = (choice: Choice) => {
-				const text = state && replyFor(state, choice);
-				if (!text) return;
-				if (ctx.isIdle()) pi.sendUserMessage(text);
-				else pi.sendUserMessage(text, { deliverAs: "followUp" });
-			};
-			void ctx.ui.custom<void>(
-				(tui, theme, _keybindings, done) => {
-					const mine: RouterOverlay = new RouterOverlay(tui, theme, () => state, send, () => {
-						if (overlay === mine) overlay = undefined;
-						done();
-					});
-					overlay = mine;
-					return mine;
+	const toggle = (ctx: ExtensionContext) => {
+		// With the overlay focused, its handleInput gets the shortcut instead.
+		if (overlay) return overlay.close();
+		if (!state) return ctx.ui.notify(`engineering-router: no workflow in ${root || ctx.cwd}`, "info");
+		const send = (choice: Choice) => {
+			const text = state && replyFor(state, choice);
+			if (!text) return;
+			if (ctx.isIdle()) pi.sendUserMessage(text);
+			else pi.sendUserMessage(text, { deliverAs: "followUp" });
+		};
+		void ctx.ui.custom<void>(
+			(tui, theme, _keybindings, done) => {
+				const mine: RouterOverlay = new RouterOverlay(tui, theme, () => state, send, () => {
+					if (overlay === mine) overlay = undefined;
+					done();
+				});
+				overlay = mine;
+				return mine;
+			},
+			{
+				overlay: true,
+				overlayOptions: { anchor: "right-center", width: "50%", maxHeight: "100%", nonCapturing: true },
+				onHandle: (handle) => {
+					if (!overlay) return;
+					overlay.handle = handle;
+					if (state?.status === "selecting") handle.focus();
 				},
-				{
-					overlay: true,
-					overlayOptions: { anchor: "right-center", width: "50%", maxHeight: "100%", nonCapturing: true },
-					onHandle: (handle) => {
-						if (!overlay) return;
-						overlay.handle = handle;
-						if (state?.status === "selecting") handle.focus();
-					},
-				},
-			);
-		},
-	});
+			},
+		);
+	};
+
+	pi.registerShortcut(SHORTCUT, { description: "Toggle the engineering router overlay", handler: toggle });
+	// Some keyboard layouts (e.g. macOS Terminal with Italian - Pro) send ctrl+alt+z for ctrl+option+w.
+	pi.registerCommand("router-panel", { description: "Toggle the engineering router overlay", handler: async (_args, ctx) => toggle(ctx) });
 }
