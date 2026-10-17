@@ -41,9 +41,9 @@ This installs one skill, `engineering-router`, without its catalog, scripts or v
 
 When none exists, the first run asks before cloning the repo with its submodules into the last of these and running `scripts/setup` there; decline and it stops. Nothing is written into agent skill folders. The router always says which checkout it uses and how it found it.
 
-**Preferences** live in `config/preferences.yaml` of that checkout, so `~/.local/share/engineering-skills-router/config/preferences.yaml` after a first-run fetch. With the Pi checkout, `pi update` wipes them, so use a personal clone instead. To keep them in a clone you control, or to edit the catalog, clone and set up as in the Pi section's **Personal preferences**, then `export ENGINEERING_ROUTER_HOME=/path/to/clone`.
+**Preferences** live in `config/preferences.yaml` of that checkout, so `~/.local/share/engineering-skills-router/config/preferences.yaml` after a first-run fetch. With the Pi checkout, package updates wipe them, so use a personal clone instead. To keep them in a clone you control, or to edit the catalog, clone and set up as in the Pi section's **Personal preferences**, then `export ENGINEERING_ROUTER_HOME=/path/to/clone`.
 
-**Updating.** `npx skills update` refreshes only the skill folder. The checkout is updated by the router's own vendor update check, or by `git pull && scripts/setup` in it (`pi update` for the Pi checkout).
+**Updating.** `npx skills update` refreshes only the skill folder. The checkout is updated by the router's own vendor update check, or by `git pull && scripts/setup` in it (for the Pi checkout, use the package update command in [Install (Pi)](#install-pi)).
 
 The workflow widget is Pi-only.
 
@@ -55,11 +55,17 @@ The repo is a Pi package: the router skill plus the workflow widget. Needs Node 
 pi install git:github.com/marcoax/engineering-skills-router
 ```
 
-Pi clones it into `~/.pi/agent/git/`, and `npm install` fetches the vendor submodules (`postinstall`). Only the router is loaded, not the vendor skills. `pi update` moves it to the latest commit.
+Pi clones it into `~/.pi/agent/git/`, and `npm install` fetches the vendor submodules (`postinstall`). Only the router is loaded, not the vendor skills. To update only this package:
+
+```sh
+pi update git:github.com/marcoax/engineering-skills-router
+```
+
+Plain `pi update` updates Pi itself, not the router.
 
 Then, in Pi, `/reload` and `/skill:engineering-router <task>`. Run it with no task, or with the same issue, to resume an unfinished workflow. To try it for one session without installing: `pi -e git:github.com/marcoax/engineering-skills-router`.
 
-**Personal preferences.** `pi update` resets the installed clone (`git clean -fdx`), so a `config/preferences.yaml` there is lost. To keep preferences, or to edit the catalog, install from your own clone instead (Pi loads a local path without copying or cleaning it):
+**Personal preferences.** Updating the Pi package resets the installed clone (`git clean -fdx`), so a `config/preferences.yaml` there is lost. To keep preferences, or to edit the catalog, install from your own clone instead (Pi loads a local path without copying or cleaning it):
 
 ```sh
 git clone --recurse-submodules https://github.com/marcoax/engineering-skills-router && cd engineering-skills-router

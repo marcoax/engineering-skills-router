@@ -140,11 +140,23 @@ const resolvedOutput = (root, how) => `root: ${root}\nfound: ${how}\nexit 0`;
 }
 {
   const c = resolverCase();
-  const repo = c.checkout(path.join(c.home, '.pi/agent', PI_REPO));
+  const repo = c.checkout(path.join(c.home, '.pi/agent', PI_REPO), { withSkill: true });
   expectResolve('Pi checkout', c.resolve(), resolvedOutput(repo, 'pi'));
-  const custom = c.checkout(path.join(c.dir, 'pi-agent', PI_REPO));
+  expectResolve('Pi checkout, native skill', c.resolve({}, path.join(repo, SKILL_DIR)), resolvedOutput(repo, 'pi'));
+  expectResolve('Pi checkout, env', c.resolve({ ENGINEERING_ROUTER_HOME: repo }), resolvedOutput(repo, 'pi'));
+  const link = path.join(c.dir, 'pi-repo-link');
+  fs.symlinkSync(repo, link);
+  expectResolve('Pi checkout, symlinked env', c.resolve({ ENGINEERING_ROUTER_HOME: link }), resolvedOutput(link, 'pi'));
+  const customAgent = path.join(c.dir, 'pi-agent');
+  const custom = c.checkout(path.join(customAgent, PI_REPO), { withSkill: true });
   expectResolve('Pi checkout, PI_CODING_AGENT_DIR',
-    c.resolve({ PI_CODING_AGENT_DIR: path.join(c.dir, 'pi-agent') }), resolvedOutput(custom, 'pi'));
+    c.resolve({ PI_CODING_AGENT_DIR: customAgent }), resolvedOutput(custom, 'pi'));
+  expectResolve('Pi checkout, native skill with PI_CODING_AGENT_DIR',
+    c.resolve({ PI_CODING_AGENT_DIR: customAgent }, path.join(custom, SKILL_DIR)), resolvedOutput(custom, 'pi'));
+  const agentLink = path.join(c.dir, 'pi-agent-link');
+  fs.symlinkSync(customAgent, agentLink);
+  expectResolve('Pi checkout, native skill with symlinked PI_CODING_AGENT_DIR',
+    c.resolve({ PI_CODING_AGENT_DIR: agentLink }, path.join(custom, SKILL_DIR)), resolvedOutput(custom, 'pi'));
 }
 {
   const c = resolverCase();

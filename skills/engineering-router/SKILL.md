@@ -13,7 +13,7 @@ You compose the **smallest useful workflow** for one non-trivial engineering tas
 - If that `data-dir` already exists (e.g. an interrupted clone), do not clone over it: tell the user, and offer to remove it and clone again, or to point `ENGINEERING_ROUTER_HOME` at a clone.
 - On no, stop: say the router cannot run without a checkout, and that `ENGINEERING_ROUTER_HOME` can point it at an existing clone.
 
-With `found: pi` the checkout belongs to Pi: keep it read-only and skip §0 (`pi update` updates it). All paths below, and every `path` in the catalog, are relative to the root. Run scripts from the root. Always read vendor skills from `vendors/` at the catalog `path`, never from copies installed for the agent. The **target repo** is the one the task is about.
+With `found: pi` the checkout belongs to Pi: keep it read-only and skip §0 (`pi update git:github.com/marcoax/engineering-skills-router` updates it). All paths below, and every `path` in the catalog, are relative to the root. Run scripts from the root. Always read vendor skills from `vendors/` at the catalog `path`, never from copies installed for the agent. The **target repo** is the one the task is about.
 
 ## 0. Check for updates
 
