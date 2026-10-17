@@ -18,6 +18,19 @@ preferences:
 
 The preference only picks the skill; since no selected skill then publishes an issue, the workflow has none. Every step uses skills that need no issue tracker (planning breaks the spec into tasks without publishing tickets), the branch is `<slug>` and starts by committing the spec file, review 2 checks the diff against the spec file, and the PR links it instead of closing an issue.
 
+**Project skills.** A target repo can list its own skills in `docs/agents/skills.yaml`, in the format of `catalog/skills.yaml` with ids `project/<name>` and paths relative to that repo, inside it:
+
+```yaml
+skills:
+  project/laravel-best-practices:
+    path: .claude/skills/laravel-best-practices/SKILL.md
+    categories: [framework-review]
+    use_when:
+      - change touches PHP/Laravel code
+```
+
+When one fits the task, the workflow gets a `framework-review` step after the reviews: the change is checked against the project's own conventions, and its findings join the comparison. A repo without the file gets no such step. Only project skills fill `framework-review`, and for now they fill no other phase; `scripts/validate-catalog --target <repo>` checks the file.
+
 While running, the router keeps `.router/state.json` and one note per step in `.router/steps/` in the target repo (git-excluded). Where the agent supports subagents, each skill step runs in a fresh subagent on the session's model; steps that talk with the user (requirements, specification, setup) stay in the main session. An unfinished workflow can be resumed later, also from a new session.
 
 ## Layout
@@ -109,8 +122,8 @@ Codex, Cursor, OpenCode: link or point the agent at `skills/engineering-router/S
 
 | Script | Does |
 |---|---|
-| `scripts/list-skills [phase ...]` | ranked candidates per phase with availability |
-| `scripts/validate-catalog [--verbose]` | checks sources, paths, ids, categories, rankings, preferences; `--verbose` lists uncataloged upstream skills |
+| `scripts/list-skills [--target <repo>] [phase ...]` | ranked candidates per phase with availability; `--target` adds the repo's project skills |
+| `scripts/validate-catalog [--target <repo>] [--verbose]` | checks sources, paths, ids, categories, rankings, preferences; `--target` also checks the repo's `docs/agents/skills.yaml`; `--verbose` lists uncataloged upstream skills |
 | `scripts/update` | pulls vendor submodules, prints added/removed skills; never edits the catalog |
 | `scripts/check-state <target-repo>` | checks the target repo's `.router/state.json` against `skills/engineering-router/state.md` |
 | `scripts/selftest` | checks the scripts against a scratch catalog and scratch state files, then runs the Pi adapter tests |

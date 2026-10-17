@@ -1,12 +1,16 @@
 #!/usr/bin/env node
-// Usage: scripts/list-skills [phase ...]
+// Usage: scripts/list-skills [--target <repo>] [phase ...]
 //   no args  one line per phase with its ranked candidates
 //   phases   full detail (use_when, avoid_when, invokes, requires) for each candidate
-// Status: ok | missing (file not found) | excluded (user preference) | unknown (not cataloged)
+//   --target adds the target repo's own skills (docs/agents/skills.yaml) as project/<name>,
+//            the only candidates for framework-review
+// Status: ok | missing (file not found, or a project path outside the target)
+//   | excluded (user preference) | unknown (not cataloged)
 const Catalog = require('./lib/catalog');
 
-const args = process.argv.slice(2);
+const { target, args } = Catalog.targetArg(process.argv.slice(2));
 const categories = Catalog.categories();
+const skills = Catalog.skills(target);
 const known = Object.keys(categories);
 const phases = args.length === 0 ? known : args;
 const unknown = phases.filter((p) => !known.includes(p));
@@ -16,7 +20,7 @@ if (unknown.length > 0) {
 }
 
 for (const phase of phases) {
-  const list = Catalog.candidates(phase);
+  const list = Catalog.candidates(phase, skills);
   if (args.length === 0) {
     console.log(`${phase.padEnd(20)} ` + list.map((c) => (c.status === 'ok' ? c.id : `(${c.id}: ${c.status})`)).join(', '));
     continue;

@@ -19,6 +19,7 @@ categories:
   security:            Audit and harden against vulnerabilities.
   review:              General review of a finished change.
   independent-review:  Adversarial or blast-radius review with a different purpose than the general review.
+  framework-review:    Review against the target project's own best practices (project skills only).
   documentation:       Record decisions, ADRs and docs.
   pull-request:        Open or describe a pull request.
   release:             Prepare a production launch.
