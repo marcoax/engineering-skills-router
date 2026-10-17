@@ -27,7 +27,7 @@ const PROJECT_PHASES = ['framework-review'];
 const categories = () => read('catalog/categories.yaml').categories || {};
 const rankings = () => read('catalog/rankings.yaml').rankings || {};
 const preferences = () => read('config/preferences.yaml').preferences || {};
-const catalogSkills = () => read('catalog/skills.yaml').skills || {};
+const vendorSkills = () => read('catalog/skills.yaml').skills || {};
 
 // Skills listed in `file` with paths relative to `root`, tagged with `source` and resolved.
 // A path that is absolute or leads outside the root is flagged `outside` and never available.
@@ -49,20 +49,17 @@ function personalPath(prefs = preferences()) {
   return typeof p === 'string' && p !== '' ? path.resolve(ROOT, p.replace(/^~(?=$|\/)/, os.homedir())) : undefined;
 }
 
-// The user's own skills, with source 'personal' and paths resolved against personal_path.
-// Needs personal_path; the scripts only read from it.
-function personalSkills(prefs = preferences()) {
-  const root = personalPath(prefs);
-  return root ? rootedSkills(path.join(ROOT, PERSONAL_CATALOG), root, 'personal') : {};
-}
+// The user's own skills, with source 'personal' and paths resolved against `root`, personal_path
+// by default. Needs personal_path; the scripts only read from it.
+const personalSkills = (root = personalPath()) => (root ? rootedSkills(path.join(ROOT, PERSONAL_CATALOG), root, 'personal') : {});
 
 // The cataloged vendor skill sharing a personal id's name (personal/tdd -> mattpocock/tdd), if any.
-const namesake = (id, vendor = catalogSkills()) => Object.keys(vendor).find((v) => v.split('/')[1] === id.split('/')[1]);
+const namesake = (id, vendor = vendorSkills()) => Object.keys(vendor).find((v) => v.split('/')[1] === id.split('/')[1]);
 
-// Catalog skills, plus personal/ skills and, with a target, the target repo's project/ skills.
+// Vendor skills, plus personal/ skills and, with a target, the target repo's project/ skills.
 // Other ids, and personal skills with a vendor namesake, are left out (validate-catalog reports them).
 function skills(target) {
-  const vendor = catalogSkills();
+  const vendor = vendorSkills();
   return {
     ...vendor,
     ...Object.fromEntries(Object.entries(personalSkills())
@@ -122,6 +119,6 @@ function candidates(category, allSkills = skills(), allRankings = rankings(), pr
 }
 
 module.exports = {
-  ROOT, PROJECT_CATALOG, PERSONAL_CATALOG, PROJECT_PHASES, arr, sources, skills, catalogSkills, projectSkills,
+  ROOT, PROJECT_CATALOG, PERSONAL_CATALOG, PROJECT_PHASES, arr, sources, skills, vendorSkills, projectSkills,
   personalPath, personalSkills, namesake, categories, rankings, preferences, available, targetArg, upstreamPaths, candidates,
 };
