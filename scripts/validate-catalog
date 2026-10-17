@@ -36,6 +36,8 @@ for (const [id, s] of Object.entries(skills)) {
   if (!Catalog.available(s)) errors.push(`${id}: path not found ${s.path}`);
   arr(s.categories).filter((c) => !has(categories, c)).forEach((c) => errors.push(`${id}: invalid category '${c}'`));
   if (arr(s.categories).length === 0) errors.push(`${id}: no categories`);
+  arr(s.categories).filter((c) => Catalog.PROJECT_PHASES.includes(c))
+    .forEach((c) => errors.push(`${id}: only project skills may fill '${c}'`));
   arr(s.complexity).filter((c) => !['low', 'medium', 'high'].includes(c))
     .forEach((c) => errors.push(`${id}: invalid complexity '${c}'`));
   arr(s.invokes).forEach((ref) => { if (!has(skills, ref)) errors.push(`${id}: invokes unknown skill ${ref}`); });

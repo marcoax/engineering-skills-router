@@ -29,7 +29,7 @@ skills:
       - change touches PHP/Laravel code
 ```
 
-When one fits the task, the workflow gets a `framework-review` step after the reviews: the change is checked against the project's own conventions, and its findings join the comparison. A repo without the file gets no such step. For now project skills fill only `framework-review`; `scripts/validate-catalog --target <repo>` checks the file.
+When one fits the task, the workflow gets a `framework-review` step after the reviews: the change is checked against the project's own conventions, and its findings join the comparison. A repo without the file gets no such step. Only project skills fill `framework-review`, and for now they fill no other phase; `scripts/validate-catalog --target <repo>` checks the file.
 
 While running, the router keeps `.router/state.json` and one note per step in `.router/steps/` in the target repo (git-excluded). Where the agent supports subagents, each skill step runs in a fresh subagent on the session's model; steps that talk with the user (requirements, specification, setup) stay in the main session. An unfinished workflow can be resumed later, also from a new session.
 

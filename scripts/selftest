@@ -93,16 +93,24 @@ const projectSkill = ({ id = 'project/fw', skillPath = '.claude/skills/fw/SKILL.
   if (!/^1\. project\/fw {2}\[project, ok\]$/m.test(out)) fail(`list-skills --target should list project/fw as ok\n${out}`);
   if (!out.includes(`path: ${path.join(repo, '.claude/skills/fw/SKILL.md')}`)) fail(`project path should resolve against the target\n${out}`);
 
-  // Project skills rank after the user preference and before the catalog ranking.
+  // framework-review is project-only: no preference, ranking or tagged catalog skill fills it,
+  // and validate-catalog rejects a catalog skill tagged with it.
   const rankingsFile = path.join(tmp, 'catalog/rankings.yaml');
   const rankingsText = fs.readFileSync(rankingsFile, 'utf8');
+  const skillsFile = path.join(tmp, 'catalog/skills.yaml');
+  const skillsText = fs.readFileSync(skillsFile, 'utf8');
   fs.writeFileSync(rankingsFile, rankingsText.replace(/(framework-review:\n {4}preferred: )\[\]/, '$1[mattpocock/code-review]'));
+  fs.writeFileSync(skillsFile, skillsText.replace(/(mattpocock\/code-review:\n(?: {4}.*\n)*? {4}categories: )\[review\]/,
+    '$1[review, framework-review]'));
   fs.writeFileSync(prefsFile, 'preferences:\n  framework-review:\n    prefer: [addyosmani/code-review-and-quality]\n');
   ({ out } = run('list-skills', '--target', repo, 'framework-review'));
   const order = [...out.matchAll(/^\d+\. (\S+) {2}\[(\w+)/gm)].map((m) => `${m[1]} ${m[2]}`).join(', ');
-  if (order !== 'addyosmani/code-review-and-quality preference, project/fw project, mattpocock/code-review preferred')
-    fail(`list-skills --target: expected preference, project, preferred; got ${order}`);
+  if (order !== 'project/fw project') fail(`list-skills --target framework-review: expected only project/fw; got ${order}`);
+  const r = run('validate-catalog');
+  const msg = "mattpocock/code-review: only project skills may fill 'framework-review'";
+  if (r.ok || !r.out.includes(`error: ${msg}`)) fail(`validate-catalog, expected: ${msg}\ngot:\n${r.out}`);
   fs.writeFileSync(rankingsFile, rankingsText);
+  fs.writeFileSync(skillsFile, skillsText);
   fs.rmSync(prefsFile);
 }
 {
