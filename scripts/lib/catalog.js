@@ -14,8 +14,8 @@ const isFile = (p) => {
 };
 
 // uniqueKeys: false so duplicate skill ids reach validate-catalog's own check instead of throwing.
-const readFile = (file) => (isFile(file) ? (YAML.parse(fs.readFileSync(file, 'utf8'), { uniqueKeys: false }) || {}) : {});
-const read = (rel) => readFile(path.join(ROOT, rel));
+const readYaml = (file) => (isFile(file) ? (YAML.parse(fs.readFileSync(file, 'utf8'), { uniqueKeys: false }) || {}) : {});
+const read = (rel) => readYaml(path.join(ROOT, rel));
 
 const sources = () => read('catalog/sources.yaml').sources || {};
 const PROJECT_CATALOG = 'docs/agents/skills.yaml';
@@ -26,7 +26,7 @@ const PROJECT_PHASES = ['framework-review'];
 // A path that is absolute or leads outside the target is flagged `outside` and never available.
 function projectSkills(target) {
   if (!target) return {};
-  return Object.fromEntries(Object.entries(readFile(path.join(target, PROJECT_CATALOG)).skills || {})
+  return Object.fromEntries(Object.entries(readYaml(path.join(target, PROJECT_CATALOG)).skills || {})
     .map(([id, s]) => {
       const declaredPath = String(s?.path ?? '');
       const resolved = path.resolve(target, declaredPath);
