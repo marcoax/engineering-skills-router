@@ -21,6 +21,11 @@ for (const [how, dir] of candidates) {
     // Pi owns this checkout even when the skill or an env override finds it first.
     const found = fs.existsSync(piRepo) && fs.realpathSync(dir) === fs.realpathSync(piRepo) ? 'pi' : how;
     process.stdout.write(`root: ${path.resolve(dir)}\nfound: ${found}\n`);
+    // A copy outside the checkout defers to the checkout's own skill, so the two never drift.
+    const skill = path.resolve(dir, 'skills/engineering-router/SKILL.md');
+    if (fs.existsSync(skill) && fs.realpathSync(skill) !== fs.realpathSync(path.join(__dirname, 'SKILL.md'))) {
+      process.stdout.write(`skill: ${skill}\n`);
+    }
     process.exit(0);
   }
 }
