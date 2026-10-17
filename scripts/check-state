@@ -35,9 +35,9 @@ if (state.version !== VERSION) fatal(`version: unsupported version ${json(state.
 const errors = [];
 
 // The format comes from state.md: each "## <Name>" section's Field/Type table defines the
-// object type <Name> ("Top level" is the root), and a Value table under a line naming
-// `<field>` lists that field's allowed values. Type cells are unions of the PRIMITIVES,
-// "literal", T[], {key, ...} and section names.
+// object type <Name> ("Top level" is the root; a field marked "(optional)" may be absent),
+// and a Value table under a line naming `<field>` lists that field's allowed values. Type
+// cells are unions of the PRIMITIVES, "literal", T[], {key, ...} and section names.
 const cells = (line) => line.split(/(?<!\\)\|/).slice(1, -1).map((c) => c.trim().replace(/\\\|/g, '|').replace(/`/g, ''));
 const types = {};
 for (const [, name, body] of spec.matchAll(/^## (.+)\n([\s\S]*?)(?=^## |(?![\s\S]))/gm)) {
@@ -52,7 +52,10 @@ for (const [, name, body] of spec.matchAll(/^## (.+)\n([\s\S]*?)(?=^## |(?![\s\S
     const row = cells(line);
     if (!table) table = { header: row[0] };
     else if (/^-+$/.test(row[0])) continue;
-    else if (table.header === 'Field') (types[name] ??= {})[row[0]] = { type: row[1], values: null };
+    else if (table.header === 'Field') {
+      const [, key, optional] = row[0].match(/^(\S+)( \(optional\))?$/);
+      (types[name] ??= {})[key] = { type: row[1], values: null, optional: Boolean(optional) };
+    }
     else if (table.header === 'Value') {
       const field = types[name]?.[label.match(/`(\w+)`/)?.[1]];
       if (field) (field.values ??= []).push(row[0]);
@@ -100,7 +103,9 @@ const childPath = (where, key) => (where ? `${where}.${key}` : key);
 function checkFields(obj, fields, where) {
   for (const [key, field] of Object.entries(fields)) {
     const at = childPath(where, key);
-    if (!Object.hasOwn(obj, key)) errors.push(`${at}: missing`);
+    if (!Object.hasOwn(obj, key)) {
+      if (!field.optional) errors.push(`${at}: missing`);
+    }
     else checkValue(obj[key], field.type, at, field.values);
   }
 }
@@ -127,6 +132,9 @@ const UTC = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d+)?Z$/;
 const isUtc = (v) => UTC.test(v) && new Date(Date.parse(v) || 0).toISOString().slice(0, 19) === v.slice(0, 19);
 if (isStr(state.updated_at) && !isUtc(state.updated_at))
   errors.push(`updated_at: must be ISO-8601 UTC (e.g. 2026-10-17T09:42:00Z), got ${json(state.updated_at)}`);
+const specFile = isObj(state.handoff) ? state.handoff.spec : null;
+if (isStr(specFile) && (path.isAbsolute(specFile) || path.normalize(specFile).split(path.sep)[0] === '..'))
+  errors.push(`handoff.spec: must be a path relative to the target repo, got ${json(specFile)}`);
 const steps = Array.isArray(state.steps) ? state.steps : [];
 const hasId = (s) => isObj(s) && isStr(s.id);
 // First step with each id; a missing covered_by target is only reported when every step has

@@ -31,8 +31,8 @@ Done when the check was skipped or declined, or the catalog proposal was answere
 
 First look for an unfinished workflow: `.router/state.json` in the target repo with status `running`, `waiting`, `paused` or `stopped`. If there is one:
 
-- task omitted, or the same issue as its `handoff.issue`: offer to resume it;
-- any other task: name the unfinished workflow (task, issue) and ask whether to resume it or discard it and start the new one.
+- task omitted, or the same issue as its `handoff.issue` (issue-free: §4): offer to resume it;
+- any other task: name the unfinished workflow (task, issue or spec file) and ask whether to resume it or discard it and start the new one.
 
 To resume, read the state and the notes in `.router/steps/`, check out `handoff.branch` if set, and continue at §6 from the first step not `done` or `skipped`, with the same skills. Discarding deletes `.router/state.json` and `.router/steps/`.
 
@@ -58,7 +58,7 @@ requirements → specification + issue ⏸ → [planning ⏸] → branch → ⏸
 ```
 
 - **requirements** by default, after debugging or code-understanding when those are in the flow, so its questions build on what the code shows. Skip it only when the task is an issue or spec that already settles the decisions; say why. A short exchange in chat before the workflow does not count as settled.
-- **specification + issue**: skip when the task is already an issue; it becomes the handoff issue.
+- **specification + issue**: skip when the task is already an issue; it becomes the handoff issue. Otherwise the issue exists only when the selected specification skill publishes one (§4).
 - **planning** (tickets) only when the spec splits into more than one ticket.
 - **security** in the workflow from the start when the task is security- or data-sensitive. Otherwise it is decided after the reviews (§6).
 - **independent-review** for high risk only.
@@ -73,7 +73,7 @@ By type, replace or prepend the front of the flow. The part from branch to pull 
 | refactor | code-understanding before specification; implementation via refactoring or architecture |
 | multi-session (more than one session can hold, route still foggy) | multi-session only; implementation happens in later sessions from its output |
 
-Task correctness decides the phases; preferences never add or remove one. Done when every chosen phase has a reason and every default phase you dropped has a reason.
+Task correctness decides the phases; preferences never add or remove one, they only rank skills. `issue-tracking` is dropped only as an outcome of selection, when no selected skill fills it (§4). Done when every chosen phase has a reason and every default phase you dropped has a reason.
 
 ## 3. Select skills
 
@@ -93,6 +93,14 @@ Done when every phase holds one `ok` skill or is marked missing.
 
 - A phase is **covered** when an earlier selected skill `invokes` a skill tagged with that phase (e.g. `mattpocock/implement` invokes `tdd` and `code-review`, so testing and review 1 are covered). Keep a covered review 1 as a step marked "inside" the covering step; drop other covered phases.
 - One skill filling two phases (e.g. `mattpocock/to-spec` = specification + issue-tracking) appears once.
+- `issue-tracking` gets no skill of its own: only a skill selected for another phase fills it. When the task is not an issue and the specification skill does not fill `issue-tracking` (it writes the spec as a file), the workflow is **issue-free**:
+  - Every phase and every alternative takes candidates without `requires: tracker-config` (so `addyosmani/planning-and-task-breakdown` for planning, not `mattpocock/to-tickets`, and never `mattpocock/implement-spec`). No skill then fills `issue-tracking`: drop it; it is not missing.
+  - The spec file takes the issue's place as `handoff.spec`, relative to the target repo: the path the specification skill names, else `docs/specs/<slug>.md`, where `<slug>` is a short kebab-case name for the task. Every step that needs the issue or spec (e.g. a review skill) gets this path.
+  - **specification** has no ⏸, since nothing is published; the skill's own approval gates still apply.
+  - **branch** is `<slug>`, created once the spec is approved. Commit the spec file on it first, so the PR's link resolves.
+  - **review 2** checks the diff against the spec file.
+  - **pull request**: the body links the spec file on the branch (`<repo url>/blob/<branch>/<path>`; the bare path when there is no remote), with no `Closes`.
+  - §1 resumes the workflow when the task names its `handoff.branch` or `handoff.spec`.
 - If any selected skill `requires: tracker-config` and the target repo has no `docs/agents/issue-tracker.md`, prepend the `setup` phase skill.
 
 Done when no two steps share a purpose.
@@ -110,7 +118,7 @@ Workflow:
    <what this step does for this task, one line>
    a) <source>/<skill>: <why it could fit instead>
    b) <source>/<skill>: <why it could fit instead>
-2. branch   <issue-number>-<slug>
+2. branch   <issue-number>-<slug>   (issue-free: §4)
 3. ...
 4. <source>/<skill>   <phase(s)>   inside <step>
 
@@ -139,17 +147,17 @@ For each step:
 1. Announce `Step n/N: <id>`, with `n` its position in `steps`.
 2. For a skill step, read the vendor `SKILL.md` at its catalog `path` and follow it in full. Resolve its relative links against that file's folder.
 3. When it says to call or invoke another skill by name (e.g. "call the Skill tool with tdd"), read the `path` of `<same-source>/<name>` in `catalog/skills.yaml`; if it is not cataloged, use an installed skill with that name.
-4. Carry the **handoff** forward: issue, tickets, branch, base commit, PR.
+4. Carry the **handoff** forward: issue (spec file when issue-free), tickets, branch, base commit, PR.
 5. Close the step with a one-line outcome and the handoff it produced. For a skill step, write its note to `.router/steps/<n>-<id>.md`: what it did, decisions, files touched, open points.
 
 **Your check.** When the implementation step ends, ask once whether the user wants to check the result before the reviews continue: `check | continue`. On `check`, set status `waiting`, list the files changed since the base commit and how to try the change (commands, page, test), then wait. Fix what the user reports, commit it, and continue on `continue`. This is a pause, not a step: it is not in `steps`.
 
 Router steps:
 
-- **branch**: right after the issue exists, create `<issue-number>-<slug>` from the current default branch. Before implementation, record `git rev-parse HEAD` as the base commit: the fixed point for both reviews. With `implement-spec`, tell it this branch is its integration branch.
-- **review 2**: start a subagent on the family opposite to review 1's that runs the review 2 skill on `git diff <base commit>...HEAD` against the issue. If the harness cannot run another model, say so and ask: skip it, or run it on the current model.
+- **branch**: right after the issue exists, create `<issue-number>-<slug>` from the current default branch (issue-free: §4). Before implementation, record `git rev-parse HEAD` as the base commit: the fixed point for both reviews. With `implement-spec`, tell it this branch is its integration branch.
+- **review 2**: start a subagent on the family opposite to review 1's that runs the review 2 skill on `git diff <base commit>...HEAD` against the issue (issue-free: §4). If the harness cannot run another model, say so and ask: skip it, or run it on the current model.
 - **comparison**: merge both reviews into three lists: found by both, found by one only (say which), disagreements. Then ask once which findings to fix. If security is not already in the workflow, inspect the diff for auth, user input, queries, secrets, new dependencies, config and permissions (the `use_when` of the `security` candidate). When any appear, suggest that skill in the same question, with the reason. The user decides.
-- **pull request**: the `pull-request` skill writes the body, and the body links the issue with `Closes #<issue>`. Open the PR and stop. The user merges.
+- **pull request**: the `pull-request` skill writes the body, and the body links the issue with `Closes #<issue>` (issue-free: §4). Open the PR and stop. The user merges.
 
 **Pause.** On `pause` (in chat or from an adapter), let a running step finish first, then set status `paused`, say that `resume` continues, and stop. On `resume`, show the workflow and its state, then continue as in §1's resume.
 

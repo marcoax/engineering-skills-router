@@ -34,6 +34,17 @@ test("ignores unknown fields and fills optional ones", () => {
 	assert.equal(s.handoff.pr, null);
 });
 
+// An issue-free workflow: the spec is a file in the target repo instead of an issue.
+const specFile = () => {
+	const s = example();
+	return { ...s, handoff: { ...s.handoff, issue: null, spec: "docs/specs/csv-export.md", branch: "csv-export" } };
+};
+
+test("keeps the spec file of an issue-free workflow", () => {
+	assert.equal(parsed(specFile()).handoff.spec, "docs/specs/csv-export.md");
+	assert.equal(parsed({ version: 1, status: "running", steps: [] }).handoff.spec, null);
+});
+
 test("rejects invalid files without throwing", () => {
 	for (const text of ["", "{", "null", "[]", '{"status":"running","steps":[]}', '{"version":1,"steps":[]}', '{"version":1,"status":"running","steps":[{"id":1,"status":"done"}]}']) {
 		assert.equal(parseState(text).kind, "invalid", text);
@@ -105,6 +116,13 @@ test("details include every step field and the handoff", () => {
 	}
 	assert.equal(stepStart.length, 4);
 	assert.ok(lines[stepStart[3]].includes("review-1"));
+});
+
+test("details show the spec file in place of a missing issue", () => {
+	const text = detailLines(parsed(specFile())).lines.join("\n");
+	assert.ok(text.includes("  spec     docs/specs/csv-export.md"), text);
+	assert.ok(!text.includes("  issue "), "no issue line");
+	assert.ok(!detailLines(parsed(example())).lines.join("\n").includes("  spec "), "no spec line with an issue and no spec");
 });
 
 test("current step follows the active one", () => {
