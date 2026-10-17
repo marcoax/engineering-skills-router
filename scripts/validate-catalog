@@ -2,6 +2,8 @@
 // Validates the catalog against itself and the vendor checkouts. Exits 1 on errors.
 // Uncataloged upstream skills are reported as info only (listed with --verbose).
 // --target <repo> also checks that repo's project catalog (docs/agents/skills.yaml).
+// The personal catalog (config/personal-skills.yaml) is checked when present; a personal skill
+// named like a vendor skill is skipped with a warning.
 const fs = require('node:fs');
 const path = require('node:path');
 const Catalog = require('./lib/catalog');
@@ -12,11 +14,14 @@ const verbose = args.includes('--verbose');
 const errors = [];
 const warnings = [];
 const sources = Catalog.sources();
+const prefs = Catalog.preferences();
+const vendor = Catalog.catalogSkills();
+const personal = Catalog.personalSkills(prefs);
+const personalFile = path.join(Catalog.ROOT, Catalog.PERSONAL_CATALOG);
 const skills = Catalog.skills();
 const project = Catalog.projectSkills(target);
 const categories = Catalog.categories();
 const rankings = Catalog.rankings();
-const prefs = Catalog.preferences();
 const has = (obj, key) => Object.hasOwn(obj, key);
 
 // YAML keeps only one of two duplicate keys, so check the raw text.
@@ -28,10 +33,12 @@ const duplicateIds = (file) => {
 duplicateIds(path.join(Catalog.ROOT, 'catalog/skills.yaml')).forEach((id) => errors.push(`duplicate skill id: ${id}`));
 if (target) duplicateIds(path.join(target, Catalog.PROJECT_CATALOG))
   .forEach((id) => errors.push(`${Catalog.PROJECT_CATALOG}: duplicate skill id: ${id}`));
+duplicateIds(personalFile).forEach((id) => errors.push(`${Catalog.PERSONAL_CATALOG}: duplicate skill id: ${id}`));
 
-// Checks every skill gets, catalog or project. `known` holds the ids `invokes` may name.
-function checkSkill(where, s, known) {
-  if (s.outside) errors.push(`${where}: path outside the target repo: ${s.declaredPath}`);
+// Checks every skill gets, catalog, personal or project. `known` holds the ids `invokes` may name;
+// `root` names what a personal or project path must stay inside.
+function checkSkill(where, s, known, root) {
+  if (s.outside) errors.push(`${where}: path outside ${root}: ${s.declaredPath}`);
   else if (!Catalog.available(s)) errors.push(`${where}: path not found ${s.declaredPath ?? s.path}`);
   arr(s.categories).filter((c) => !has(categories, c)).forEach((c) => errors.push(`${where}: invalid category '${c}'`));
   if (arr(s.categories).length === 0) errors.push(`${where}: no categories`);
@@ -45,29 +52,46 @@ for (const [key, src] of Object.entries(sources)) {
     errors.push(`source ${key}: missing vendor checkout ${src.local_path} (run scripts/setup)`);
 }
 
-for (const [id, s] of Object.entries(skills)) {
+for (const [id, s] of Object.entries(vendor)) {
   if (!id.startsWith(`${s.source}/`)) errors.push(`${id}: id must start with its source '${s.source}/'`);
   if (!has(sources, s.source)) errors.push(`${id}: unknown source '${s.source}'`);
-  checkSkill(id, s, skills);
+  checkSkill(id, s, vendor);
   arr(s.categories).filter((c) => Catalog.PROJECT_PHASES.includes(c))
     .forEach((c) => errors.push(`${id}: only project skills may fill '${c}'`));
 }
 
 // The router resolves "Call the Skill tool with \"<name>\"" to <same-source>/<name>.
-for (const [id, s] of Object.entries(skills)) {
+for (const [id, s] of Object.entries(vendor)) {
   if (!Catalog.available(s)) continue;
   const text = fs.readFileSync(path.join(Catalog.ROOT, s.path), 'utf8');
   for (const [, name] of text.matchAll(/Skill tool with "([\w.-]+)"/g)) {
-    if (!has(skills, `${s.source}/${name}`)) errors.push(`${id}: calls uncataloged skill ${s.source}/${name}`);
+    if (!has(vendor, `${s.source}/${name}`)) errors.push(`${id}: calls uncataloged skill ${s.source}/${name}`);
   }
 }
 
 for (const [id, s] of Object.entries(project)) {
   const where = `${Catalog.PROJECT_CATALOG}: ${id}`;
   if (!id.startsWith('project/')) errors.push(`${where}: id must start with 'project/'`);
-  checkSkill(where, s, { ...skills, ...project });
+  checkSkill(where, s, { ...skills, ...project }, 'the target repo');
   arr(s.categories).filter((c) => has(categories, c) && !Catalog.PROJECT_PHASES.includes(c))
     .forEach((c) => errors.push(`${where}: project skills may only fill '${Catalog.PROJECT_PHASES.join("' | '")}', not '${c}'`));
+}
+
+// personal_path is read here, not in the preferences loop below.
+const personalPath = Catalog.personalPath(prefs);
+if (has(prefs, 'personal_path') && !personalPath)
+  errors.push(`preferences.personal_path: must be a non-empty string, got ${JSON.stringify(prefs.personal_path)}`);
+else if (personalPath && !fs.statSync(personalPath, { throwIfNoEntry: false })?.isDirectory())
+  errors.push(`preferences.personal_path: not a directory: ${prefs.personal_path}`);
+if (fs.existsSync(personalFile) && !personalPath) errors.push(`${Catalog.PERSONAL_CATALOG}: needs preferences.personal_path`);
+for (const [id, s] of Object.entries(personal)) {
+  const where = `${Catalog.PERSONAL_CATALOG}: ${id}`;
+  const twin = Catalog.namesake(id, vendor);
+  if (!id.startsWith('personal/')) errors.push(`${where}: id must start with 'personal/'`);
+  else if (twin) { warnings.push(`${where}: skipped, same name as ${twin}`); continue; }
+  checkSkill(where, s, skills, 'personal_path');
+  arr(s.categories).filter((c) => Catalog.PROJECT_PHASES.includes(c))
+    .forEach((c) => errors.push(`${where}: only project skills may fill '${c}'`));
 }
 
 Object.keys(rankings).filter((c) => !has(categories, c)).forEach((c) => errors.push(`rankings: unknown category '${c}'`));
@@ -75,8 +99,8 @@ Object.keys(categories).filter((c) => !has(rankings, c)).forEach((c) => warnings
 for (const [cat, r] of Object.entries(rankings)) {
   for (const kind of ['preferred', 'fallback']) {
     for (const id of arr((r || {})[kind])) {
-      if (!has(skills, id)) errors.push(`rankings.${cat}.${kind}: unknown skill ${id}`);
-      else if (!arr(skills[id].categories).includes(cat))
+      if (!has(vendor, id)) errors.push(`rankings.${cat}.${kind}: unknown skill ${id}`);
+      else if (!arr(vendor[id].categories).includes(cat))
         warnings.push(`rankings.${cat}.${kind}: ${id} is not tagged with category '${cat}'`);
     }
   }
@@ -98,6 +122,7 @@ for (const [key, value] of Object.entries(prefs)) {
     }
     continue;
   }
+  if (key === 'personal_path') continue;
   if (key === 'primary') {
     if (!isFamily(value)) errors.push(`preferences.primary: must be ${FAMILIES.join(' | ')}, got ${JSON.stringify(value)}`);
     continue;
@@ -110,7 +135,7 @@ for (const [key, value] of Object.entries(prefs)) {
   ids.forEach((id) => { if (!has(skills, id)) errors.push(`preferences.${key}: unknown skill ${id}`); });
 }
 
-const cataloged = Object.values(skills).map((s) => s.path);
+const cataloged = Object.values(vendor).map((s) => s.path);
 const uncataloged = Object.values(sources).flatMap(Catalog.upstreamPaths).filter((p) => !cataloged.includes(p));
 
 warnings.forEach((w) => console.log(`warning: ${w}`));
@@ -120,6 +145,6 @@ if (uncataloged.length > 0) {
   if (verbose) uncataloged.forEach((p) => console.log(`  ${p}`));
 }
 console.log(errors.length === 0
-  ? `catalog OK (${Object.keys(skills).length} skills${target ? ` + ${Object.keys(project).length} project` : ''}, ${warnings.length} warning(s))`
+  ? `catalog OK (${Object.keys(vendor).length} skills${fs.existsSync(personalFile) ? ` + ${Object.keys(personal).length} personal` : ''}${target ? ` + ${Object.keys(project).length} project` : ''}, ${warnings.length} warning(s))`
   : `${errors.length} error(s)`);
 process.exit(errors.length === 0 ? 0 : 1);

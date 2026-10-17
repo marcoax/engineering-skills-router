@@ -1,6 +1,7 @@
-// Shared loader for catalog/*.yaml, config/preferences.yaml and a target repo's
-// docs/agents/skills.yaml. Node stdlib + yaml.
+// Shared loader for catalog/*.yaml, config/preferences.yaml, config/personal-skills.yaml and a
+// target repo's docs/agents/skills.yaml. Node stdlib + yaml.
 const fs = require('node:fs');
+const os = require('node:os');
 const path = require('node:path');
 const YAML = require('yaml');
 
@@ -19,34 +20,58 @@ const read = (rel) => readYaml(path.join(ROOT, rel));
 
 const sources = () => read('catalog/sources.yaml').sources || {};
 const PROJECT_CATALOG = 'docs/agents/skills.yaml';
+const PERSONAL_CATALOG = 'config/personal-skills.yaml';
 // v1: project skills fill only these phases.
 const PROJECT_PHASES = ['framework-review'];
 
-// The target repo's own skills, with source 'project' and the path resolved against the target.
-// A path that is absolute or leads outside the target is flagged `outside` and never available.
-function projectSkills(target) {
-  if (!target) return {};
-  return Object.fromEntries(Object.entries(readYaml(path.join(target, PROJECT_CATALOG)).skills || {})
-    .map(([id, s]) => {
-      const declaredPath = String(s?.path ?? '');
-      const resolved = path.resolve(target, declaredPath);
-      const rel = path.relative(target, resolved);
-      const outside = path.isAbsolute(declaredPath) || rel === '..' || rel.startsWith(`..${path.sep}`);
-      return [id, { ...s, source: 'project', path: resolved, declaredPath, outside }];
-    }));
-}
-
-// Catalog skills, plus the target repo's project/ skills when a target is given. Other ids in
-// the project catalog are ignored here (validate-catalog --target reports them).
-const skills = (target) => ({
-  ...(read('catalog/skills.yaml').skills || {}),
-  ...Object.fromEntries(Object.entries(projectSkills(target)).filter(([id]) => id.startsWith('project/'))),
-});
 const categories = () => read('catalog/categories.yaml').categories || {};
 const rankings = () => read('catalog/rankings.yaml').rankings || {};
 const preferences = () => read('config/preferences.yaml').preferences || {};
+const catalogSkills = () => read('catalog/skills.yaml').skills || {};
 
-// Catalog paths are relative to ROOT; project paths are already absolute.
+// Skills listed in `file` with paths relative to `root`, tagged with `source` and resolved.
+// A path that is absolute or leads outside the root is flagged `outside` and never available.
+const rootedSkills = (file, root, source) => Object.fromEntries(Object.entries(readYaml(file).skills || {})
+  .map(([id, s]) => {
+    const declaredPath = String(s?.path ?? '');
+    const resolved = path.resolve(root, declaredPath);
+    const rel = path.relative(root, resolved);
+    const outside = path.isAbsolute(declaredPath) || rel === '..' || rel.startsWith(`..${path.sep}`);
+    return [id, { ...s, source, path: resolved, declaredPath, outside }];
+  }));
+
+// The target repo's own skills, with source 'project' and paths resolved against the target.
+const projectSkills = (target) => (target ? rootedSkills(path.join(target, PROJECT_CATALOG), target, 'project') : {});
+
+// preferences.personal_path with a leading ~ expanded; relative paths resolve against ROOT.
+function personalPath(prefs = preferences()) {
+  const p = prefs.personal_path;
+  return typeof p === 'string' && p !== '' ? path.resolve(ROOT, p.replace(/^~(?=$|\/)/, os.homedir())) : undefined;
+}
+
+// The user's own skills, with source 'personal' and paths resolved against personal_path.
+// Needs personal_path; the scripts only read from it.
+function personalSkills(prefs = preferences()) {
+  const root = personalPath(prefs);
+  return root ? rootedSkills(path.join(ROOT, PERSONAL_CATALOG), root, 'personal') : {};
+}
+
+// The cataloged vendor skill sharing a personal id's name (personal/tdd -> mattpocock/tdd), if any.
+const namesake = (id, vendor = catalogSkills()) => Object.keys(vendor).find((v) => v.split('/')[1] === id.split('/')[1]);
+
+// Catalog skills, plus personal/ skills and, with a target, the target repo's project/ skills.
+// Other ids, and personal skills with a vendor namesake, are left out (validate-catalog reports them).
+function skills(target) {
+  const vendor = catalogSkills();
+  return {
+    ...vendor,
+    ...Object.fromEntries(Object.entries(personalSkills())
+      .filter(([id]) => id.startsWith('personal/') && !namesake(id, vendor))),
+    ...Object.fromEntries(Object.entries(projectSkills(target)).filter(([id]) => id.startsWith('project/'))),
+  };
+}
+
+// Catalog paths are relative to ROOT; personal and project paths are already absolute.
 const available = (skill) => !!skill && !skill.outside && isFile(path.resolve(ROOT, String(skill.path ?? '')));
 
 // Takes `--target <path>` out of a script's argv. Exits when the path is not a directory.
@@ -97,6 +122,6 @@ function candidates(category, allSkills = skills(), allRankings = rankings(), pr
 }
 
 module.exports = {
-  ROOT, PROJECT_CATALOG, PROJECT_PHASES, arr, sources, skills, projectSkills, categories, rankings, preferences,
-  available, targetArg, upstreamPaths, candidates,
+  ROOT, PROJECT_CATALOG, PERSONAL_CATALOG, PROJECT_PHASES, arr, sources, skills, catalogSkills, projectSkills,
+  personalPath, personalSkills, namesake, categories, rankings, preferences, available, targetArg, upstreamPaths, candidates,
 };
