@@ -18,7 +18,7 @@ preferences:
 
 The preference only picks the skill; since no selected skill then publishes an issue, the workflow has none. Every step uses skills that need no issue tracker (planning breaks the spec into tasks without publishing tickets), the branch is `<slug>` and starts by committing the spec file, review 2 checks the diff against the spec file, and the PR links it instead of closing an issue.
 
-**Project skills.** A target repo can list its own skills in `docs/agents/skills.yaml`, in the format of `catalog/skills.yaml` with ids `project/<name>` and paths relative to that repo:
+**Project skills.** A target repo can list its own skills in `docs/agents/skills.yaml`, in the format of `catalog/skills.yaml` with ids `project/<name>` and paths relative to that repo, inside it:
 
 ```yaml
 skills:
