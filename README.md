@@ -1,12 +1,12 @@
 # engineering-skills-router
 
-Routes an engineering task to the smallest workflow of skills drawn from several public collections, without installing or modifying any user-level skill. Spec: [docs/engineering-skills-router-spec.md](docs/engineering-skills-router-spec.md).
+Routes an engineering task to the smallest workflow of skills drawn from several public collections, without installing or modifying any user-level skill. Why it is built this way: [design rationale](docs/engineering-skills-router-spec.md).
 
 ```text
 task → classify → phases → one skill per phase → dedupe → show workflow → run
 ```
 
-Default backbone: **requirements → spec + GitHub issue → tickets → implement + test → review**, trimmed or extended by task type and risk. Requirements (a grilling session) runs after any code-understanding step, so its questions build on the code; it is skipped only when the task is an issue or spec that already settles the decisions.
+Default backbone: **requirements → spec + GitHub issue → tickets → implement + test → review**, trimmed or extended by task type and risk. Requirements (a grilling session) runs after any code-understanding step, so its questions build on the code; it is skipped only when the task is an issue or spec that already settles the decisions. At high risk a second review on the other model family and a comparison of both always run; at medium risk they start off, and you switch them on when you approve the workflow.
 
 **Without GitHub issues.** To keep the spec as a file in the target repo instead, prefer a specification skill that writes one, in `config/preferences.yaml`:
 

@@ -461,6 +461,11 @@ expectState('covered_by', variant((s) => { s.steps[0].covered_by = 'specificatio
   if (r.ok || !r.out.includes('error: steps[2]: must be Step') || /covered_by/.test(r.out))
     fail(`check-state, null step: expected only the type error\ngot:\n${r.out}`);
 }
+// optional was added within version 1: absent passes (the example), a non-boolean fails.
+expectStateOk('optional steps that are off', variant((s) => {
+  s.steps[3] = { ...s.steps[3], covered_by: null, optional: true, status: 'skipped', outcome: 'off (optional)' };
+}));
+expectState('optional', variant((s) => { s.steps[3].optional = 'yes'; }), 'steps[3].optional: must be boolean, got "yes"');
 expectState('running with no running step', variant((s) => { s.steps[2].status = 'pending'; }),
   'status: running requires a step with status running');
 expectState('waiting with no waiting step', variant((s) => { s.status = 'waiting'; }),
