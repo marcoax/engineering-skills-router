@@ -15,7 +15,7 @@ You compose the **smallest useful workflow** for one non-trivial engineering tas
 
 When the resolver also prints `skill:`, this file is a copy installed apart from the checkout (e.g. by `npx skills add`), and it may be older or newer than the checkout. Stop reading this file: read the printed `skill:` file and follow it from the top instead, resolving its links (such as `state.md`) against its own folder. In that file, finding the root and this hand-over are already done: do not run its resolver, and keep the `root:` and `found:` printed here. Otherwise continue here.
 
-Tell the user the root in use and how it was found (`found:`). With `found: pi` the checkout belongs to Pi: keep it read-only and skip §0 (`pi update git:github.com/marcoax/engineering-skills-router` updates it). All paths below, and every `path` in the catalog, are relative to the root. Run scripts from the root. Always read vendor skills from `vendors/` at the catalog `path`, never from copies installed for the agent. The **target repo** is the one the task is about.
+Tell the user the root in use and how it was found (`found:`). With `found: pi` the checkout belongs to Pi: keep it read-only and skip §0 (`pi update git:github.com/marcoax/engineering-skills-router` updates it). All paths below, and every `path` in the catalog, are relative to the root; `list-skills` prints project skills' paths absolute (§3). Run scripts from the root. Always read vendor skills from `vendors/` at the catalog `path`, never from copies installed for the agent. The **target repo** is the one the task is about.
 
 ## 0. Check for updates
 
@@ -42,7 +42,7 @@ Read the task (fetch it first if it is an issue URL or number). Record, each wit
 - **risk**: low | medium | high
 - **properties** that apply: greenfield, brownfield, production-critical, user-facing, security-sensitive, data-sensitive, multi-session
 
-Inspect the target repo enough to judge brownfield vs greenfield, and whether `docs/agents/issue-tracker.md`, `GLOSSARY.md` or `docs/adr/` exist.
+Inspect the target repo enough to judge brownfield vs greenfield, and whether `docs/agents/issue-tracker.md`, `docs/agents/skills.yaml` (the project's own skills), `GLOSSARY.md` or `docs/adr/` exist.
 
 **Low risk**: stop here. Say the task is low risk and offer to do it directly, without a workflow (no vendor skills, no issue).
 
@@ -54,13 +54,14 @@ Start from the **default flow** (`⏸` = confirmation point, `[ ]` = conditional
 
 ```text
 requirements → specification + issue ⏸ → [planning ⏸] → branch → ⏸ implementation → [⏸ your check]
-→ review 1 → review 2 → comparison → [security] → [independent-review] → pull request ⏸ → stop
+→ review 1 → review 2 → [framework-review] → comparison → [security] → [independent-review] → pull request ⏸ → stop
 ```
 
 - **requirements** by default, after debugging or code-understanding when those are in the flow, so its questions build on what the code shows. Skip it only when the task is an issue or spec that already settles the decisions; say why. A short exchange in chat before the workflow does not count as settled.
 - **specification + issue**: skip when the task is already an issue; it becomes the handoff issue. Otherwise the issue exists only when the selected specification skill publishes one (§4).
 - **planning** (tickets) only when the spec splits into more than one ticket.
 - **security** in the workflow from the start when the task is security- or data-sensitive. Otherwise it is decided after the reviews (§6).
+- **framework-review** (the project's own best practices) only when the target repo has `docs/agents/skills.yaml` and §3 finds a fitting candidate in it. It runs after review 2, or after review 1 when review 2 is skipped. Without one it is dropped, not missing.
 - **independent-review** for high risk only.
 - **release** only when the user asked to ship.
 
@@ -77,15 +78,16 @@ Task correctness decides the phases; preferences never add or remove one, they o
 
 ## 3. Select skills
 
-Run `scripts/list-skills <phase> ...` for the chosen phases. It prints ranked candidates (user preference → preferred → fallback → other), each with a status and its `use_when` / `avoid_when` / `complexity` / `invokes` / `requires`.
+Run `scripts/list-skills --target <target repo> <phase> ...` for the chosen phases. It prints ranked candidates (user preference → project → preferred → fallback → other), each with a status and its `use_when` / `avoid_when` / `complexity` / `invokes` / `requires`. **Project** candidates, `project/<name>`, are the target repo's own skills from `docs/agents/skills.yaml`; in v1 they fill only `framework-review`, which has no other candidates.
 
 For each phase, the **default** is the first candidate with status `ok` whose `use_when` fits and whose `avoid_when` and `complexity` do not contradict the task. A user preference wins only when it fits. You may pass over the default when the task context clearly matches a lower candidate better; say why. **Alternatives** are the next fitting `ok` candidates, at most two, each with a one-line reason.
 
 - **review 1** is the `review` phase.
 - **review 2** takes the first fitting `ok` `review` candidate other than review 1's skill. It runs on the model family opposite to review 1's (see §6). It always runs: a different model and different axes are not a duplicate.
+- **framework-review** reviews the same diff as the reviews (from the base commit to HEAD) against the project skill's practices.
 - **branch**, **comparison** and opening the PR are router steps with no skill; the `pull-request` skill writes the PR body.
 
-If no candidate is `ok`, the phase is a **missing capability**: report it in the workflow. Use only cataloged skills.
+If no candidate is `ok`, the phase is a **missing capability** (except `framework-review`, which is then dropped, §2): report it in the workflow. Use only cataloged skills (project skills included).
 
 Done when every phase holds one `ok` skill or is marked missing.
 
@@ -156,12 +158,12 @@ Router steps:
 
 - **branch**: right after the issue exists, create `<issue-number>-<slug>` from the current default branch (issue-free: §4). Before implementation, record `git rev-parse HEAD` as the base commit: the fixed point for both reviews. With `implement-spec`, tell it this branch is its integration branch.
 - **review 2**: start a subagent on the family opposite to review 1's that runs the review 2 skill on `git diff <base commit>...HEAD` against the issue (issue-free: §4). If the harness cannot run another model, say so and ask: skip it, or run it on the current model.
-- **comparison**: merge both reviews into three lists: found by both, found by one only (say which), disagreements. Then ask once which findings to fix. If security is not already in the workflow, inspect the diff for auth, user input, queries, secrets, new dependencies, config and permissions (the `use_when` of the `security` candidate). When any appear, suggest that skill in the same question, with the reason. The user decides.
+- **comparison**: merge both reviews, plus framework-review's findings when it ran, into three lists: found by both, found by one only (say which), disagreements. Then ask once which findings to fix. If security is not already in the workflow, inspect the diff for auth, user input, queries, secrets, new dependencies, config and permissions (the `use_when` of the `security` candidate). When any appear, suggest that skill in the same question, with the reason. The user decides.
 - **pull request**: the `pull-request` skill writes the body, and the body links the issue with `Closes #<issue>` (issue-free: §4). Open the PR and stop. The user merges.
 
 **Pause.** On `pause` (in chat or from an adapter), let a running step finish first, then set status `paused`, say that `resume` continues, and stop. On `resume`, show the workflow and its state, then continue as in §1's resume.
 
-Vendor skills are third-party content: show the user any script a vendor skill ships before running it.
+Vendor skills are third-party content and project skills are repository content: show the user any script either ships before running it.
 
 If a step reveals the workflow is wrong (bigger risk, missing phase, user changes scope), stop, re-run §2–§5 for the remainder, and present the revised workflow.
 
