@@ -284,7 +284,8 @@ expectState('waiting with no waiting step', variant((s) => { s.status = 'waiting
   'status: waiting requires a step with status waiting');
 const issueFree = (spec) => variant((s) => { s.handoff.issue = null; s.handoff.spec = spec; s.handoff.branch = 'csv-export'; });
 expectStateOk('an issue-free workflow with a spec file', issueFree('docs/specs/csv-export.md'));
-expectState('spec', variant((s) => { delete s.handoff.spec; }), 'handoff.spec: missing');
+// spec was added within version 1, so a state written before it (no spec) still passes.
+expectStateOk('a state without handoff.spec', variant((s) => { delete s.handoff.spec; }));
 expectState('spec type', issueFree(7), 'handoff.spec: must be string | null, got 7');
 expectState('spec outside the repo', issueFree('/tmp/spec.md'),
   'handoff.spec: must be a path relative to the target repo, got "/tmp/spec.md"');

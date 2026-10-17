@@ -6,6 +6,7 @@ The router writes this file in the **target repo** during a workflow so that ada
 - **Readers**: adapters. They never write the file. A user choice made in an adapter UI is sent to the agent as a chat message in the text syntax of the router's selection (`go`, `2b`, `edit`, `stop`, `pause`, `resume`); the router applies it and rewrites the file. In a selection reply, `<step>` is the 1-based position in `steps` and the letter is the position in that step's `alternatives` (`a` = first).
 - The router adds `.router/` to the target repo's `.git/info/exclude`, so the file is never committed.
 - Readers ignore unknown fields. Adding a field keeps `version`; renaming, removing or changing the meaning of a field bumps it.
+- A field added within a version is marked *(optional)* in its table: the router always writes it, and readers treat a missing one as `null`.
 
 ## Example
 
@@ -142,7 +143,7 @@ Step `status`:
 | Field | Type | Meaning |
 |---|---|---|
 | `issue` | `{number, url}` \| null | Spec issue, published or given as the task; `null` in an issue-free workflow. |
-| `spec` | string \| null | Spec file, as a path relative to the target repo, when the spec is written as a file instead of an issue. |
+| `spec` (optional) | string \| null | Spec file, relative to the target repo; set when the workflow has no issue. |
 | `tickets` | `{number, url}[]` | Tickets published from the spec. |
 | `branch` | string \| null | Work branch, `<issue-number>-<slug>`, or `<slug>` without an issue. |
 | `base_commit` | string \| null | `git rev-parse HEAD` just before implementation; the fixed point for both reviews. |
