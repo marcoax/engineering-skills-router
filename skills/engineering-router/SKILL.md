@@ -45,7 +45,7 @@ Read the task (fetch it first if it is an issue URL or number). Record, each wit
 - **complexity**: low | medium | high, the task's size, matched against each skill's catalog `complexity` (§3)
 - **properties** that apply: greenfield, brownfield, production-critical, user-facing, security-sensitive, data-sensitive, multi-session
 
-Inspect the target repo enough to judge brownfield vs greenfield, and whether `docs/agents/issue-tracker.md`, `docs/agents/skills.yaml` (the project's own skills), `GLOSSARY.md` or `docs/adr/` exist.
+Inspect the target repo enough to judge brownfield vs greenfield, to locate the code the task touches (files or components the task names, or a quick search), and whether `docs/agents/issue-tracker.md`, `docs/agents/skills.yaml` (the project's own skills), `GLOSSARY.md` or `docs/adr/` exist.
 
 **Low risk**: stop here. Say the task is low risk and offer to do it directly, without a workflow (no vendor skills, no issue). If the user wants the workflow anyway, keep risk `low` and continue: it runs as at medium risk.
 
@@ -74,7 +74,7 @@ By type, replace or prepend the front of the flow. The part from branch to pull 
 | Situation | Change |
 |---|---|
 | bug, cause unknown | debugging before specification; the spec records cause and fix |
-| brownfield, unfamiliar area | prepend code-understanding |
+| brownfield, and the §1 inspection could not locate the code the task touches | prepend code-understanding; when it could, implementation explores on its own |
 | refactor | code-understanding before specification; implementation via refactoring or architecture |
 | multi-session (more than one session can hold, route still foggy) | multi-session only; implementation happens in later sessions from its output |
 
