@@ -61,10 +61,10 @@ requirements → specification + issue ⏸ → [planning ⏸] → branch → ⏸
 - **requirements** by default, after debugging or code-understanding when those are in the flow, so its questions build on what the code shows. Skip it only when the task is an issue or spec that already settles the decisions; say why. A short exchange in chat before the workflow does not count as settled.
 - **specification + issue**: skip when the task is already an issue; it becomes the handoff issue. Otherwise the issue exists only when the selected specification skill publishes one (§4).
 - **planning** (tickets) only when the spec splits into more than one ticket.
-- **review 2** and **comparison** always at high risk. Below it they are optional: both stay in the workflow but start off, and the user switches them on in §5.
-- **security** in the workflow from the start when the task is security- or data-sensitive. Otherwise it is decided after the reviews (§6).
+- **One review by default**, at every risk. **review 2** and **comparison** are optional: both stay in the workflow but start off, and the user switches them on in §5.
+- **security** is decided after the reviews (§6).
 - **framework-review** (the project's own best practices) only when the target repo has `docs/agents/skills.yaml` and §3 finds a fitting candidate in it. It runs after review 2, or after review 1 when review 2 is skipped. Without one it is dropped, not missing.
-- **independent-review** for high risk only.
+- **independent-review** for high risk only, optional: it starts off, like review 2.
 - **release** only when the user asked to ship.
 
 By type, replace or prepend the front of the flow. The part from branch to pull request stays the same:
@@ -85,7 +85,7 @@ Run `scripts/list-skills --target <target repo> <phase> ...` for the chosen phas
 For each phase, the **default** is the first candidate with status `ok` whose `use_when` fits and whose `avoid_when` and `complexity` do not contradict the task. A user preference wins only when it fits. `complexity` ranks but never empties a phase: when it rules out every candidate that otherwise fits, take the first of those as the default and the next as alternatives, and say they are sized for other tasks. You may pass over the default when the task context clearly matches a lower candidate better; say why. **Alternatives** are the next fitting `ok` candidates, at most two, each with a one-line reason.
 
 - **review 1** is the `review` phase.
-- **review 2** takes the first fitting `ok` `review` candidate other than review 1's skill. It runs on the model family opposite to review 1's (see §6), when the harness can reach that family (§5). A different model and different axes are not a duplicate. Below high risk it is optional and starts off (§2).
+- **review 2** takes the first fitting `ok` `review` candidate other than review 1's skill. It runs on the model family opposite to review 1's (see §6), when the harness can reach that family (§5). A different model and different axes are not a duplicate. It is optional and starts off (§2).
 - **framework-review** reviews the same diff as the reviews (from the base commit to HEAD) against the project skill's practices.
 - **branch**, **comparison** and opening the PR are router steps with no skill; the `pull-request` skill writes the PR body.
 
@@ -115,7 +115,7 @@ Done when no two steps share a purpose.
 
 - **available**: the harness can start a subagent on that model.
 - **unverified**: it seems able to, but you cannot confirm the provider ID before a subagent starts. Say so; §6 handles a failed start.
-- **unavailable**: say why (no subagents, no model choice, provider not configured), and ask: skip review 2, or run it on the current model. At high risk ask before showing the workflow; below it review 2 starts off, so ask when the user switches it on. Skipped, it goes under `Skipped:` with the comparison, and the rest runs as when they are off (§6). On the current model, it stays a step with `model` `null`.
+- **unavailable**: say why (no subagents, no model choice, provider not configured), and ask: skip review 2, or run it on the current model. Review 2 starts off, so ask when the user switches it on. Skipped, it goes under `Skipped:` with the comparison, and the rest runs as when they are off (§6). On the current model, it stays a step with `model` `null`.
 
 Write the workflow to `.router/state.json` in the target repo, in the format of [state.md](state.md) with status `selecting`. Add `.router/` to the target repo's `.git/info/exclude` if missing. Then show it and stop for the user's answer:
 
@@ -144,7 +144,7 @@ The numbered list is `steps` from the state file, in the same order: one line pe
 
 A review 2 on the current model is named by that model. When the session's model is in review 1's family, it is a second review on the same family, not an independent one: never call it a review by the other family, here or in its summary, outcome, step note and the comparison.
 
-A swap replaces the step's skill and keeps the old one as an alternative; show the updated workflow again. Optional steps (review 2 and comparison below high risk) have `optional: true` in the state; one that is off has status `skipped` with outcome `off (optional)` and shows `(off)`. `<step>on` sets it `pending`, `<step>off` sets it back; review 2 and the comparison switch together. Only optional steps switch. `edit` reopens §2–§4. Done on `go` or `stop`.
+A swap replaces the step's skill and keeps the old one as an alternative; show the updated workflow again. Optional steps (review 2, comparison, independent-review) have `optional: true` in the state; one that is off has status `skipped` with outcome `off (optional)` and shows `(off)`. `<step>on` sets it `pending`, `<step>off` sets it back; review 2 and the comparison switch together. Only optional steps switch. `edit` reopens §2–§4. Done on `go` or `stop`.
 
 ## 6. Execute
 
@@ -172,7 +172,7 @@ Router steps:
 
 - **branch**: right after the issue exists, create `<issue-number>-<slug>` from the current default branch (issue-free: §4). Before implementation, record `git rev-parse HEAD` as the base commit: the fixed point for both reviews. With `implement-spec`, tell it this branch is its integration branch.
 - **review 2**: start a subagent on the family opposite to review 1's that runs the review 2 skill on `git diff <base commit>...HEAD` against the issue (issue-free: §4). If that subagent fails to start (e.g. an `unverified` provider ID was wrong), say why and ask, as in §5: skip it, or run it on the current model. Update the step's `model`, summary and `Review 2:` status to match.
-- **comparison**: merge both reviews, plus framework-review's findings when it ran, into three lists: found by both, found by one only (say which), disagreements. Name each review by the model it ran on. Then ask once which findings to fix. If security is not already in the workflow, inspect the diff for auth, user input, queries, secrets, new dependencies, config and permissions (the `use_when` of the `security` candidate). When any appear, suggest that skill in the same question, with the reason. The user decides. When the comparison is off, ask that security question right after review 1, or after framework-review when it runs, together with which of its findings to fix. The chosen fixes run like a skill step, in a new subagent on the implementation step's model (without subagents, in the main session): it gets the findings, the handoff and the step notes, fixes them (test-first where a test can show the problem), commits, and writes its note to `.router/steps/<n>-fixes.md`, with `n` the asking step's position. The asking step stays `running` until the fixes are committed, so a pause or resume does not drop them.
+- **comparison**: merge both reviews, plus framework-review's findings when it ran, into three lists: found by both, found by one only (say which), disagreements. Name each review by the model it ran on. Then ask once which findings to fix. If security is not already in the workflow, inspect the diff for auth, user input, queries, secrets, new dependencies, config and permissions (the `use_when` of the `security` candidate). When any appear, or the task is security- or data-sensitive, suggest that skill in the same question, with the reason. The user decides. When the comparison is off, ask that security question right after review 1, or after framework-review when it runs, together with which of its findings to fix. The chosen fixes run like a skill step, in a new subagent on the implementation step's model (without subagents, in the main session): it gets the findings, the handoff and the step notes, fixes them (test-first where a test can show the problem), commits, and writes its note to `.router/steps/<n>-fixes.md`, with `n` the asking step's position. The asking step stays `running` until the fixes are committed, so a pause or resume does not drop them.
 - **pull request**: the `pull-request` skill writes the body, and the body links the issue with `Closes #<issue>` (issue-free: §4). Open the PR and stop. The user merges.
 
 **Pause.** On `pause` (in chat or from an adapter), let a running step finish first, then set status `paused`, say that `resume` continues, and stop. On `resume`, show the workflow and its state, then continue as in §1's resume.

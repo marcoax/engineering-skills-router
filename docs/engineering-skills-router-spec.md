@@ -45,7 +45,7 @@ The router reads only the catalog, never the vendor folders' layout. Adding a so
 
 - A phase covered by a skill that `invokes` another (e.g. `implement` runs `tdd` and `code-review`) is not run again.
 - A skill that fills two phases (e.g. spec + issue) is one step.
-- **Two reviews are not a duplicate** when they differ in model and axes: review 2 runs a different review skill on the other model family, and a comparison step merges both into found by both, by one only, and disagreements. Framework-review and the independent review at high risk add different purposes, not repeats.
+- **Two reviews are not a duplicate** when they differ in model and axes: review 2 runs a different review skill on the other model family, and a comparison step merges both into found by both, by one only, and disagreements. Framework-review and the independent review at high risk add different purposes, not repeats. Still, one review is the default: review 2, the comparison and the independent review start off, security is offered after the reviews, and the user adds each.
 - **Cross-family review depends on the harness.** Reaching the other family needs subagents that take an explicit model and a provider configured for it (Pi so set up is one example), which the router cannot provide. So it states before the workflow starts whether review 2 can run there, and when not the user skips it or runs it on the current model, where it counts as a second review, not an independent one.
 
 ## Pauses only where they matter
