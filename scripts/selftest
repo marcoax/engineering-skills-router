@@ -52,6 +52,7 @@ fs.writeFileSync(prefsFile, `preferences:
     claude: claude-bridge/claude-opus-5-5
     openai: openai-codex/gpt-6-sol
   primary: claude
+  effort: medium
 `);
 if (!run('validate-catalog').ok) fail('valid preferences should validate');
 let { out } = run('list-skills', 'review');
@@ -67,6 +68,8 @@ for (const [line, msg] of [
   ['models:\n    claude: opus', "models.claude: must be 'provider/model-id'"],
   ['models:\n    gemini: google/gemini', "models: unknown family 'gemini'"],
   ['primary: gemini', 'primary: must be claude | openai'],
+  ['effort: max', 'effort: must be low | medium | high'],
+  ['models:\n    effort: medium', "models: unknown family 'effort'"],
   ['implementation:\n    model: anthropic/claude-sonnet-5-5', 'implementation.model: must be claude | openai'],
 ]) {
   fs.writeFileSync(prefsFile, `preferences:\n  ${line}\n`);

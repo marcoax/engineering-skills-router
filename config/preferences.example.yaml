@@ -35,3 +35,6 @@ preferences:
     claude: claude-bridge/claude-opus-5-5
     openai: openai-codex/gpt-6-sol
   primary: claude
+
+  # Thinking level of every step subagent: low | medium | high (default: the harness's).
+  # effort: medium
