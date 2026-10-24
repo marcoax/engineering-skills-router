@@ -21,7 +21,7 @@ const read = (rel) => readYaml(path.join(ROOT, rel));
 const sources = () => read('catalog/sources.yaml').sources || {};
 const PROJECT_CATALOG = 'docs/agents/skills.yaml';
 const PERSONAL_CATALOG = 'config/personal-skills.yaml';
-// v1: project skills fill only these phases.
+// Phases only project skills fill.
 const PROJECT_PHASES = ['framework-review'];
 
 const categories = () => read('catalog/categories.yaml').categories || {};
@@ -91,9 +91,9 @@ function upstreamPaths(source) {
     .sort();
 }
 
-// Ordered candidates for a phase: user preference, catalog preferred, fallback, then any other
-// cataloged skill tagged with the phase. A project phase lists only the target's project skills,
-// and no other phase lists them.
+// Ordered candidates for a phase: user preference, the target's project skills, catalog preferred,
+// fallback, then any other cataloged skill tagged with the phase. A project phase lists only the
+// target's project skills.
 function candidates(category, allSkills = skills(), allRankings = rankings(), prefs = preferences()) {
   const rank = allRankings[category] || {};
   const pref = (prefs[category] || {}).prefer;
@@ -101,9 +101,10 @@ function candidates(category, allSkills = skills(), allRankings = rankings(), pr
   const isProject = (id) => allSkills[id]?.source === 'project';
   const ordered = PROJECT_PHASES.includes(category)
     ? tagged.filter(isProject).map((id) => [id, 'project'])
-    : [['preference', pref], ['preferred', rank.preferred], ['fallback', rank.fallback], ['other', tagged]]
-      .flatMap(([origin, ids]) => arr(ids).map((id) => [id, origin]))
-      .filter(([id]) => !isProject(id));
+    // Preferences name catalog skills only, so a project id there is ignored.
+    : [['preference', arr(pref).filter((id) => !isProject(id))], ['project', tagged.filter(isProject)], ['preferred', rank.preferred],
+      ['fallback', rank.fallback], ['other', tagged]]
+      .flatMap(([origin, ids]) => arr(ids).map((id) => [id, origin]));
   const excluded = arr(prefs.exclude);
   const seen = new Set();
   return ordered
