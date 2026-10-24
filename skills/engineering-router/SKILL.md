@@ -169,14 +169,16 @@ For each step:
 
 **Covered review.** When review 1 runs inside the implementation step (e.g. `mattpocock/implement` calls `code-review`), tell that step to commit its work before the review starts and to pass the base commit as the review's fixed point, then to commit the review's fixes. The covered step ends with it: mark both `done` together. The review reads `git diff <base commit>...HEAD`, so a skill that says to review and then commit would otherwise review uncommitted work.
 
-**Your check.** When the implementation step ends, ask once whether the user wants to check the result before the reviews continue: `check | continue`. On `check`, set status `waiting` and the first step after implementation that is not `done` or `skipped` to `waiting`, list the files changed since the base commit and how to try the change (commands, page, test), then wait. Fix what the user reports, commit it, and start that step on `continue`. This is a pause, not a step: it is not in `steps`.
+**Manual checklist.** What the user should try by hand: one line per requirement of the issue (or spec), as where (page, URL, command) → action → expected result, plus what the automated checks cannot reach (layout, responsive, themes, permissions, real data). Name the login or seed data a check needs.
+
+**Your check.** When the implementation step ends, show the files changed since the base commit and the manual checklist, then ask once whether the user wants to check the result before the reviews continue: `check | continue`. On `check`, set status `waiting` and the first step after implementation that is not `done` or `skipped` to `waiting`, then wait. Fix what the user reports, commit it, and start that step on `continue`. This is a pause, not a step: it is not in `steps`.
 
 Router steps:
 
 - **branch**: right after the issue exists, create `<issue-number>-<slug>` from the current default branch (issue-free: §4). Before implementation, record `git rev-parse HEAD` as the base commit: the fixed point for both reviews. With `implement-spec`, tell it this branch is its integration branch.
 - **review 2**: start a subagent on the family opposite to review 1's that runs the review 2 skill on `git diff <base commit>...HEAD` against the issue (issue-free: §4). If that subagent fails to start (e.g. an `unverified` provider ID was wrong), say why and ask, as in §5: skip it, or run it on the current model. Update the step's `model`, summary and `Review 2:` status to match.
 - **comparison**: merge both reviews, plus framework-review's findings when it ran, into three lists: found by both, found by one only (say which), disagreements. Name each review by the model it ran on. Then ask once which findings to fix. If security is not already in the workflow, inspect the diff for auth, user input, queries, secrets, new dependencies, config and permissions (the `use_when` of the `security` candidate). When any appear, or the task is security- or data-sensitive, suggest that skill in the same question, with the reason. The user decides. When the comparison is off, ask that security question right after review 1, or after framework-review when it runs, together with which of its findings to fix. The chosen fixes run like a skill step, in a new subagent on the implementation step's model (without subagents, in the main session): it gets the findings, the handoff and the step notes, fixes them (test-first where a test can show the problem), commits, and writes its note to `.router/steps/<n>-fixes.md`, with `n` the asking step's position. The asking step stays `running` until the fixes are committed, so a pause or resume does not drop them.
-- **pull request**: the `pull-request` skill writes the body, and the body links the issue with `Closes #<issue>` (issue-free: §4). Open the PR and stop. The user merges.
+- **pull request**: the `pull-request` skill writes the body, and the body links the issue with `Closes #<issue>` (issue-free: §4) and ends with the manual checklist, updated for the fixes since. Open the PR, show the checklist again, and stop. The user merges.
 
 **Pause.** On `pause` (in chat or from an adapter), let a running step finish first, then set status `paused`, say that `resume` continues, and stop. On `resume`, show the workflow and its state, then continue as in §1's resume.
 
@@ -184,4 +186,4 @@ Vendor skills are third-party content and project skills are repository content:
 
 If a step reveals the workflow is wrong (bigger risk, missing phase, user changes scope), stop, re-run §2–§5 for the remainder, and present the revised workflow.
 
-Done when the PR is open with its outcome line, or the user stopped or paused.
+Done when the PR is open with its outcome line and the manual checklist, or the user stopped or paused.
