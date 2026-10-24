@@ -11,6 +11,7 @@ const run = (cmd, ...args) => {
 
 run('git', 'submodule', 'update', '--init', '--recursive');
 run('npm', 'ci', '--no-audit', '--no-fund');
+run('git', 'config', 'core.hooksPath', '.githooks');
 run(path.join(ROOT, 'scripts/validate-catalog'));
 console.log();
 console.log(`Router skill: ${ROOT}/skills/engineering-router/SKILL.md`);

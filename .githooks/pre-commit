@@ -1,0 +1,4 @@
+#!/bin/sh
+# Runs the repo's checks when a commit touches what they cover. Installed by scripts/setup.
+git diff --cached --name-only | grep -qE '^(catalog|scripts|skills|adapters|config)/' || exit 0
+scripts/validate-catalog && scripts/selftest && node --test adapters/pi/*.test.ts > /dev/null
