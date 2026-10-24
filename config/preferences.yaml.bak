@@ -1,0 +1,17 @@
+preferences:
+  personal_path: ~/.agents/skills
+
+  models:
+    claude: claude-bridge/claude-opus-5-5
+    openai: openai-codex/gpt-6-sol
+  primary: openai
+
+  implementation:
+    model: openai
+
+  testing:
+    model: openai
+
+  review:
+    prefer: [personal/advanced-code-review]
+    model: claude

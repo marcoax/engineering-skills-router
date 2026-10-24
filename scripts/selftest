@@ -52,6 +52,7 @@ fs.writeFileSync(prefsFile, `preferences:
     claude: claude-bridge/claude-opus-5-5
     openai: openai-codex/gpt-6-sol
   primary: claude
+  effort: medium
 `);
 if (!run('validate-catalog').ok) fail('valid preferences should validate');
 let { out } = run('list-skills', 'review');
@@ -67,6 +68,8 @@ for (const [line, msg] of [
   ['models:\n    claude: opus', "models.claude: must be 'provider/model-id'"],
   ['models:\n    gemini: google/gemini', "models: unknown family 'gemini'"],
   ['primary: gemini', 'primary: must be claude | openai'],
+  ['effort: max', 'effort: must be low | medium | high'],
+  ['models:\n    effort: medium', "models: unknown family 'effort'"],
   ['implementation:\n    model: anthropic/claude-sonnet-5-5', 'implementation.model: must be claude | openai'],
 ]) {
   fs.writeFileSync(prefsFile, `preferences:\n  ${line}\n`);
@@ -141,7 +144,6 @@ for (const [skill, msg] of [
   [{ cats: '[not-a-category]' }, "docs/agents/skills.yaml: project/fw: invalid category 'not-a-category'"],
   [{ cats: '[]' }, 'docs/agents/skills.yaml: project/fw: no categories'],
   [{ id: 'acme/fw' }, "docs/agents/skills.yaml: acme/fw: id must start with 'project/'"],
-  [{ cats: '[framework-review, review]' }, "docs/agents/skills.yaml: project/fw: project skills may only fill 'framework-review', not 'review'"],
   [{ extra: '    complexity: [huge]\n' }, "docs/agents/skills.yaml: project/fw: invalid complexity 'huge'"],
   [{ extra: '    invokes: [nobody/nothing]\n' }, 'docs/agents/skills.yaml: project/fw: invokes unknown skill nobody/nothing'],
   [[{}, {}], 'docs/agents/skills.yaml: duplicate skill id: project/fw'],
@@ -161,9 +163,17 @@ for (const skillPath of [outsideSkill, '../outside/SKILL.md']) {
   ({ out } = run('list-skills', '--target', repo, 'framework-review'));
   if (!/^1\. project\/fw {2}\[project, missing\]$/m.test(out)) fail(`list-skills --target should list ${skillPath} as missing\n${out}`);
 }
-// v1: even an unvalidated project skill tagged with another phase is not offered for it.
-if (run('list-skills', '--target', targetRepo(projectSkill({ cats: '[review]' })), 'review').out.includes('project/fw'))
-  fail('list-skills --target should offer project skills only for framework-review');
+// A project skill tagged with another phase ranks after a user preference and before the catalog's.
+{
+  const repo = targetRepo(projectSkill({ cats: '[framework-review, review]' }));
+  if (!run('validate-catalog', '--target', repo).ok) fail('a project skill may fill review too');
+  fs.writeFileSync(prefsFile, 'preferences:\n  review:\n    prefer: [addyosmani/code-review-and-quality]\n');
+  ({ out } = run('list-skills', '--target', repo, 'review'));
+  const order = [...out.matchAll(/^\d+\. (\S+) {2}\[(\w+)/gm)].slice(0, 3).map((m) => `${m[1]} ${m[2]}`).join(', ');
+  const expected = 'addyosmani/code-review-and-quality preference, project/fw project, mattpocock/code-review preferred';
+  if (order !== expected) fail(`list-skills --target review: expected ${expected}; got ${order}`);
+  fs.rmSync(prefsFile);
+}
 
 // Personal catalog: config/personal-skills.yaml lists skills kept under preferences.personal_path.
 const personalDir = path.join(tmp, 'personal');

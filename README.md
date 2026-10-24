@@ -31,7 +31,7 @@ skills:
       - change touches PHP/Laravel code
 ```
 
-When one fits the task, the workflow gets a `framework-review` step after the reviews: the change is checked against the project's own conventions, and its findings join the comparison. A repo without the file gets no such step. Only project skills fill `framework-review`, and for now they fill no other phase; `scripts/validate-catalog --target <repo>` checks the file.
+When one fits the task, the workflow gets a `framework-review` step after the reviews: the change is checked against the project's own conventions, and its findings join the comparison. A repo without the file gets no such step. Only project skills fill `framework-review`; tagged with another phase (e.g. `implementation`), a project skill ranks right after a user preference there; `scripts/validate-catalog --target <repo>` checks the file.
 
 **Personal skills.** Your own skills can be candidates too. Set `personal_path` in `config/preferences.yaml` to the folder that holds them (a leading `~` is your home dir; a relative path resolves against the router checkout), then copy `config/personal-skills.example.yaml` to `config/personal-skills.yaml` (git-ignored) and list them there, in the format of `catalog/skills.yaml` with ids `personal/<name>` and paths relative to `personal_path`, inside it:
 
