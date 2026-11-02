@@ -108,9 +108,9 @@ const FAMILIES = ['claude', 'openai'];
 const isFamily = (v) => FAMILIES.includes(v);
 const EFFORTS = ['low', 'medium', 'high'];
 for (const [key, value] of Object.entries(prefs)) {
-  if (key === 'update_check_days') {
+  if (key === 'update_check_days' || key === 'context_threshold') {
     if (!Number.isInteger(value) || value < 0)
-      errors.push(`preferences.update_check_days: must be an integer >= 0 (0 = never), got ${JSON.stringify(value)}`);
+      errors.push(`preferences.${key}: must be an integer >= 0 (0 = never), got ${JSON.stringify(value)}`);
     continue;
   }
   if (key === 'models') {

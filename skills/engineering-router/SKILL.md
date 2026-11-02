@@ -12,6 +12,7 @@ This file holds what every run needs. The rest is in files beside it; read each 
 | Read | When |
 |---|---|
 | [checkout.md](checkout.md) | the resolver prints `missing`, or the update check is due (§0) |
+| [context.md](context.md) | a step-close command prints a `context:` line (§6), before starting the next step |
 | [resume.md](resume.md) | the target repo holds an unfinished workflow (§1), or on `pause` / `resume` |
 | [light.md](light.md) | §1 offers or sets the light path |
 | [issue-free.md](issue-free.md) | the task is a spec file (§2), or §4 finds the workflow issue-free |
@@ -153,7 +154,7 @@ For each step:
 2. For a skill step, read its `SKILL.md` at its catalog `path` (a personal or project skill: the absolute path `list-skills` prints) and follow it in full. Resolve its relative links against that file's folder.
 3. When it says to call or invoke another skill by name (e.g. "call the Skill tool with tdd"), read the `path` of `<same-source>/<name>` in `catalog/skills.yaml` (for a personal skill, `personal/<name>` as `list-skills` prints it); if it is not cataloged, use an installed skill with that name.
 4. Carry the **handoff** forward: issue (spec file when issue-free), tickets, branch, base commit, PR.
-5. Close the step with a one-line outcome and the handoff it produced. For a skill step, write its note to `.router/steps/<n>-<id>.md`: what it did, decisions, files touched, open points.
+5. Write the skill step's note to `.router/steps/<n>-<id>.md`: what it did, decisions, files touched, open points. Close the step with a one-line outcome and the handoff it produced. Run `scripts/state <target repo> step <n> done ...` as a separate shell command, with no batch or chained command, so its output is available before the next step starts. If that output includes a `context:` line and a step remains, follow [context.md](context.md) now. Otherwise continue normally.
 
 **Planning decision** (when the specification step closes and the workflow holds a conditional planning step): read the spec and judge whether it splits into more than one ticket: more than one independently demoable or verifiable slice, or more than one fresh context window of work. Tell the user the decision in one line with its reason, then either run planning, or `step <n> skipped --outcome "single ticket: <reason>"`. The user may overrule it before the next step starts. When planning is skipped, an implementation step whose skill builds from tickets (`mattpocock/implement-spec`) is swapped to its first alternative, and the user is told.
 

@@ -26,6 +26,10 @@ preferences:
   # Days between update-check prompts at startup (default 14, 0 = never ask).
   update_check_days: 14
 
+  # Tokens of session context above which the router, at a step boundary,
+  # asks whether to continue or pause (default 150000, 0 = never ask).
+  context_threshold: 150000
+
   # The two model families, as provider/model-id. Steps run on `primary`;
   # review 2 runs on the family opposite to review 1. The provider part
   # (claude-bridge, openai-codex) is a local name: set it to the provider ID

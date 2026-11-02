@@ -29,6 +29,7 @@ For working on the router itself or its catalog. Install and use: the [README](.
 | `scripts/update` | pulls vendor submodules, prints added/removed skills; never edits the catalog |
 | `scripts/check-state <target-repo>` | checks the target repo's `.router/state.json` against `skills/engineering-router/state.md` |
 | `scripts/selftest` | checks the scripts against a scratch catalog and scratch state files, then runs the Pi adapter tests |
+| `scripts/context-threshold` | read-only adapter bridge: prints this router checkout’s context threshold (150000 by default) |
 | `scripts/state <target-repo> step\|workflow\|handoff\|reply\|show ...` | the router's only way to change `.router/state.json` after writing it: applies the change, validates it with `check-state`, keeps the old file when invalid |
 | `scripts/record <target-repo> [--findings f] [--checklist p,a[,ok,ko]] [--pr n] ...` | composes the run record from the state and the findings, and writes it into the PR body |
 | `scripts/stats [--repo <owner/name>] [--limit <n>] [--json]` | adds up the run records in a repo's PRs (via `gh`): per review and model, per skill, per severity, checklists, tokens |
@@ -36,3 +37,9 @@ For working on the router itself or its catalog. Install and use: the [README](.
 Scripts need Node 22.18+; `scripts/setup` installs their only dependency (`yaml`).
 
 Adding a collection: [adding-a-source.md](adding-a-source.md).
+
+## Context preference
+
+In `config/preferences.yaml` under `preferences`, `context_threshold` is an integer >= 0, default **150000** tokens; **0** disables context questions. Validation rejects negative, fractional, non-finite and non-numeric values. Missing, invalid or unreadable runtime settings fall back to the default.
+
+Claude Code and Pi add `context: <tokens> of <window> window, threshold <threshold>` only after a successful, foreground `scripts/state <target repo> step <n|id> done` command, at or above the threshold with known tokens/window. Run that command separately: shell batches/chains are deliberately left unannotated. Quoted paths, a `node` prefix and state flags are supported. No adapter means no measurement. The router asks before the next step and repeats at later boundaries; the recommendation and handoff flow are described in [how-it-works.md](how-it-works.md#context-at-a-step-boundary).
