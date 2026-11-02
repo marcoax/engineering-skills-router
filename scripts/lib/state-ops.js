@@ -21,8 +21,14 @@ function stepIndex(state, ref) {
   return i;
 }
 
+const CLOSED = ['done', 'skipped', 'failed'];
+
 // Sets a step's status (and outcome, model, effort when given). A step that covers others
-// carries them along: running starts them, done or failed closes the ones still open.
+// carries them along: running starts them, done or failed closes the ones still open. A
+// carried step gets the covering step's model and effort: when it starts, if it has no
+// model yet; when it is closed by the covering step, always. A covered step with its own
+// agent record is closed on its own (before or after), so the covering step leaves it alone
+// or is overwritten by it.
 function setStep(state, ref, status, opts = {}) {
   if (!STEP_STATUSES.includes(status)) fail(`step status must be one of ${STEP_STATUSES.join(', ')}`);
   const s = clone(state);
@@ -34,14 +40,23 @@ function setStep(state, ref, status, opts = {}) {
   else if (['pending', 'running', 'waiting'].includes(status)) step.outcome = null;
   if (opts.model !== undefined) step.model = opts.model || null;
   if (opts.effort !== undefined) step.effort = opts.effort || null;
-  if (['done', 'skipped', 'failed'].includes(status) && !(step.outcome ?? '').trim()) {
+  if (CLOSED.includes(status) && !(step.outcome ?? '').trim()) {
     fail(`step ${step.id}: an outcome is required when it is ${status} (--outcome "...")`);
   }
-  for (const covered of s.steps.filter((c) => c.covered_by === step.id)) {
-    if (status === 'running' && covered.status === 'pending') covered.status = 'running';
-    if ((status === 'done' || status === 'failed') && !['done', 'skipped', 'failed'].includes(covered.status)) {
+  const takeStepModel = (covered) => {
+    covered.model = step.model ?? null;
+    covered.effort = step.effort ?? null;
+  };
+  const closesCovered = status === 'done' || status === 'failed';
+  for (const covered of s.steps.filter((c) => c.covered_by === step.id && !CLOSED.includes(c.status))) {
+    if (status === 'running') {
+      if (covered.status === 'pending') covered.status = 'running';
+      if (covered.model == null) takeStepModel(covered);
+    }
+    if (closesCovered) {
       covered.status = status;
       covered.outcome = covered.outcome ?? `ran inside ${step.id}`;
+      takeStepModel(covered);
     }
   }
   // A step that runs or waits sets the workflow's status (unless the user is still choosing).

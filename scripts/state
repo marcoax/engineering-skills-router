@@ -3,15 +3,17 @@
 // The router's only way to change `.router/state.json` after writing it the first time.
 // Every change is validated with scripts/check-state; an invalid one is not kept.
 //
-//   step <n|id> <status> [--outcome "..."] [--model provider/model-id] [--effort low|medium|high]
+//   step <n|id> <status> [--outcome "..."] [--model <model ID>] [--effort low|medium|high]
 //        pending | running | waiting | done | skipped | failed; done, skipped and failed need
-//        an outcome. A step that covers others carries them: running starts them, done or
-//        failed closes those still open. A running or waiting step sets the workflow's status.
+//        an outcome. A step that covers others carries them: running starts them and gives
+//        those still open without a model its model and effort; done or failed closes those
+//        still open with its model and effort. A running or waiting step sets the workflow's
+//        status.
 //   workflow <status>        selecting | running | waiting | done | paused | stopped
 //   handoff issue <n> <url> | spec <path> | ticket <n> <url> | branch <name> | base <sha|HEAD> | pr <n> <url>
 //   reply <reply>            a selection reply: go, 2b, 5on, 5off, stop, pause, resume.
 //                            edit and full exit 2: recompose the workflow (SKILL.md §2-§4).
-//   show                     the workflow, one line per step
+//   show                     the workflow, one line per step, with the step model when set
 const fs = require('node:fs');
 const path = require('node:path');
 const { spawnSync } = require('node:child_process');
@@ -48,7 +50,8 @@ if (command === 'show') {
   console.log(`${state.task} · ${state.status}${state.path ? ` · ${state.path}` : ''}`);
   state.steps.forEach((s, i) => {
     const inside = s.covered_by ? ` inside ${s.covered_by}` : '';
-    console.log(`${mark[s.status] ?? '?'} ${i + 1}. ${s.id}  ${s.skill ?? '(router)'}${inside}${s.outcome ? ` → ${s.outcome}` : ''}`);
+    const model = s.model ? `  on ${s.model}${s.effort ? ` · effort ${s.effort}` : ''}` : '';
+    console.log(`${mark[s.status] ?? '?'} ${i + 1}. ${s.id}  ${s.skill ?? '(router)'}${inside}${model}${s.outcome ? ` → ${s.outcome}` : ''}`);
   });
   process.exit(0);
 }

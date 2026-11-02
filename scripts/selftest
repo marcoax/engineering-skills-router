@@ -452,7 +452,7 @@ expectState('rules from the prose', variant((s) => {
   s.steps[1].outcome = null;
   s.steps[2].covered_by = 'nowhere';
   s.steps[2].skill = 'code-review';
-  s.steps[2].model = 'opus';
+  s.steps[2].model = 'claude opus';
 }),
 'updated_at: must be ISO-8601 UTC (e.g. 2026-10-17T09:42:00Z), got "2026-10-17 09:42"',
 'steps[0].alternatives: at most two, got 3',
@@ -461,7 +461,7 @@ expectState('rules from the prose', variant((s) => {
 'steps[1].outcome: required when status is done',
 'steps[2].covered_by: no step with id "nowhere"',
 "steps[2].skill: must be 'source/name', got \"code-review\"",
-"steps[2].model: must be 'provider/model-id', got \"opus\"");
+"steps[2].model: must be 'model ID without spaces', got \"claude opus\"");
 expectState('impossible date', variant((s) => { s.updated_at = '2026-02-30T09:00:00Z'; }),
   'updated_at: must be ISO-8601 UTC (e.g. 2026-10-17T09:42:00Z), got "2026-02-30T09:00:00Z"');
 expectState('alternatives', variant((s) => {
@@ -531,13 +531,41 @@ expectStateOk('unknown fields', variant((s) => { s.extra = 1; s.steps[0].extra =
   if (parsed.kind !== 'ok') fail(`run-record.md example does not parse: ${parsed.kind}`);
   const t = aggregate([parsed.record, parsed.record]);
   const r2 = t.reviewers['review-2 openai-codex/gpt-6-sol:high'];
-  const r1 = t.reviewers['review-1 session:claude-opus-5-5'];
+  const r1 = t.reviewers['review-1 claude-opus-5-5'];
   if (t.paths.full?.runs !== 2 || t.paths.full.serious !== 2 || t.checklist.points !== 18 || t.checklist.failed !== 2 || t.runs !== 2 || r2?.runs !== 2 || r2.found !== 4 || r2.only !== 2 || r2.fixed !== 4 || r1?.declined !== 2 || r1.serious !== 2) {
     fail(`run record totals: ${JSON.stringify(t)}`);
   }
+  // A record from before the step model contract (model null on a step that ran) counts
+  // toward the same reviewer as one that names the session's model.
+  const recordWith = (model, status = 'done') => parseRecord(`<!-- engineering-router:run ${JSON.stringify({
+    version: 1, session_model: 'claude-opus-5-5', path: 'full', checklist: null, usage: { tokens: null, cost_usd: null },
+    steps: [{ id: 'review-1', skill: 'mattpocock/code-review', model, effort: null, status, tokens: null }],
+    findings: [{ title: 'x', severity: 'low', found_by: ['review-1'], decision: 'fixed' }],
+  })} -->`).record;
+  const mixed = aggregate([recordWith(null), recordWith('claude-opus-5-5')]);
+  const same = mixed.reviewers['review-1 claude-opus-5-5'];
+  if (Object.keys(mixed.reviewers).length !== 1 || same?.runs !== 2 || same.found !== 2) fail(`old and new records should share a reviewer: ${JSON.stringify(mixed.reviewers)}`);
+  // A step that did not run never reads as the session's model.
+  const notRun = aggregate([recordWith(null, 'skipped')]).reviewers;
+  if (Object.keys(notRun).join() !== 'review-1 unknown') fail(`a step that did not run should not count as session_model: ${JSON.stringify(notRun)}`);
   if (parseRecord('no record').kind !== 'none' || parseRecord('<!-- engineering-router:run {"version":2} -->').kind !== 'version') {
     fail('run records: absent or newer records are not told apart');
   }
+}
+
+// setStep: a covered step takes its covering step's step model; one with its own agent record
+// keeps it, whichever side of the covering step's close it is recorded on.
+{
+  const { setStep } = require(path.join(ROOT, 'scripts/lib/state-ops'));
+  const started = setStep(variant((s) => { s.steps[3].status = 'waiting'; s.steps[3].model = null; }), 'implementation', 'running', { model: 'claude-opus-5-5', effort: 'medium' });
+  if (started.steps[3].model !== 'claude-opus-5-5' || started.steps[3].effort !== 'medium') fail(`a covered step that is open but not pending should take its covering step's model when it starts: ${JSON.stringify(started.steps[3])}`);
+  // Own agent record names the model the covering step started on; recorded after the close.
+  const covering = setStep(started, 'implementation', 'done', { outcome: 'Built', model: 'claude-sonnet-5-5', effort: 'high' });
+  const after = setStep(covering, 'review-1', 'done', { outcome: 'Reviewed', model: 'claude-opus-5-5', effort: 'low' });
+  if (after.steps[3].model !== 'claude-opus-5-5' || after.steps[3].effort !== 'low') fail(`a covered step's own agent record, recorded after its covering step closed, should stick: ${JSON.stringify(after.steps[3])}`);
+  // Recorded before the close: the closed covered step is left alone.
+  const before = setStep(setStep(started, 'review-1', 'done', { outcome: 'Reviewed', model: 'claude-opus-5-5', effort: 'low' }), 'implementation', 'done', { outcome: 'Built', model: 'claude-sonnet-5-5', effort: 'high' });
+  if (before.steps[3].model !== 'claude-opus-5-5' || before.steps[3].effort !== 'low') fail(`a covered step closed with its own agent record should keep it when its covering step closes: ${JSON.stringify(before.steps[3])}`);
 }
 
 // scripts/state: each change is applied and validated; an invalid one leaves the file as it was.
@@ -556,9 +584,19 @@ expectStateOk('unknown fields', variant((s) => { s.extra = 1; s.steps[0].extra =
   const st = (...a) => run('state', repo, ...a);
   const expectOk = (label, r) => { if (!r.ok) fail(`scripts/state ${label}\n${r.out}`); };
 
-  expectOk('step done', st('step', 'implementation', 'done', '--outcome', 'Built'));
+  // A step that ran records its step model as the source names it, bare IDs included.
+  expectOk('step running with a bare model ID', st('step', 'implementation', 'running', '--model', 'claude-opus-5-5'));
+  if (read().steps[3].model !== 'claude-opus-5-5') fail(`a covered step should take its covering step's model when it starts: ${JSON.stringify(read().steps[3])}`);
+  // Closing from an agent record overwrites the model; the covered step follows it.
+  expectOk('step done', st('step', 'implementation', 'done', '--outcome', 'Built', '--model', 'claude-sonnet-5-5', '--effort', 'high'));
   let s = read();
   if (s.steps[3].status !== 'done' || s.steps[3].outcome !== 'ran inside implementation') fail(`a covering step should close its covered step: ${JSON.stringify(s.steps[3])}`);
+  if (s.steps[3].model !== 'claude-sonnet-5-5' || s.steps[3].effort !== 'high') fail(`a covered step should take its covering step's model and effort: ${JSON.stringify(s.steps[3])}`);
+  // show: a step with a model says what it ran on; a step without one gets nothing extra.
+  const shown = st('show').out.split('\n');
+  if (!shown.includes('✓ 3. implementation  mattpocock/implement  on claude-sonnet-5-5 · effort high → Built')) fail(`show should print the step model and effort\n${shown.join('\n')}`);
+  if (!shown.includes('✓ 4. review-1  mattpocock/code-review inside implementation  on claude-sonnet-5-5 · effort high → ran inside implementation')) fail(`show should print a covered step's model\n${shown.join('\n')}`);
+  if (!shown.includes('– 5. review-2  (router) → off (optional)')) fail(`show should print nothing extra for a step without a model\n${shown.join('\n')}`);
   expectOk('step pending', st('step', 'review-2', 'pending'));
   if (read().steps[4].outcome !== null) fail('an open step keeps no outcome');
   const kept = fs.readFileSync(stateFile, 'utf8');

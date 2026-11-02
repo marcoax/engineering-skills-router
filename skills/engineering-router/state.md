@@ -33,7 +33,7 @@ The router writes this file in the **target repo** during a workflow so that ada
       ],
       "confirm": true,
       "covered_by": null,
-      "model": null,
+      "model": "claude-opus-5-5",
       "effort": null,
       "status": "done",
       "outcome": "Published #42"
@@ -47,7 +47,7 @@ The router writes this file in the **target repo** during a workflow so that ada
       "alternatives": [],
       "confirm": false,
       "covered_by": null,
-      "model": null,
+      "model": "claude-opus-5-5",
       "effort": null,
       "status": "done",
       "outcome": "On 42-csv-export"
@@ -61,7 +61,7 @@ The router writes this file in the **target repo** during a workflow so that ada
       "alternatives": [],
       "confirm": true,
       "covered_by": null,
-      "model": null,
+      "model": "claude-bridge/claude-opus-5-5",
       "effort": null,
       "status": "running",
       "outcome": null
@@ -132,8 +132,8 @@ Workflow `status`:
 | `confirm` | boolean | `true` when the router pauses for the user before this step (outward-facing action or start of implementation). |
 | `optional` (optional) | boolean | `true` when the user may switch the step on and off during selection (review 2, comparison, independent-review, verification). An optional step that is off is `skipped` with outcome `off (optional)`; switching it on sets `pending`. |
 | `covered_by` | string \| null | `id` of the step whose skill runs this one internally (e.g. review 1 inside implementation). |
-| `model` | string \| null | `provider/model-id` when the step runs on a model other than the session's (review 2, or a per-phase `model` preference). `null` for a review 2 the user chose to run on the session's model because the other family is unreachable. Recorded as `config/preferences.yaml` names it, also where the subagent tool takes only an alias. |
-| `effort` (optional) | `"low"` \| `"medium"` \| `"high"` \| null | Effort passed to the step's subagent or tool; `null` for the default. |
+| `model` | string \| null | The **step model**: the model the step actually ran on, for every step that ran (`running`, `waiting`, `done`, `failed`, or `skipped` after running). Precedence: agent record, then the model passed to the step's subagent (or `review_other_family`'s backend), then the session's model; full rules in SKILL.md §6, **Step model**. Recorded as the source names it (`claude-bridge/claude-opus-5-5` and `claude-opus-5-5` may both appear), no spaces. `null` only for a step that did not run. |
+| `effort` (optional) | `"low"` \| `"medium"` \| `"high"` \| null | The step's effort, from the agent record or the one passed to the step (SKILL.md §6, **Step model**); `null` when neither names one (the harness default). Never taken from the session. |
 | `status` | string | Step status, see below. |
 | `outcome` | string \| null | One-line result once the step ends. |
 
