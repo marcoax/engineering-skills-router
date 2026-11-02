@@ -63,7 +63,7 @@ At the pull request (§6) the router appends one **run record** to the PR body: 
 |---|---|---|
 | `id` | string | As in the state file. |
 | `skill` | string \| null | Catalog id that ran, after any swap; `null` for a router step. |
-| `model` | string \| null | The step model: what the step actually ran on, for every step that ran, Precedence: agent record, then the model passed to its subagent (or `review_other_family`'s backend, e.g. `openai-codex/gpt-6-sol`), then `session_model`; full rules in SKILL.md §6, **Step model**. As the source names it: IDs are not normalized, so `claude-bridge/claude-opus-5-5` and `claude-opus-5-5` count as different models. `null` only for a step that did not run. |
+| `model` | string \| null | The step model: what the step actually ran on, for every step that ran, Precedence: agent record, then the model passed to its subagent (or `review_other_family`'s backend, e.g. `openai-codex/gpt-6-sol`), then `session_model`; full rules in [models.md](models.md). As the source names it: IDs are not normalized, so `claude-bridge/claude-opus-5-5` and `claude-opus-5-5` count as different models. `null` only for a step that did not run. |
 | `effort` | string \| null | `low`, `medium` or `high` from the agent record or the one passed to the step; `null` for the default. |
 | `status` | string | The step's final status: `done`, `skipped`, `failed`. |
 | `tokens` | integer \| null | Tokens the step used, when reported. |

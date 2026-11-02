@@ -2,16 +2,16 @@
 
 Read from SKILL.md when the workflow has a review 2 step: before showing it (§5), and again when review 2 runs (§6).
 
-Review 2 takes the first fitting `ok` `review` candidate other than review 1's skill (§3) and runs on the model family opposite to review 1's (`models` in SKILL.md §6). A different model and different axes are not a duplicate. It is optional and starts off, and switches on and off together with the comparison.
+Review 2 takes the first fitting `ok` `review` candidate other than review 1's skill (§3) and runs on the model family opposite to review 1's ([models.md](models.md)). A different model and different axes are not a duplicate. It is optional and starts off, and switches on and off together with the comparison.
 
 ## Before showing the workflow
 
-Review 1's family is the one it will actually run on (SKILL.md §6, **Models**): in Claude Code that is `claude` even when `primary` is `openai`, so review 2's other family is `openai`. Judge whether this harness can run review 2 on the family opposite to review 1's: it needs subagents that take an explicit model, and a provider configured for that family under the ID in `config/preferences.yaml`. Availability depends on the harness and its configuration, not on the router: Pi with a subagent extension and both providers set up can do it; a harness whose subagents run only its own vendor's models cannot. Decide one of:
+Review 1's family is the one it will actually run on ([models.md](models.md)): in Claude Code that is `claude` even when `primary` is `openai`, so review 2's other family is `openai`. Judge whether this harness can run review 2 on the family opposite to review 1's: it needs subagents that take an explicit model, and a provider configured for that family under the ID in `config/preferences.yaml`. Availability depends on the harness and its configuration, not on the router: Pi with a subagent extension and both providers set up can do it; a harness whose subagents run only its own vendor's models cannot. Decide one of:
 
 - **available**: the harness can start a subagent on that model.
 - **unverified**: it seems able to, but you cannot confirm the provider ID before a subagent starts. Say so; a failed start is handled below.
 - **Claude Code with the panel mod** (`adapters/claude-code`): when the tool `mcp__engineering-router-panel__review_other_family` is listed, review 2 on a non-Claude family runs through it, not through a subagent. Call it with `model` set to `models.openai` and no `prompt`: an `available:` answer makes review 2 **available** and names the backend, model and effort that will run (the person may override them with `/router-models`); an error makes it **unavailable**, with that error as the reason.
-- **unavailable**: say why (no subagents, no model choice, provider not configured), and ask: skip review 2, or run it on the current model. Review 2 starts off, so ask when the user switches it on. Skipped, it goes under `Skipped:` with the comparison, and the rest runs as when they are off. On the current model, it stays a step whose step model, once it runs, is `session_model` (SKILL.md §6, **Step model**).
+- **unavailable**: say why (no subagents, no model choice, provider not configured), and ask: skip review 2, or run it on the current model. Review 2 starts off, so ask when the user switches it on. Skipped, it goes under `Skipped:` with the comparison, and the rest runs as when they are off. On the current model, it stays a step whose step model, once it runs, is `session_model` ([models.md](models.md)).
 
 Show it as `Review 2: <available | unverified | unavailable>: <one-line reason or limitation>` in the workflow (§5).
 

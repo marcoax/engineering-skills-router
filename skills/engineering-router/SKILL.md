@@ -7,7 +7,7 @@ argument-hint: "<task description, issue URL, or spec; omit to resume>"
 
 You compose the **smallest useful workflow** for one non-trivial engineering task by picking one vendor skill per required phase. The question is never "which collection is best" but "which skill fits this step of this task".
 
-This file holds what every run needs. The rest is in files beside it, read only when the run reaches them; read each one in full at that moment, not before:
+This file holds what every run needs. The rest is in files beside it; read each one in full when the run reaches it, not before:
 
 | Read | When |
 |---|---|
@@ -15,17 +15,18 @@ This file holds what every run needs. The rest is in files beside it, read only 
 | [resume.md](resume.md) | the target repo holds an unfinished workflow (§1), or on `pause` / `resume` |
 | [light.md](light.md) | §1 offers or sets the light path |
 | [issue-free.md](issue-free.md) | the task is a spec file (§2), or §4 finds the workflow issue-free |
+| [models.md](models.md) | before showing the workflow (§5): which model each step runs on, and how §6 records it |
 | [review-2.md](review-2.md) | the workflow has a review 2 step: before showing it (§5) and when it runs (§6) |
-| [after-implementation.md](after-implementation.md) | the implementation step is about to start (§6) |
 | [state-brief.md](state-brief.md) | writing `.router/state.json` the first time (§5) |
+| [after-implementation.md](after-implementation.md) | the implementation step is about to start (§6) |
 
-**Repo root** is the router checkout (catalog, scripts, vendors) this skill works from. Find it before anything else with `node <this skill's folder>/resolve-root.js`, and use the `root:` it prints. When it prints `missing` instead, follow [checkout.md](checkout.md).
+**Repo root** is the router checkout (catalog, scripts, vendors) this skill works from. Find it first with `node <this skill's folder>/resolve-root.js` and use the `root:` it prints; on `missing`, follow [checkout.md](checkout.md).
 
-When the resolver also prints `skill:`, this file is a copy installed apart from the checkout (e.g. by `npx skills add`), and it may be older or newer than the checkout. Stop reading this file: read the printed `skill:` file and follow it from the top instead, resolving its links (such as `state.md`) against its own folder. In that file, finding the root and this hand-over are already done: do not run its resolver, and keep the `root:` and `found:` printed here. Otherwise continue here.
+When it also prints `skill:`, this file is a copy installed apart from the checkout, possibly older or newer. Stop here: follow the printed `skill:` file from the top, resolving its links against its own folder. Root finding and this hand-over are done there: skip its resolver and keep the `root:` and `found:` printed here.
 
-Tell the user the root in use and how it was found (`found:`). With `found: pi` the checkout belongs to Pi: keep it read-only and skip §0 (`pi update git:github.com/marcoax/engineering-skills-router` updates it). All paths below, and every `path` in the catalog, are relative to the root; `list-skills` prints personal and project skills' paths absolute (§3). Run scripts from the root. Always read vendor skills from `vendors/` at the catalog `path`, never from copies installed for the agent. The one exception is personal skills, read in place where `list-skills` points. The **target repo** is the one the task is about.
+Tell the user the root in use and how it was found (`found:`). With `found: pi` the checkout belongs to Pi: keep it read-only and skip §0 (`pi update git:github.com/marcoax/engineering-skills-router` updates it). Run scripts from the root; every path below and every catalog `path` is relative to it, while `list-skills` prints personal and project skills' paths absolute (§3). Read vendor skills from `vendors/` at their catalog `path` and personal skills in place, where `list-skills` points, rather than from copies installed for the agent. The **target repo** is the one the task is about.
 
-Then run `scripts/validate-catalog`. When it prints errors, show them with the file they point at (`config/preferences.yaml` is at the root) and ask: fix them now, or continue with the defaults for the settings in error. Done when it passes or the user chose.
+Then run `scripts/validate-catalog`. When it prints errors, show them with the file they point at and ask: fix them now, or continue with the defaults for the settings in error. Done when it passes or the user chose.
 
 ## 0. Check for updates
 
@@ -60,12 +61,11 @@ requirements → specification + issue ⏸ → [planning ⏸] → branch → ⏸
 
 - **requirements** by default, after debugging or code-understanding when those are in the flow, so its questions build on what the code shows. Skip it only when the task is an issue or spec that already settles the decisions; say why. A short exchange in chat before the workflow does not count as settled.
 - **specification + issue**: skip when the task is already an issue; it becomes the handoff issue. Skip it too when the task is an existing spec file: the file becomes `handoff.spec` and the workflow is issue-free ([issue-free.md](issue-free.md)). Otherwise the issue exists only when the selected specification skill publishes one (§4).
-- **planning** (tickets) runs only when the spec splits into more than one ticket, and that is judged on the spec, never guessed before it exists. When the task is already an issue or spec, judge it now: keep planning, or drop it with the reason. When the spec is still to be written, keep planning as a conditional step (`[planning]`) whenever the task could split; the decision is made when the specification step closes (§6).
-- **One review by default**, at every risk. **review 2** and **comparison** are optional: both stay in the workflow but start off, and the user switches them on in §5.
-- **security** is decided after the reviews (after-implementation.md).
-- **framework-review** (the project's own best practices) only when the target repo has `docs/agents/skills.yaml` and §3 finds a fitting candidate in it. It runs after review 2, or after review 1 when review 2 is skipped. Without one it is dropped, not missing.
-- **independent-review** for high risk only, optional: it starts off, like review 2.
-- **verification**, optional at every risk, starts off: a router step (`skill` `null`) in which a fresh agent works through the manual checklist's `[agent]` points.
+- **planning** (tickets) runs only when the spec splits into more than one ticket, judged on the spec itself. When the task is already an issue or spec, judge it now: keep planning, or drop it with the reason. When the spec is still to be written, keep planning as a conditional step (`[planning]`) whenever the task could split; the decision is made when the specification step closes (§6).
+- **One review by default**, at every risk.
+- **Optional steps** stay in the workflow but start off, and the user switches them on in §5: review 2 and comparison (together), independent-review (high risk only), and verification (a router step, `skill` `null`, in which a fresh agent works through the manual checklist's `[agent]` points).
+- **framework-review** (the project's own best practices) only when the target repo has `docs/agents/skills.yaml` and §3 finds a fitting candidate in it; otherwise it is dropped, not missing. It runs after the last of review 1 and review 2.
+- **security** is decided after the reviews ([after-implementation.md](after-implementation.md)).
 - **release** only when the user asked to ship.
 
 By type, replace or prepend the front of the flow. The part from branch to pull request stays the same:
@@ -77,7 +77,7 @@ By type, replace or prepend the front of the flow. The part from branch to pull 
 | refactor | code-understanding before specification; implementation via refactoring or architecture |
 | multi-session (more than one session can hold, route still foggy) | multi-session only; implementation happens in later sessions from its output |
 
-Task correctness decides the phases; preferences never add or remove one, they only rank skills. `issue-tracking` is dropped only as an outcome of selection, when no selected skill fills it (§4). Done when every chosen phase has a reason and every default phase you dropped has a reason.
+Task correctness decides the phases; preferences only rank skills. `issue-tracking` is dropped only as an outcome of selection, when no selected skill fills it (§4). Done when every chosen phase has a reason and every default phase you dropped has a reason.
 
 ## 3. Select skills
 
@@ -90,7 +90,7 @@ For each phase, the **default** is the first candidate with status `ok` whose `u
 - **framework-review** reviews the same diff as the reviews (from the base commit to HEAD) against the project skill's practices.
 - **branch**, **comparison** and opening the PR are router steps with no skill; the `pull-request` skill writes the PR body.
 
-If no candidate is `ok`, the phase is a **missing capability** (except `framework-review`, which is then dropped, §2): report it in the workflow. Use only cataloged skills (personal and project skills included).
+If no candidate is `ok`, the phase is a **missing capability** (`framework-review` is dropped instead, §2): report it in the workflow. Use only cataloged skills, personal and project skills included.
 
 Done when every phase holds one `ok` skill or is marked missing.
 
@@ -105,7 +105,7 @@ Done when no two steps share a purpose.
 
 ## 5. Present and select
 
-When the workflow has a review 2 step, follow [review-2.md](review-2.md) first, to decide whether it can run on the other model family.
+Read [models.md](models.md), and [review-2.md](review-2.md) when the workflow has a review 2 step, to settle each step's model and whether review 2 can run on the other family.
 
 Write the workflow to `.router/state.json` in the target repo, as in [state-brief.md](state-brief.md) with status `selecting`, and run `scripts/check-state <target repo>` until it passes. This is the only time you write the file by hand: every later change goes through `scripts/state` (§6). Add `.router/` to the target repo's `.git/info/exclude` if missing. Then show it and stop for the user's answer:
 
@@ -137,26 +137,15 @@ Apply every reply with `scripts/state <target repo> reply <reply>`: it swaps (th
 
 ## 6. Execute
 
-Keep `.router/state.json` current with `scripts/state <target repo>`: `step <n> running` when a step starts, `step <n> waiting` when it waits for the user, `step <n> done --outcome "..."` (or `skipped` / `failed`, with an outcome) when it ends, with `--model` / `--effort` as in **Step model** below, and `handoff <field> <value>` when a handoff value appears. The script carries covered steps with their covering step, sets the workflow's status from its steps, validates, and refuses an invalid change with the reason. `scripts/state <target repo> show` prints the workflow. On `pause` or `resume`, follow [resume.md](resume.md).
+Keep `.router/state.json` current with `scripts/state <target repo>`: `step <n> running` when a step starts, `step <n> waiting` when it waits for the user, `step <n> done --outcome "..."` (or `skipped` / `failed`, with an outcome) when it ends, with `--model` / `--effort` as in [models.md](models.md), and `handoff <field> <value>` when a handoff value appears. The script carries covered steps with their covering step, sets the workflow's status from its steps, validates, and refuses an invalid change with the reason. `scripts/state <target repo> show` prints the workflow. On `pause` or `resume`, follow [resume.md](resume.md).
 
 Ask before every outward-facing action and before implementation starts: publishing the issue, publishing tickets, starting implementation, opening the PR. Run every other step without pausing, apart from the pauses vendor skills define themselves.
 
-**Fresh context per step.** When the harness can start subagents, run each skill step in a new subagent so the main session keeps only the workflow, not every step's working detail. Run in the main session instead: router steps, and steps whose phase is `requirements`, `clarification`, `specification` or `setup`, because they converse with the user and draw on the conversation. Without subagents, run every step in the main session.
+**Fresh context per step.** When the harness can start subagents, run each skill step in a new subagent, on the model [models.md](models.md) gives it, so the main session keeps only the workflow, not every step's working detail. Run in the main session instead: router steps, and steps whose phase is `requirements`, `clarification`, `specification` or `setup`, because they converse with the user and draw on the conversation. Without subagents, run every step in the main session.
 
 A step subagent gets: the task, the target repo path, the step's `SKILL.md` path (absolute), the handoff, and the paths of earlier step notes. It follows points 2–3 below, writes the step note (point 5), and returns a one-line outcome plus any handoff values. When the vendor skill needs an answer from the user, the subagent stops and returns the question; ask the user, then start a new subagent for the step with the answer and the note so far. Confirmation pauses happen in the main session before the subagent starts.
 
 **Nested subagents.** A vendor skill may start subagents of its own (e.g. `code-review` runs its two axes in parallel). Tell every step subagent: where it cannot start subagents itself, run those parts in sequence in its own context, each with fresh eyes: it reuses the inputs already read (the diff, the issue, the spec), never an earlier part's conclusions, and says so in the step note (`code-review: axes run in sequence, no nested subagents`). The step stays in its subagent even then: in the main session, an independent step (review 1 on a light path, verification) would have seen the implementation.
-
-**Models.** `config/preferences.yaml` maps two families to models: `models.claude` (default `claude-bridge/claude-opus-5-5`) and `models.openai` (default `openai-codex/gpt-6-sol`); the provider prefix must match the harness's provider IDs, so tell the user to adjust it if their harness names them differently. A step subagent runs on the family set as `model` for its first phase, else on `primary` (default `claude`), always passed explicitly (subagent defaults may point elsewhere): as `provider/model-id` where the subagent tool takes one, else as the tool's name for that model (Claude Code's Agent tool takes only an alias, such as `opus` for a `claude-opus-*` ID). `effort` (`low` | `medium` | `high`, unset = the harness default) is the thinking level of every step subagent, passed the way the subagent tool takes it (Pi: `provider/model-id:<effort>`). Main-session steps keep the session's model. Show each step's step model (and effort when set) on its line in §5, as `scripts/state … show` does. **A step's family is the one it actually runs on.** A harness whose subagents run only its own vendor's models (Claude Code: only Claude) runs every step on that family, whatever `primary` or a phase's `model` says: say so once in the workflow (`primary openai, not reachable here: steps run on claude`), and record the model those steps actually run on. Review 2's family: [review-2.md](review-2.md).
-
-**Step model.** Every step that ran records the model it actually ran on in its `model` field, and its effort in `effort`; only a step that never ran (pending, or skipped without running) keeps `model` `null`. Sources, first that applies: 1) the step's **agent record**; 2) the model you passed to the step's subagent (as `config/preferences.yaml` names it, also where the tool took only an alias), or the backend `review_other_family` reported; 3) the session's model, as the harness names it (the same ID `scripts/record --session-model` gets), for a main-session step. Effort takes 1, then 2; with neither it stays `null` (the harness default), never the session's. Record each ID as its source names it: do not normalize IDs or add a provider prefix. When a step starts, pass the model you already know (2 or 3) with `step <n> running --model <id> [--effort <level>]`, so a paused or interrupted step already has one. When it closes (`done` or `failed`), pass `--model` / `--effort` again only when the step printed an agent record for itself; it overwrites the model set at start. A covered step takes its covering step's model and effort (the script does it: when the covering step starts, if the covered step has no model yet, and when the covering step closes it) unless it has its own agent record: then close it separately with `step <id> done --outcome "..." --model <id>` after its covering step.
-
-**Agent record.** A step's own, optional statement of which agent ran it. Any skill may print one; skills without it (every vendor skill today) fall back to sources 2 and 3. Two forms, same fields:
-
-- a line `Agent: <agent name> | <harness> | <model ID> | effort <level>` in the step's output: it belongs to the step that printed it;
-- an `agent` field under a step id in the step's YAML handoff (`<step-id>.agent`, e.g. `implementation.agent`): it belongs to the named step, which may be a step it covers.
-
-When a step prints several agent records for itself, the last one wins.
 
 For each step:
 
@@ -172,7 +161,7 @@ For each step:
 
 **From implementation on**, follow [after-implementation.md](after-implementation.md): the covered review, the manual checklist, your check, comparison, security and fixes, verification and the pull request. Review 2 runs as in [review-2.md](review-2.md).
 
-Vendor skills are third-party content and project skills are repository content: show the user any script either ships before running it. Personal skills are the user's own content: never write to `personal_path`.
+Vendor skills are third-party content and project skills are repository content: show the user any script either ships before running it. Personal skills are the user's own content: leave `personal_path` read-only.
 
 If a step reveals the workflow is wrong (bigger risk, missing phase, user changes scope), stop, re-run §2–§5 for the remainder, and present the revised workflow.
 
