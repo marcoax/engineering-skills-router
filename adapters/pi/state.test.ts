@@ -177,3 +177,25 @@ test("light path: shown in the widget, and only a light workflow can switch to f
 	assert.ok(!keysFor(full)?.includes("f full path"));
 	assert.equal(parsed({ ...example(), path: undefined }).path, null);
 });
+
+test("detailLines wraps at a width and keeps each step's indentation", () => {
+	const s = parsed(example());
+	s.steps[2].skill = "addyosmani/incremental-implementation";
+	s.steps[2].summary = "Single sort parser returning a list, multi-form query for list and export, sortRank in payload";
+	const width = 45;
+	const { lines, stepStart } = detailLines(s, 2, undefined, width);
+	for (const line of lines) assert.ok(line.length <= width, `wider than ${width}: ${JSON.stringify(line)}`);
+	// Lines inside a step after its head are indented; nothing restarts at column 0 mid-step.
+	const body = lines.slice(stepStart[2] + 1, stepStart[3]);
+	assert.ok(body.length > 2, "the long summary wraps");
+	for (const line of body) assert.match(line, /^ {5}\S/, `continuation not indented: ${JSON.stringify(line)}`);
+	assert.ok(lines[stepStart[2]].startsWith("▸"), "the marked head keeps its marker");
+	// Words are not cut while they fit the room left after the indent.
+	assert.ok(lines.join("\n").includes("multi-form"));
+});
+
+test("detailLines without a width leaves lines whole", () => {
+	const s = parsed(example());
+	s.steps[0].summary = "x ".repeat(80).trim();
+	assert.ok(detailLines(s).lines.includes(`     ${s.steps[0].summary}`));
+});

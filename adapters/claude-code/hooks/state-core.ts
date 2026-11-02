@@ -187,41 +187,81 @@ export function replyFor(state: State, choice: Choice): string | undefined {
 
 export type Detail = { lines: string[]; stepStart: number[] };
 
+// Breaks `line` into pieces no wider than `width`, at spaces where it can; the pieces after
+// the first start with `indent`. A word longer than the room is cut.
+export function wrapLine(line: string, width: number, indent: string): string[] {
+	if (!Number.isFinite(width) || line.length <= width) return [line];
+	const out: string[] = [];
+	let cur = line.match(/^\s*/)![0];
+	let isFresh = true; // no word on `cur` yet
+	for (let word of line.trimStart().split(/ +/).filter(Boolean)) {
+		if (!isFresh && cur.length + 1 + word.length > width) {
+			out.push(cur);
+			cur = indent;
+			isFresh = true;
+		}
+		while (cur.length + word.length > width) {
+			const take = Math.max(1, width - cur.length);
+			out.push(cur + word.slice(0, take));
+			word = word.slice(take);
+			cur = indent;
+		}
+		if (!word) continue;
+		cur += (isFresh ? "" : " ") + word;
+		isFresh = false;
+	}
+	if (!isFresh) out.push(cur);
+	return out;
+}
+
+const STEP_INDENT = "     ";
+
 // Overlay body: header, handoff (short, so it stays in view), every step with its details. `stepStart[i]` is the
-// line where step i begins, for scrolling. `marked` gets a selection marker.
-export function detailLines(state: State, marked = -1, paint: Paint = plain): Detail {
-	const lines = [
-		paint("accent", state.task || "(no task)"),
-		paint("muted", [state.type, state.risk, state.path ? `${state.path} path` : "", state.properties.join(", "), state.status].filter(Boolean).join(" · ")),
-		"",
-	];
+// line where step i begins, for scrolling. `marked` gets a selection marker. With a `width`, lines wrap to it and
+// keep their indentation; wrap only with the plain paint, as color codes would count as width.
+export function detailLines(state: State, marked = -1, paint: Paint = plain, width = Infinity): Detail {
+	const lines: string[] = [];
+	const add = (text: string, style?: Style, indent = "  ") => {
+		for (const piece of wrapLine(text, width, indent)) lines.push(style ? paint(style, piece) : piece);
+	};
+	const detail = (text: string, style?: Style) => add(`${STEP_INDENT}${text}`, style, STEP_INDENT);
+	add(state.task || "(no task)", "accent");
+	add([state.type, state.risk, state.path ? `${state.path} path` : "", state.properties.join(", "), state.status].filter(Boolean).join(" · "), "muted");
+	lines.push("");
 	const h = state.handoff;
 	const refText = (r: Ref | null) => (r ? `#${r.number} ${r.url}`.trim() : "—");
 	// An issue-free workflow shows its spec file instead of an empty issue line.
 	const issueFree = h.issue === null && h.spec !== null;
-	lines.push(
-		paint("accent", "Handoff"),
-		...(issueFree ? [] : [`  issue    ${refText(h.issue)}`]),
-		...(h.spec === null ? [] : [`  spec     ${h.spec}`]),
-		`  tickets  ${h.tickets.length ? h.tickets.map((t) => `#${t.number}`).join(", ") : "—"}`,
-		`  branch   ${h.branch ?? "—"}`,
-		`  base     ${h.base_commit ?? "—"}`,
-		`  PR       ${refText(h.pr)}`,
-		"",
-	);
+	const field = (text: string) => add(text, undefined, "           ");
+	add("Handoff", "accent");
+	if (!issueFree) field(`  issue    ${refText(h.issue)}`);
+	if (h.spec !== null) field(`  spec     ${h.spec}`);
+	field(`  tickets  ${h.tickets.length ? h.tickets.map((t) => `#${t.number}`).join(", ") : "—"}`);
+	field(`  branch   ${h.branch ?? "—"}`);
+	field(`  base     ${h.base_commit ?? "—"}`);
+	field(`  PR       ${refText(h.pr)}`);
+	lines.push("");
 	const stepStart: number[] = [];
 	state.steps.forEach((s, i) => {
 		stepStart.push(lines.length);
-		const mark = i === marked ? paint("accent", "▸") : " ";
-		const head = `${mark} ${symbol(s.status, paint)} ${i + 1}. ${s.id}  ${skillLabel(s)}${inside(s)}`;
-		lines.push(i === marked ? paint("accent", head) : head);
-		if (s.summary) lines.push(`     ${s.summary}`);
-		if (s.reason) lines.push(paint("muted", `     why: ${s.reason}`));
-		s.alternatives.forEach((a, j) => lines.push(paint("dim", `     ${LETTERS[j]}) ${a.skill}: ${a.reason}`)));
-		if (s.confirm) lines.push(paint("muted", "     asks before starting"));
-		if (s.model) lines.push(paint("muted", `     model: ${s.model}`));
-		if (s.optional) lines.push(paint("muted", "     optional") + (s.outcome ? ` · → ${s.outcome}` : ""));
-		else if (s.outcome) lines.push(`     → ${s.outcome}`);
+		const isMarked = i === marked;
+		if (Number.isFinite(width)) {
+			// Plain: the marker and symbol go in as text so the width counts them.
+			add(`${isMarked ? "▸" : " "} ${symbol(s.status)} ${i + 1}. ${s.id}  ${skillLabel(s)}${inside(s)}`, isMarked ? "accent" : undefined, STEP_INDENT);
+		} else {
+			const mark = isMarked ? paint("accent", "▸") : " ";
+			const head = `${mark} ${symbol(s.status, paint)} ${i + 1}. ${s.id}  ${skillLabel(s)}${inside(s)}`;
+			lines.push(isMarked ? paint("accent", head) : head);
+		}
+		if (s.summary) detail(s.summary);
+		if (s.reason) detail(`why: ${s.reason}`, "muted");
+		s.alternatives.forEach((a, j) => detail(`${LETTERS[j]}) ${a.skill}: ${a.reason}`, "dim"));
+		if (s.confirm) detail("asks before starting", "muted");
+		if (s.model) detail(`model: ${s.model}`, "muted");
+		if (s.optional) {
+			if (Number.isFinite(width)) detail(`optional${s.outcome ? ` · → ${s.outcome}` : ""}`, "muted");
+			else lines.push(paint("muted", `${STEP_INDENT}optional`) + (s.outcome ? ` · → ${s.outcome}` : ""));
+		} else if (s.outcome) detail(`→ ${s.outcome}`);
 	});
 	return { lines, stepStart };
 }
