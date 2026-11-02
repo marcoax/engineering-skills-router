@@ -124,6 +124,54 @@ Update that clone with `git pull && scripts/setup`.
 
 The extension reads `.router/state.json` in the session's repo and shows the steps above the editor. `ctrl+alt+w` (or `/router-panel`, for keyboard layouts where the shortcut arrives as another key) toggles a details panel on the right half. While a workflow is open, the panel takes the keyboard: during the skill selection `↑`/`↓` step, `enter` go, `a`/`b` swap the step's skill, `e` edit; `p` pauses (a running step finishes first); on a paused workflow `r` resumes; `x x` stops; `esc` goes back to the editor. At session start, a stopped workflow, or a done one with no PR or a merged/closed PR (checked with `gh`), is not shown. Choices are sent as chat messages; the extension never writes the state file.
 
+## Quick start: Claude Code from a clone
+
+The whole setup on one machine, from a clone you keep and update with `git pull`. Shell commands run in a terminal; `/…` commands are typed in a Claude Code session.
+
+1. **Clone and set up** (skip the clone if you have one):
+
+   ```sh
+   git clone --recurse-submodules https://github.com/marcoax/engineering-skills-router ~/web/ai/engineering-skills-router
+   cd ~/web/ai/engineering-skills-router
+   scripts/setup
+   [ -f config/preferences.yaml ] || cp config/preferences.example.yaml config/preferences.yaml
+   ```
+
+   The last line creates your preferences only when you have none. In them, `models.openai` picks review 2's backend: `openai-codex/<model>` (Codex) or `opencode/<provider>/<model>`.
+
+2. **Link the skill and point the router at the clone**:
+
+   ```sh
+   ln -s ~/web/ai/engineering-skills-router/skills/engineering-router ~/.claude/skills/engineering-router
+   echo 'export ENGINEERING_ROUTER_HOME=~/web/ai/engineering-skills-router' >> ~/.zshrc && source ~/.zshrc
+   ```
+
+   Check with `ls -la ~/.claude/skills/engineering-router`: it must point into the clone. The skill follows the branch checked out in the clone; stay on `master`.
+
+3. **Install the mod from the clone**, in a Claude Code session:
+
+   ```text
+   /plugin marketplace add ~/web/ai/engineering-skills-router
+   /plugin install engineering-router-panel@engineering-skills-router
+   /reload-plugins
+   ```
+
+   `engineering-skills-router` is the marketplace's name (from `.claude-plugin/marketplace.json`), `engineering-router-panel` the plugin's. `/plugin` shows `1 mod active · engineering-router-panel` when it loaded. Done once; every later session loads it.
+
+4. **Review 2 on OpenAI** (optional): `codex --version`, then `codex login`.
+
+5. **Use it**, in a session opened on the target repo:
+
+   ```text
+   /router-models                       pick review 2's backend, model and effort (optional; kept across sessions)
+   /engineering-router <issue or task>  classify, show the workflow, wait for go
+   /router-panel                        open the workflow pane and choose with keys
+   ```
+
+   On first run the router prints `root:`: it must be the clone.
+
+**Updating**: `git pull && git submodule update --init && scripts/setup` in the clone, then `/plugin marketplace update engineering-skills-router` and `/reload-plugins` in Claude Code. **Trying a change to the mod** for one session, without installing: `claude --plugin-dir ~/web/ai/engineering-skills-router/adapters/claude-code` (not together with the installed one). If something does not show, `claude --debug` logs why a mod hook was skipped.
+
 ## Install (Claude Code mod)
 
 `adapters/claude-code/` is a Claude Code plugin whose mod draws the workflow: a band above the prompt (the same lines as the Pi widget) and a pane with the skill selection. It reads `.router/state.json` of the session's working directory and never writes it; choices go to the agent as prompts in the router's selection syntax. Needs a Claude Code with mods (CLI, Code tab of the Desktop app or VS Code extension). A mod runs with your permissions: list what it does first with `claude plugin validate adapters/claude-code`.
@@ -136,7 +184,7 @@ The repo is its own marketplace (`.claude-plugin/marketplace.json`) holding this
 
 Then `/router-panel` toggles the pane.
 
-**Review 2 on another family.** Claude Code's subagents run only Claude models, so the mod adds a tool, `review_other_family`, that runs the review through a local CLI, read-only, and streams it into a **Review 2** pane: `openai-codex/<model>` runs `codex exec --sandbox read-only`, `opencode/<provider>/<model>` runs `opencode run --agent plan`. The router calls it when it is listed (SKILL.md §5). `/router-models` opens a pane to pick backend, model and effort; left empty, each is the CLI's own default (`~/.codex/config.toml`, opencode's config). The choice is kept across sessions. New backends are one entry in `adapters/claude-code/hooks/backends.ts`. In the pane the buttons carry hotkeys: `g` go · `j`/`k` next/previous step · `a`/`b` swap skill · `o` on/off an optional step · `e` edit · `p` pause · `r` resume · `x` stop (press twice). The router skill itself is installed as in **Install (any agent)**.
+**Review 2 on another family.** Claude Code's subagents run only Claude models, so the mod adds a tool, `review_other_family`, that runs the review through a local CLI, read-only, and streams it into a **Review 2** pane: `openai-codex/<model>` runs `codex exec --sandbox read-only`, `opencode/<provider>/<model>` runs `opencode run --agent plan`. The router calls it when it is listed (SKILL.md §5). `/router-models` opens a pane to pick backend, model and effort; left empty, each is the CLI's own default (`~/.codex/config.toml`, opencode's config). The choice is kept across sessions. New backends are one entry in `adapters/claude-code/hooks/backends.ts`. In the pane the buttons carry hotkeys: `g` go · `j`/`k` next/previous step · `a`/`b` swap skill · `o` on/off an optional step · `f` full path (light workflow) · `e` edit · `p` pause · `r` resume · `x` stop (press twice). The router skill itself is installed as in **Install (any agent)**.
 
 Differences from the Pi adapter: no `ctrl+alt+w` shortcut (use `/router-panel`), no `gh` check that hides a done workflow with a merged PR, and the state file is looked up in the working directory only, not in the nearest `.git` root. Both adapters share one copy of the state logic, `adapters/claude-code/hooks/state-core.ts` (a mod imports only from its own folder; `adapters/pi/state.ts` re-exports it and adds the file reading). Tests: `claude plugin test adapters/claude-code`.
 
