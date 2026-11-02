@@ -72,6 +72,38 @@ test('the pane lists the steps and go sends "go"', async ($, on) => {
   await ui.unmount()
 })
 
+test('/router-panel asks for a dock wide enough to read', async ($, on) => {
+  seed(selecting, on)
+  const opened: any[] = []
+  on('ui.panes', () => ({ value: [] }))
+  on('ui.open', (_: unknown, e: any) => {
+    opened.push(e)
+    return { value: { isPlaced: true } }
+  })
+
+  await $.command.run({ command: 'router-panel' } as any)
+
+  const pane = opened.find(p => p.id === 'router')
+  expect(pane?.columns).toBeGreaterThanOrEqual(60)
+  expect(pane?.columns).toBeLessThanOrEqual(100)
+  expect(pane?.rows).toBeGreaterThan(0)
+})
+
+test('a narrow pane wraps the steps instead of cutting words', async ($, on) => {
+  const long = {
+    ...selecting,
+    steps: [
+      { ...step('implementation', 'pending'), skill: 'addyosmani/incremental-implementation', summary: 'Single sort parser returning a list, multi-form query for list and export' },
+    ],
+  }
+  seed(long, on)
+  const ui = await $.ui.mount({ ...PANE, props: { ...PANE.props, bodyColumns: 45 }, surface: 'terminal' })
+
+  expect(await ui.find({ type: 'Text', text: /^ {5}Single sort parser/ })).toBeTruthy()
+  expect(await ui.find({ type: 'Text', text: /^ {5}multi-form query/ })).toBeTruthy()
+  await ui.unmount()
+})
+
 test('swap a on the first step sends "1a"', async ($, on) => {
   seed(selecting, on)
   const sent: string[] = []
@@ -110,7 +142,11 @@ const TOOL = 'mcp__engineering-router-panel__review_other_family'
 test('review 2 runs codex read-only and returns its stdout', async ($, on) => {
   seed(null, on)
   const argvs: string[][] = []
-  on('ui.open', () => ({ value: { isPlaced: true } }))
+  const opened: any[] = []
+  on('ui.open', (_: unknown, e: any) => {
+    opened.push(e)
+    return { value: { isPlaced: true } }
+  })
   // The stand-in for the engine: yields the chunks, then answers the result as { value }.
   on('process.spawn', async function* (_: unknown, e: any, _next: unknown) {
     argvs.push([...e.argv])
@@ -131,6 +167,7 @@ test('review 2 runs codex read-only and returns its stdout', async ($, on) => {
   ])
   expect(String(ran.result?.text)).toContain('No blocking findings.')
   expect(ran.isError).toBe(undefined)
+  expect(opened.find(p => p.id === 'review')?.columns).toBeGreaterThanOrEqual(60)
 })
 
 test('the models pane saves the picked backend', async ($, on) => {

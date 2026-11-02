@@ -27,6 +27,10 @@ const MODELS_PANE = 'models'
 const REVIEW_TOOL = 'mcp__engineering-router-panel__review_other_family'
 // What the review pane keeps of a run's output: its tail.
 const KEEP = 200_000
+// The size a pane asks for: docked, a share of the terminal wide enough for skill ids and
+// summaries; inline, enough rows for a few steps. Requests: a size the person set wins.
+const paneColumns = (terminal: number) => Math.min(100, Math.max(60, Math.round(terminal * 0.45)))
+const PANE_ROWS = 24
 
 const review = atom({ plugin: 'engineering-router-panel', key: 'review' } as const, null)
 const choice = atom(
@@ -49,6 +53,8 @@ export const register: Register = on => {
   let last: string | undefined
   let isFirstRead = true
   let timer: { cancel: () => void } | undefined
+  // The terminal's width as the last drawing measured it, for panes a tool opens.
+  let terminalColumns = 80
 
   on('session.start', async ($, e, next) => {
     await $.command.register({
@@ -153,7 +159,12 @@ export const register: Register = on => {
     }
 
     await update($, review, () => ({ model: label, backend: backend.name, status: 'running', text: '' }))
-    void $.ui.open({ id: REVIEW_PANE, title: `Review 2 · ${backend.name}` })
+    void $.ui.open({
+      id: REVIEW_PANE,
+      title: `Review 2 · ${backend.name}`,
+      columns: paneColumns(terminalColumns),
+      rows: PANE_ROWS,
+    })
 
     const setStatus = (status: RouterReview['status']) =>
       update($, review, r => (r ? { ...r, status } : r))
@@ -285,7 +296,7 @@ export const register: Register = on => {
     )
   })
 
-  on('command.run', { command: 'router-panel' }, async $ => {
+  on('command.run', { command: 'router-panel' }, async ($, e) => {
     const open = (await $.ui.panes()).some(p => p.id === PANE)
     if (open) {
       await $.ui.close({ id: PANE })
@@ -294,13 +305,22 @@ export const register: Register = on => {
     if ((await read($, state)) === null) {
       return { text: `No workflow found in ${STATE_FILE} of this directory.` }
     }
-    await $.ui.open({ id: PANE, title: 'Router', focus: true, closeOnEscape: true })
+    if (e.presentation?.columns) terminalColumns = e.presentation.columns
+    await $.ui.open({
+      id: PANE,
+      title: 'Router',
+      focus: true,
+      closeOnEscape: true,
+      columns: paneColumns(terminalColumns),
+      rows: PANE_ROWS,
+    })
     return { text: 'Router pane opened.' }
   })
 
   // The band: the workflow in a few lines, plus where to choose when it waits for you.
   on('ui.render', { component: 'AbovePrompt' }, async ($, e, next) => {
     const s = await read($, state)
+    if (e.viewport?.columns) terminalColumns = e.viewport.columns
     if (s === null || (await read($, isHidden)) || e.props.hasSurvey) return next(e)
 
     const { Box, Text } = $.ui.resolve(e)
@@ -330,7 +350,7 @@ export const register: Register = on => {
     const picked = await read($, selected)
     const isStopArmed = await read($, confirmStop)
     const isChoosing = s.status === 'selecting'
-    const { lines } = detailLines(s, isChoosing ? picked : -1)
+    const { lines } = detailLines(s, isChoosing ? picked : -1, undefined, e.props.bodyColumns || Infinity)
     const room = Math.max(4, (e.viewport?.rows ?? 30) - 6)
     const anchor = Math.max(0, lines.findIndex(l => l.startsWith('▸')))
     const top = isChoosing
