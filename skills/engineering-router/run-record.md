@@ -25,6 +25,7 @@ At the pull request (§6) the router appends one **run record** to the PR body: 
   "type": "feature",
   "risk": "medium",
   "complexity": "medium",
+  "path": "full",
   "steps": [
     { "id": "specification", "skill": "mattpocock/to-spec", "model": null, "effort": null, "status": "done", "tokens": null },
     { "id": "implementation", "skill": "mattpocock/implement", "model": null, "effort": null, "status": "done", "tokens": 182000 },
@@ -49,7 +50,7 @@ At the pull request (§6) the router appends one **run record** to the PR body: 
 |---|---|---|
 | `version` | integer | Format version, `1`. |
 | `router` | `{commit}` | `commit`: short `git rev-parse HEAD` of the router checkout that ran, or `null`. Ties results to a version of this skill and the catalog. |
-| `task`, `type`, `risk`, `complexity` | string \| null | As in `.router/state.json`. |
+| `task`, `type`, `risk`, `complexity`, `path` | string \| null | As in `.router/state.json`. `path` tells whether a light run's review found what a light path should not have missed. |
 | `steps` | Step[] | Every step of the workflow, in order, as it ended. |
 | `session_model` | string \| null | The main session's model, as the harness names it; what a step with `model` `null` ran on. |
 | `findings` | Finding[] | Every finding of the reviews that ran (review 1, review 2, framework-review, security, independent-review), merged: one entry per distinct problem. Empty when no review ran. |

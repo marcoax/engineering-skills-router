@@ -47,9 +47,14 @@ Read the task (fetch it first if it is an issue URL or number). Record, each wit
 
 Inspect the target repo enough to judge brownfield vs greenfield, to locate the code the task touches (files or components the task names, or a quick search), and whether `docs/agents/issue-tracker.md`, `docs/agents/skills.yaml` (the project's own skills), `GLOSSARY.md` or `docs/adr/` exist.
 
-**Low risk**: stop here. Say the task is low risk and offer to do it directly, without a workflow (no vendor skills, no issue). If the user wants the workflow anyway, keep risk `low` and continue: it runs as at medium risk.
+**Path.** Record `path`: `light` or `full`.
 
-Done when type, risk, complexity and properties are set, each with its reason.
+- **light** fits a task given as an issue or spec that already settles what to build (the ticket is the spec) when risk is `low`, or `medium` with complexity `low`. One implementer, then one independent look at its work: `branch → ⏸ implementation → review 1 → [security] → [framework-review] → pull request ⏸ → stop`. No requirements, specification, issue, planning, review 2, comparison or verification. **Review 1 is independent**: it never runs inside the implementation step (no covered review, even when the implementation skill offers one); it runs in a fresh subagent that has not seen the implementation, on `git diff <base commit>...HEAD` against the ticket. **security** joins when the diff touches what §6 lists for the security question (auth, user input, queries, secrets, new dependencies, config, permissions): add it after review 1 without asking, say why, and the user may skip it. **framework-review** (the project's own best practices) joins as in §2, when the target repo has a fitting skill in `docs/agents/skills.yaml`. Their findings are asked about once, after the last of them, as with the comparison off; the fixes run as in §6. The PR closes the ticket and carries the manual checklist and the run record. §3–§5 run as usual on those steps, so the user still sees the workflow and can swap skills; `full` in the selection reply switches to the full path (§2 onwards).
+- **full** is everything else, and any task the user asks to run in full.
+
+**Low risk**: stop here. Say the task is low risk and offer: do it directly, without a workflow (no vendor skills, no issue); the **light** path, when the task is a ticket (above); or the full workflow, which runs as at medium risk with risk kept `low`. For a medium-risk ticket of low complexity, propose **light** and say how to ask for `full`.
+
+Done when type, risk, complexity, properties and path are set, each with its reason.
 
 ## 2. Choose phases
 
@@ -149,7 +154,7 @@ The numbered list is `steps` from the state file, in the same order: one line pe
 
 A review 2 on the current model is named by that model. When the session's model is in review 1's family, it is a second review on the same family, not an independent one: never call it a review by the other family, here or in its summary, outcome, step note and the comparison.
 
-A swap replaces the step's skill and keeps the old one as an alternative; show the updated workflow again. Optional steps (review 2, comparison, independent-review, verification) have `optional: true` in the state; one that is off has status `skipped` with outcome `off (optional)` and shows `(off)`. `<step>on` sets it `pending`, `<step>off` sets it back; review 2 and the comparison switch together. Only optional steps switch. `edit` reopens §2–§4. Done on `go` or `stop`.
+A swap replaces the step's skill and keeps the old one as an alternative; show the updated workflow again. Optional steps (review 2, comparison, independent-review, verification) have `optional: true` in the state; one that is off has status `skipped` with outcome `off (optional)` and shows `(off)`. `<step>on` sets it `pending`, `<step>off` sets it back; review 2 and the comparison switch together. Only optional steps switch. `edit` reopens §2–§4; on a light path, `full` switches to the full path and reopens §2–§4. Done on `go` or `stop`.
 
 ## 6. Execute
 

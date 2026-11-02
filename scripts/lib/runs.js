@@ -49,13 +49,19 @@ function aggregate(records) {
   let tokenRuns = 0;
   let cost = 0;
   let costRuns = 0;
+  const paths = new Map();
   const checklist = { runs: 0, points: 0, agent: 0, verifiedRuns: 0, passed: 0, failed: 0 };
 
   for (const r of records) {
     for (const s of r.steps) {
       if (s.skill) bump(skills, `${s.id} ${s.skill}`, s.status ?? 'unknown');
     }
+    const path = r.path === 'light' || r.path === 'full' ? r.path : 'unknown';
+    bump(paths, path, 'runs');
     for (const f of r.findings) {
+      bump(paths, path, 'findings');
+      if (f.severity === 'critical' || f.severity === 'high') bump(paths, path, 'serious');
+      if (f.decision === 'fixed') bump(paths, path, 'fixed');
       bump(severity, f.severity, f.decision);
       for (const id of f.found_by) {
         const who = reviewerOf(r, id);
@@ -89,6 +95,7 @@ function aggregate(records) {
     reviewers: Object.fromEntries([...reviewers].sort()),
     skills: Object.fromEntries([...skills].sort()),
     severity: Object.fromEntries(SEVERITIES.filter((s) => severity.has(s)).map((s) => [s, severity.get(s)])),
+    paths: Object.fromEntries([...paths].sort()),
     checklist,
     usage: { tokens: tokenRuns ? tokens : null, tokenRuns, cost_usd: costRuns ? cost : null, costRuns },
   };

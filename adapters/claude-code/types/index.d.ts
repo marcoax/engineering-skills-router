@@ -25,6 +25,7 @@ declare module 'claude-code' {
     task: string
     type: string
     risk: string
+    path: string | null
     properties: string[]
     status: string
     steps: RouterStep[]

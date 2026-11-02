@@ -23,6 +23,8 @@ export type State = {
 	task: string;
 	type: string;
 	risk: string;
+	// "light" | "full"; null in a state written before the field.
+	path: string | null;
 	properties: string[];
 	status: string;
 	steps: Step[];
@@ -90,6 +92,7 @@ export function parseState(text: string): Parsed {
 			task: str(raw.task),
 			type: str(raw.type),
 			risk: str(raw.risk),
+			path: strOrNull(raw.path),
 			properties: strings(raw.properties),
 			status: raw.status,
 			steps,
@@ -139,7 +142,7 @@ export function widgetLines(state: State, paint: Paint = plain): string[] {
 		return [`${symbol(state.status, paint)} router ${state.status} · ${tail}`];
 	}
 	return [
-		paint("accent", `router · ${state.status}`) + paint("muted", ` · ${state.task}`),
+		paint("accent", `router · ${state.status}${state.path === "light" ? " · light" : ""}`) + paint("muted", ` · ${state.task}`),
 		...state.steps.map(
 			(s, i) => `${symbol(s.status, paint)} ${i + 1}. ${s.id}  ${paint("muted", skillLabel(s) + inside(s))}`,
 		),
@@ -148,7 +151,7 @@ export function widgetLines(state: State, paint: Paint = plain): string[] {
 
 const LETTERS = "abcdefghijklmnopqrstuvwxyz";
 export type Choice =
-	| { kind: "go" | "edit" | "stop" | "pause" | "resume" }
+	| { kind: "go" | "edit" | "stop" | "pause" | "resume" | "full" }
 	| { kind: "swap"; step: number; alt: number }
 	| { kind: "switch"; step: number };
 
@@ -160,6 +163,13 @@ export const KEYS: Record<string, string> = {
 	paused: "r resume · x stop · esc editor",
 };
 
+// The keys line for this state: KEYS, plus switching a light workflow to the full path.
+export function keysFor(state: State): string | undefined {
+	const keys = KEYS[state.status];
+	if (!keys || state.status !== "selecting" || state.path !== "light") return keys;
+	return keys.replace(" · e edit", " · f full path · e edit");
+}
+
 // Chat reply in the router's selection syntax. `step` and `alt` are 0-based indexes
 // into `steps` and that step's `alternatives`; undefined when the swap does not exist
 // or the switched step is not optional. An optional step that is off is `skipped`.
@@ -169,6 +179,7 @@ export function replyFor(state: State, choice: Choice): string | undefined {
 		if (!step?.optional) return undefined;
 		return `${choice.step + 1}${step.status === "skipped" ? "on" : "off"}`;
 	}
+	if (choice.kind === "full") return state.path === "light" ? "full" : undefined;
 	if (choice.kind !== "swap") return choice.kind;
 	if (!state.steps[choice.step]?.alternatives[choice.alt]) return undefined;
 	return `${choice.step + 1}${LETTERS[choice.alt]}`;
@@ -181,7 +192,7 @@ export type Detail = { lines: string[]; stepStart: number[] };
 export function detailLines(state: State, marked = -1, paint: Paint = plain): Detail {
 	const lines = [
 		paint("accent", state.task || "(no task)"),
-		paint("muted", [state.type, state.risk, state.properties.join(", "), state.status].filter(Boolean).join(" · ")),
+		paint("muted", [state.type, state.risk, state.path ? `${state.path} path` : "", state.properties.join(", "), state.status].filter(Boolean).join(" · ")),
 		"",
 	];
 	const h = state.handoff;

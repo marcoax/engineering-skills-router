@@ -4,7 +4,7 @@ import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
 import { test } from "node:test";
-import { currentStep, detailLines, findRepoRoot, hiddenAtStart, parseState, readState, replyFor, symbol, widgetLines, type State } from "./state.ts";
+import { currentStep, detailLines, findRepoRoot, hiddenAtStart, keysFor, parseState, readState, replyFor, symbol, widgetLines, type State } from "./state.ts";
 
 // The documented example is the fixture, so the test follows the contract.
 const ROOT = path.resolve(import.meta.dirname, "../..");
@@ -162,4 +162,18 @@ test("repo root is the nearest .git, else cwd", () => {
 	} finally {
 		fs.rmSync(tmp, { recursive: true, force: true });
 	}
+});
+
+test("light path: shown in the widget, and only a light workflow can switch to full", () => {
+	const light = example();
+	light.path = "light";
+	light.status = "selecting";
+	const s = parsed(light);
+	assert.equal(widgetLines(s)[0], "router · selecting · light · Add CSV export to the reports page");
+	assert.equal(replyFor(s, { kind: "full" }), "full");
+	assert.ok(keysFor(s)?.includes("f full path"));
+	const full = parsed({ ...example(), status: "selecting" });
+	assert.equal(replyFor(full, { kind: "full" }), undefined);
+	assert.ok(!keysFor(full)?.includes("f full path"));
+	assert.equal(parsed({ ...example(), path: undefined }).path, null);
 });

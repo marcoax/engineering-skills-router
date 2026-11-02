@@ -408,6 +408,11 @@ export const register: Register = on => {
               on/off
             </Button>
           )}
+          {isChoosing && s.path === 'light' && (
+            <Button key="full" hotkey="f" onPress={press(() => send({ kind: 'full' }))}>
+              full path
+            </Button>
+          )}
           {isChoosing && (
             <Button key="edit" hotkey="e" onPress={press(() => send({ kind: 'edit' }))}>
               edit

@@ -53,6 +53,11 @@ for (const [key, r] of Object.entries(totals.reviewers)) {
   console.log(`  ${key}: ${r.runs ?? 0} · ${r.found ?? 0} · ${r.only ?? 0} · ${r.serious ?? 0} · ${fixed} · ${declined} · ${pct(fixed, fixed + declined)}`);
 }
 
+console.log('\nPaths: runs · findings · critical+high · fixed');
+for (const [p, r] of Object.entries(totals.paths)) {
+  console.log(`  ${p}: ${r.runs ?? 0} · ${r.findings ?? 0} · ${r.serious ?? 0} · ${r.fixed ?? 0}`);
+}
+
 console.log('\nSteps (step skill): how they ended');
 for (const [key, r] of Object.entries(totals.skills)) {
   console.log(`  ${key}: ${Object.entries(r).map(([k, v]) => `${k} ${v}`).join(', ')}`);

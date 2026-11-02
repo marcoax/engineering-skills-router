@@ -3,7 +3,7 @@
 The router writes this file in the **target repo** during a workflow so that adapters (agent-specific UIs) can show progress. This document is the only definition of the format.
 
 - **Writer**: only the router. It rewrites the whole file after every change of state (selection made, step started, step finished, pause, handoff produced).
-- **Readers**: adapters. They never write the file. A user choice made in an adapter UI is sent to the agent as a chat message in the text syntax of the router's selection (`go`, `2b`, `5on`, `5off`, `edit`, `stop`, `pause`, `resume`); the router applies it and rewrites the file. In a selection reply, `<step>` is the 1-based position in `steps` and the letter is the position in that step's `alternatives` (`a` = first).
+- **Readers**: adapters. They never write the file. A user choice made in an adapter UI is sent to the agent as a chat message in the text syntax of the router's selection (`go`, `2b`, `5on`, `5off`, `edit`, `full`, `stop`, `pause`, `resume`; `full` only on a light path); the router applies it and rewrites the file. In a selection reply, `<step>` is the 1-based position in `steps` and the letter is the position in that step's `alternatives` (`a` = first).
 - The router adds `.router/` to the target repo's `.git/info/exclude`, so the file is never committed.
 - Readers ignore unknown fields. Adding a field keeps `version`; renaming, removing or changing the meaning of a field bumps it.
 - A field added within a version is marked *(optional)* in its table: the router always writes it, and readers treat a missing one as `null`.
@@ -17,6 +17,7 @@ The router writes this file in the **target repo** during a workflow so that ada
   "type": "feature",
   "risk": "medium",
   "complexity": "medium",
+  "path": "full",
   "properties": ["brownfield", "user-facing"],
   "status": "running",
   "updated_at": "2026-10-17T09:42:00Z",
@@ -96,6 +97,7 @@ The router writes this file in the **target repo** during a workflow so that ada
 | `type` | string | Task type from the classification (`feature`, `bug`, …). |
 | `risk` | `"low"` \| `"medium"` \| `"high"` | A low-risk task gets a workflow only when the user asks for one anyway (it then runs as at medium risk). |
 | `complexity` (optional) | `"low"` \| `"medium"` \| `"high"` | Task size from the classification, matched against each skill's catalog `complexity`. |
+| `path` (optional) | `"light"` \| `"full"` | Light: a ticket of low risk (or medium risk and low complexity) run as branch → implementation → independent review 1 → [security] → [framework-review] → pull request; full: every other workflow. |
 | `properties` | string[] | Task properties from the classification; may be empty. |
 | `status` | string | Workflow status, see below. |
 | `updated_at` | string | ISO-8601 UTC time of the last write. |
