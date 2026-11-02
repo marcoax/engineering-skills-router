@@ -27,6 +27,11 @@ const MODELS_PANE = 'models'
 const REVIEW_TOOL = 'mcp__engineering-router-panel__review_other_family'
 // What the review pane keeps of a run's output: its tail.
 const KEEP = 200_000
+
+// The harness takes a tool's result as a string (or content blocks), not an object.
+const ok = (text: string) => ({ result: text })
+const fail = (text: string) => ({ result: text, isError: true as const })
+
 // The size a pane asks for: docked, a share of the terminal wide enough for skill ids and
 // summaries; inline, enough rows for a few steps. Requests: a size the person set wins.
 const paneColumns = (terminal: number) => Math.min(100, Math.max(60, Math.round(terminal * 0.45)))
@@ -139,8 +144,6 @@ export const register: Register = on => {
     const prompt = typeof input.prompt === 'string' ? input.prompt : ''
     const cwd = typeof input.cwd === 'string' && input.cwd ? input.cwd : undefined
     const known = BACKENDS.map(b => `${b.prefixes[0]}/<model>`).join(', ')
-    // The harness takes a tool's result as a string (or content blocks), not an object.
-    const fail = (text: string) => ({ result: text, isError: true as const })
 
     const plan = planRun(await read($, choice), asked)
     if (!plan) {
@@ -153,7 +156,7 @@ export const register: Register = on => {
       try {
         const run = await $.process.run([backend.cli, '--version'], { cwd, timeoutMs: 15_000 })
         if (run.exitCode !== 0) return fail(`${backend.cli} --version exited ${run.exitCode}: ${run.stderr.trim()}`)
-        return { result: `available: ${label} (${backend.cli} ${run.stdout.trim()})` }
+        return ok(`available: ${label} (${backend.cli} ${run.stdout.trim()})`)
       } catch (err) {
         return fail(`${backend.cli} not found or not runnable: ${String(err)}`)
       }
@@ -199,11 +202,9 @@ export const register: Register = on => {
     await setStatus(isOk ? 'done' : 'failed')
     if (!isOk) return fail(`${backend.cli} ended with ${next.signal.aborted ? 'an interrupt' : `exit ${code}`}:\n${all.slice(-4000)}`)
     // Codex and opencode write the answer to stdout and their progress to stderr.
-    return { result: `Reviewed by ${label}.\n\n${(out.trim() || all).slice(-KEEP)}` }
+    return ok(`Reviewed by ${label}.\n\n${(out.trim() || all).slice(-KEEP)}`)
   }).catch(($, e, next) =>
-    next.called
-      ? next(e)
-      : { result: 'review_other_family failed inside the mod; see claude --debug', isError: true as const },
+    next.called ? next(e) : fail('review_other_family failed inside the mod; see claude --debug'),
   )
 
   on('ui.render', { component: 'Pane', requestId: REVIEW_PANE }, async ($, e) => {
