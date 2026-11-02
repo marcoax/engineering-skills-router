@@ -103,12 +103,18 @@ function swap(state, i, letter) {
   return s;
 }
 
+// Optional steps switch until they start: while selecting, and later for a step still
+// pending or off. A finished workflow switches nothing.
 function toggle(state, i, on) {
   const s = clone(state);
   const step = s.steps[i];
   if (!step.optional) fail(`step ${i + 1} (${step.id}) is not optional`);
+  if (s.status === 'done' || s.status === 'stopped') fail(`the workflow is ${s.status}: nothing switches`);
   const ids = SWITCH_TOGETHER.includes(step.id) ? SWITCH_TOGETHER : [step.id];
-  for (const t of s.steps.filter((x) => ids.includes(x.id) && x.optional)) {
+  const group = s.steps.filter((x) => ids.includes(x.id) && x.optional);
+  const started = group.find((x) => !['pending', 'skipped'].includes(x.status));
+  if (started) fail(`step ${started.id} is ${started.status}: it can no longer be switched`);
+  for (const t of group) {
     t.status = on ? 'pending' : 'skipped';
     t.outcome = on ? null : OFF;
   }
@@ -136,9 +142,9 @@ function applyReply(state, reply) {
   }
   const m = r.match(/^(\d+)(on|off|[a-z])$/);
   if (!m) fail(`not a selection reply: ${JSON.stringify(reply)}`);
-  if (state.status !== 'selecting') fail(`${r}: swaps and switches apply while selecting, the workflow is ${state.status}`);
   const i = stepIndex(state, m[1]);
   if (m[2] === 'on' || m[2] === 'off') return toggle(state, i, m[2] === 'on');
+  if (state.status !== 'selecting') fail(`${r}: swaps apply while selecting, the workflow is ${state.status}`);
   return swap(state, i, m[2]);
 }
 

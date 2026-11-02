@@ -548,7 +548,10 @@ expectStateOk('unknown fields', variant((s) => { s.extra = 1; s.steps[0].extra =
   const read = () => JSON.parse(fs.readFileSync(stateFile, 'utf8'));
   const optional = (id) => ({ id, phases: [], skill: null, reason: 'r', summary: 's', alternatives: [], confirm: false,
     optional: true, covered_by: null, model: null, effort: null, status: 'skipped', outcome: 'off (optional)' });
-  const start = variant((s) => { s.steps.push(optional('review-2'), optional('comparison')); });
+  const start = variant((s) => {
+    s.steps.push(optional('review-2'), optional('comparison'),
+      { ...optional('pull-request'), skill: 'mattpocock/pr', optional: false, confirm: true, status: 'pending', outcome: null });
+  });
   fs.writeFileSync(stateFile, JSON.stringify(start));
   const st = (...a) => run('state', repo, ...a);
   const expectOk = (label, r) => { if (!r.ok) fail(`scripts/state ${label}\n${r.out}`); };
@@ -576,6 +579,11 @@ expectStateOk('unknown fields', variant((s) => { s.extra = 1; s.steps[0].extra =
   if (st('reply', '2a').ok) fail('a swap with no alternative should be refused');
   expectOk('reply go', st('reply', 'go'));
   if (read().status !== 'running') fail('go should start the workflow');
+  expectOk('reply 5off while running', st('reply', '5off'));
+  if (read().steps[5].status !== 'skipped') fail('review 2 and the comparison switch off together while running');
+  expectOk('reply 5on while running', st('reply', '5on'));
+  if (read().steps[4].status !== 'pending') fail('an optional step not started yet switches on while running');
+  if (st('reply', '1b').ok) fail('swaps apply only while selecting');
 
   // scripts/record: composes a record scripts/stats reads back, and refuses unknown reviewers.
   const { parseRecord: parseBack } = require(path.join(ROOT, 'scripts/lib/runs'));
@@ -583,7 +591,7 @@ expectStateOk('unknown fields', variant((s) => { s.extra = 1; s.steps[0].extra =
   fs.writeFileSync(findingsFile, JSON.stringify([{ title: 'x', severity: 'high', found_by: ['review-1', 'review-2'], decision: 'fixed' }]));
   const rec = run('record', repo, '--findings', findingsFile, '--checklist', '9,5', '--session-model', 'claude-opus-5-5');
   const back = parseBack(rec.out);
-  if (!rec.ok || back.kind !== 'ok' || back.record.findings.length !== 1 || back.record.steps.length !== 6 || back.record.checklist.passed !== null) {
+  if (!rec.ok || back.kind !== 'ok' || back.record.findings.length !== 1 || back.record.steps.length !== 7 || back.record.checklist.passed !== null) {
     fail(`scripts/record\n${rec.out}`);
   }
   fs.writeFileSync(findingsFile, JSON.stringify([{ title: 'x', severity: 'high', found_by: ['review-9'], decision: 'fixed' }]));
