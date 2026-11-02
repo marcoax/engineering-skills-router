@@ -62,6 +62,9 @@ declare module 'claude-code' {
       review: RouterReview | null
       // Backend, model and effort picked in /router-models; mirrors $.store 'review-choice'.
       choice: RouterReviewChoice
+      // Models each backend with a list command printed, by backend name; absent until
+      // listed, empty when listing failed, timed out or printed none.
+      models: Record<string, string[]>
       // The parsed `.router/state.json`; null when absent or unreadable.
       state: RouterSnapshot | null
       // 0-based step the pane marks while the workflow is `selecting`.

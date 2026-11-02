@@ -3,7 +3,7 @@
 // selection. It never writes the state file; choices go to the agent as prompts in the
 // router's own selection syntax (`go`, `2b`, `5on`, `pause`, ...).
 import { atom, read, update } from 'claude-code'
-import type { Register, RouterReview } from 'claude-code'
+import type { EngineInterface, Register, RouterReview } from 'claude-code'
 
 import {
   currentStep,
@@ -18,7 +18,7 @@ import {
   widgetLines,
 } from './state-core.ts'
 import type { Choice } from './state-core.ts'
-import { asChoice, BACKENDS, backendNamed, planRun } from './backends.ts'
+import { asChoice, BACKENDS, backendNamed, parseModelList, planRun } from './backends.ts'
 import type { Choice as ReviewChoice, Plan } from './backends.ts'
 
 const PANE = 'router'
@@ -43,6 +43,15 @@ const choice = atom(
   { backend: 'auto', model: '', effort: '' },
 )
 
+// What each backend's list command printed, by backend name (see listModels).
+const models = atom({ plugin: 'engineering-router-panel', key: 'models' } as const, {})
+
+// The models pane's selects show the CLI's own default, saved as '', as `default`.
+const DEFAULT = 'default'
+const DEFAULT_OPTION = { value: DEFAULT, label: DEFAULT }
+const shownAs = (saved: string) => saved || DEFAULT
+const savedAs = (value: string) => (value === DEFAULT ? '' : value)
+
 const describePlan = (plan: Plan) =>
   `${plan.backend.name} · ${plan.model ?? 'default model'} · ${
     plan.backend.hasEffort ? (plan.effort ?? 'default effort') : 'effort from its config'
@@ -52,6 +61,23 @@ const state = atom({ plugin: 'engineering-router-panel', key: 'state' } as const
 const selected = atom({ plugin: 'engineering-router-panel', key: 'selected' } as const, 0)
 const confirmStop = atom({ plugin: 'engineering-router-panel', key: 'confirmStop' } as const, false)
 const isHidden = atom({ plugin: 'engineering-router-panel', key: 'isHidden' } as const, false)
+
+// Lists the models of a backend that has a list command, once it has listed some: a
+// failure, a timeout or an empty list is kept as none, and asked again the next time.
+// While it runs the backend has no entry, so the pane says it is listing.
+async function listModels($: EngineInterface, name: string) {
+  const backend = backendNamed(name)
+  if (!backend?.modelsArgv || (await read($, models))[name]?.length) return
+  await update($, models, ({ [name]: _, ...rest }) => rest)
+  let ids: string[] = []
+  try {
+    const run = await $.process.run(backend.modelsArgv, { timeoutMs: 15_000 })
+    if (run.exitCode === 0) ids = parseModelList(run.stdout)
+  } catch {
+    // Not installed, or still running at the timeout: the text field stands.
+  }
+  await update($, models, m => ({ ...m, [name]: ids }))
+}
 
 export const register: Register = on => {
   // The last text read, so a poll that finds the same file redraws nothing.
@@ -229,6 +255,8 @@ export const register: Register = on => {
 
   on('command.run', { command: 'router-models' }, async $ => {
     await $.ui.open({ id: MODELS_PANE, title: 'Review 2 model', focus: true, closeOnEscape: true })
+    // In the background: a hung list command must not hold the command up.
+    void listModels($, (await read($, choice)).backend)
     return { text: 'Review 2 model pane opened.' }
   })
 
@@ -237,7 +265,7 @@ export const register: Register = on => {
     const c = await read($, choice)
     if (e.surface === 'mobile') {
       const { Text } = $.ui.resolve(e)
-      return <Text>Review 2: {c.backend} · {c.model || 'default'} · {c.effort || 'default'} (change it from a computer)</Text>
+      return <Text>Review 2: {c.backend} · {shownAs(c.model)} · {shownAs(c.effort)} (change it from a computer)</Text>
     }
     const { Box, Button, Input, Select, Text } = $.ui.resolve(e)
     const save = async (fn: (c: ReviewChoice) => ReviewChoice) => {
@@ -250,12 +278,18 @@ export const register: Register = on => {
       }
     }
     const backend = c.backend === 'auto' ? undefined : backendNamed(c.backend)
+    // The models its list command printed: undefined while not listed yet.
+    const listed = backend?.modelsArgv ? (await read($, models))[backend.name] : undefined
     const preview =
       c.backend === 'auto'
         ? `as the router asks (config/preferences.yaml)${c.effort ? `, effort ${c.effort}` : ''}`
         : `${c.backend} · ${c.model || 'its default model'} · ${
             backend?.hasEffort ? c.effort || 'its default effort' : 'effort from its config'
           }`
+    // A saved model the list no longer prints stays shown and selectable.
+    const modelOptions = listed?.length
+      ? [DEFAULT_OPTION, ...(c.model && !listed.includes(c.model) ? [c.model, ...listed] : listed).map(id => ({ value: id, label: id }))]
+      : []
 
     return (
       <Box flexDirection="column">
@@ -268,27 +302,45 @@ export const register: Register = on => {
             { value: 'auto', label: 'auto: follow the router' },
             ...BACKENDS.map(b => ({ value: b.name, label: b.name })),
           ]}
-          onSelect={(value: string) => void save(old => ({ ...old, backend: value }))}
+          onSelect={async (value: string) => {
+            await save(old => ({ ...old, backend: value }))
+            await listModels($, value)
+          }}
         />
-        <Input
-          key="model"
-          label="Model   "
-          value={c.model}
-          placeholder={c.backend === 'opencode' ? 'provider/model · empty = default' : 'empty = default'}
-          submitLabel="save"
-          onSubmit={(value: string) => void save(old => ({ ...old, model: value }))}
-        />
+        {modelOptions.length ? (
+          <Select
+            key="model"
+            label="Model   "
+            value={shownAs(c.model)}
+            options={modelOptions}
+            onSelect={(value: string) => void save(old => ({ ...old, model: savedAs(value) }))}
+          />
+        ) : (
+          <Input
+            key="model"
+            label="Model   "
+            value={c.model}
+            placeholder={c.backend === 'opencode' ? 'provider/model · empty = default' : 'empty = default'}
+            submitLabel="save"
+            onSubmit={(value: string) => void save(old => ({ ...old, model: value }))}
+          />
+        )}
+        {backend?.modelsArgv && !listed?.length && (
+          <Text dimColor>
+            {listed ? `No model list from ${backend.modelsArgv.join(' ')}; type one.` : 'Listing models…'}
+          </Text>
+        )}
         <Select
           key="effort"
           label="Effort  "
-          value={c.effort || 'default'}
+          value={shownAs(c.effort)}
           options={[
-            { value: 'default', label: 'default' },
+            DEFAULT_OPTION,
             { value: 'low', label: 'low' },
             { value: 'medium', label: 'medium' },
             { value: 'high', label: 'high' },
           ]}
-          onSelect={(value: string) => void save(old => ({ ...old, effort: value === 'default' ? '' : (value as ReviewChoice['effort']) }))}
+          onSelect={(value: string) => void save(old => ({ ...old, effort: savedAs(value) as ReviewChoice['effort'] }))}
         />
         <Text dimColor>Runs: {preview}</Text>
         <Button key="reset" onPress={() => void save(() => asChoice(undefined))}>
