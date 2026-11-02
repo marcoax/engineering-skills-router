@@ -126,7 +126,8 @@ const checkPattern = (v, where, re, shape) => {
   if (isStr(v) && !re.test(v)) errors.push(`${where}: must be '${shape}', got ${json(v)}`);
 };
 const SKILL_ID = /^[\w.-]+\/[\w.-]+$/;
-const MODEL_ID = /^[^\s/]+\/\S+$/;
+// A step model is recorded as its source names it: `provider/model-id` or a bare ID.
+const MODEL_ID = /^\S+$/;
 const UTC = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d+)?Z$/;
 // Date.parse rolls impossible dates over (02-30 becomes 03-02), so round-trip the date-time part.
 const isUtc = (v) => UTC.test(v) && new Date(Date.parse(v) || 0).toISOString().slice(0, 19) === v.slice(0, 19);
@@ -148,7 +149,7 @@ steps.forEach((s, i) => {
   if (isStr(s.id) && seen.has(s.id)) errors.push(`${where}.id: duplicate step id ${json(s.id)}`);
   seen.add(s.id);
   checkPattern(s.skill, `${where}.skill`, SKILL_ID, 'source/name');
-  checkPattern(s.model, `${where}.model`, MODEL_ID, 'provider/model-id');
+  checkPattern(s.model, `${where}.model`, MODEL_ID, 'model ID without spaces');
   if (isStr(s.covered_by)) {
     const cover = byId.get(s.covered_by);
     if (s.covered_by === s.id) errors.push(`${where}.covered_by: a step cannot cover itself`);

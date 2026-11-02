@@ -27,10 +27,12 @@ function parseRecord(body) {
   return { kind: 'ok', record: { ...raw, steps, findings } };
 }
 
-// Who a review step was: its skill and the model it ran on (the session's when null).
+// Who a review step was: its skill and its step model. A record written before every step
+// that ran named its model has `null` there for the session's model, so it reads as
+// `session_model` and counts with records that name that model.
 function reviewerOf(record, stepId) {
   const step = record.steps.find((s) => s.id === stepId);
-  const model = step?.model ?? (record.session_model ? `session:${record.session_model}` : 'session');
+  const model = step?.model ?? record.session_model ?? 'session';
   return { skill: step?.skill ?? '(router)', model: step?.effort ? `${model}:${step.effort}` : model };
 }
 
