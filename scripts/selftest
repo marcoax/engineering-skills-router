@@ -63,6 +63,10 @@ fs.writeFileSync(prefsFile, 'preferences:\n  review:\n    prefer: [nobody/nothin
 if (run('validate-catalog').ok) fail('unknown preferred skill should fail');
 
 for (const [line, msg] of [
+  ['context_threshold: -1', 'context_threshold: must be an integer >= 0'],
+  ['context_threshold: 1.5', 'context_threshold: must be an integer >= 0'],
+  ['context_threshold: .inf', 'context_threshold: must be an integer >= 0'],
+  ['context_threshold: never', 'context_threshold: must be an integer >= 0'],
   ['update_check_days: -1', 'update_check_days: must be an integer >= 0'],
   ['update_check_days: soon', 'update_check_days: must be an integer >= 0'],
   ['models:\n    claude: opus', "models.claude: must be 'provider/model-id'"],
@@ -77,6 +81,15 @@ for (const [line, msg] of [
   if (r.ok || !r.out.includes(msg)) fail(`expected: ${msg}`);
 }
 fs.rmSync(prefsFile);
+
+// The adapters read the same checkout preference as the validator.
+for (const value of [0, 150000, 180000]) {
+  fs.writeFileSync(prefsFile, `preferences:\n  context_threshold: ${value}\n`);
+  if (!run('validate-catalog').ok) fail('valid context_threshold should validate');
+  if (run('context-threshold').out.trim() !== String(value)) fail('context threshold bridge should follow this checkout');
+}
+fs.rmSync(prefsFile);
+if (run('context-threshold').out.trim() !== '150000') fail('missing threshold defaults to 150000');
 
 // Project catalog: a scratch target repo lists its own skill in docs/agents/skills.yaml.
 const targetRepo = (yaml) => {
@@ -622,6 +635,21 @@ expectStateOk('unknown fields', variant((s) => { s.extra = 1; s.steps[0].extra =
   expectOk('reply 5on while running', st('reply', '5on'));
   if (read().steps[4].status !== 'pending') fail('an optional step not started yet switches on while running');
   if (st('reply', '1b').ok) fail('swaps apply only while selecting');
+
+  // Fresh CLI processes retain the boundary and skip both completed and disabled steps.
+  expectOk('disable optional review before pause', st('reply', '5off'));
+  const paused = st('reply', 'pause');
+  expectOk('pause at the boundary', paused);
+  if (!paused.out.includes('workflow paused')) fail('pause must report the persisted paused workflow');
+  const resumed = st('reply', 'resume');
+  expectOk('resume in a new process', resumed);
+  if (!resumed.out.includes('workflow running')) fail('resume must report a running workflow');
+  const afterResume = st('show');
+  expectOk('show after resume', afterResume);
+  const firstOpen = afterResume.out.split('\n').find((line) => /^[○▶⏸]/u.test(line));
+  if (firstOpen !== '○ 7. pull-request  mattpocock/pr') fail(`resume should start at the first incomplete step\n${afterResume.out}`);
+  expectOk('start first incomplete step', st('step', '7', 'running', '--model', 'claude-opus-5-5'));
+  if (!st('show').out.includes('▶ 7. pull-request  mattpocock/pr  on claude-opus-5-5')) fail('resumed execution should start the pull request step');
 
   // scripts/record: composes a record scripts/stats reads back, and refuses unknown reviewers.
   const { parseRecord: parseBack } = require(path.join(ROOT, 'scripts/lib/runs'));

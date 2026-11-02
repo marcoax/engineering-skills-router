@@ -1,0 +1,11 @@
+#!/usr/bin/env node
+// Read-only bridge for adapters (the Claude sandbox cannot import Node/YAML).
+// Resolve preferences beside the state script, never from the target repo.
+let threshold = 150000;
+try {
+  const value = require('./lib/catalog').preferences().context_threshold;
+  if (Number.isInteger(value) && value >= 0) threshold = value;
+} catch {
+  // Missing/unreadable/invalid preferences keep the default; validation reports them.
+}
+console.log(threshold);

@@ -3,6 +3,7 @@
 // selection. It never writes the state file; choices go to the agent as prompts in the
 // router's own selection syntax (`go`, `2b`, `5on`, `pause`, ...).
 import { atom, read, update } from 'claude-code'
+import { completedStep, contextLine } from './context-boundary.ts'
 import type { EngineInterface, Register, RouterReview } from 'claude-code'
 
 import {
@@ -80,6 +81,30 @@ async function listModels($: EngineInterface, name: string) {
 }
 
 export const register: Register = on => {
+  on('tool.call', { tool: 'Bash' }, async ($, e, next) => {
+    const outcome = await next(e)
+    if ('deny' in outcome || outcome.isError || !outcome.result || typeof outcome.result !== 'object') return outcome
+    const result = outcome.result
+    if (result.interrupted || result.backgroundTaskId || typeof result.stdout !== 'string') return outcome
+    const bridge = completedStep(e.command, result.stdout)
+    if (!bridge) return outcome
+    try {
+      const pref = await $.process.run(['node', bridge], { timeoutMs: 5000 })
+      if (pref.exitCode !== 0) return outcome
+      const threshold = Number(pref.stdout.trim())
+      if (threshold === 0) return outcome
+      const usage = await $.session.usage()
+      const line = contextLine(usage.context.tokens, usage.context.window, threshold)
+      if (line) return {
+        result: { ...result, stdout: result.stdout + (result.stdout.endsWith('\n') ? '' : '\n') + line + '\n' },
+        context: outcome.context,
+        isReadOnly: outcome.isReadOnly,
+      }
+    } catch {
+      // The completed state change stands even when usage/preferences are unavailable.
+    }
+    return outcome
+  })
   // The last text read, so a poll that finds the same file redraws nothing.
   let last: string | undefined
   let isFirstRead = true

@@ -1,6 +1,7 @@
 // Pi adapter for the engineering router: renders `.router/state.json` of the session's
 // repo as a widget above the editor and a right-hand overlay with the skill selection.
 // It never writes the state file; choices go to the agent as chat messages.
+import registerContextBoundary from "./context.ts";
 import { execFile } from "node:child_process";
 import * as fs from "node:fs";
 import * as path from "node:path";
@@ -152,6 +153,7 @@ class RouterOverlay implements Component {
 }
 
 export default function (pi: ExtensionAPI) {
+	registerContextBoundary(pi);
 	let file: string | undefined;
 	let root = "";
 	let state: State | undefined;
