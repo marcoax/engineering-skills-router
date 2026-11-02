@@ -43,8 +43,14 @@ const choice = atom(
   { backend: 'auto', model: '', effort: '' },
 )
 
-// What each backend's list command printed, by backend name (see listModels below).
+// What each backend's list command printed, by backend name (see listModels).
 const models = atom({ plugin: 'engineering-router-panel', key: 'models' } as const, {})
+
+// The models pane's selects show the CLI's own default, saved as '', as `default`.
+const DEFAULT = 'default'
+const DEFAULT_OPTION = { value: DEFAULT, label: DEFAULT }
+const shownAs = (saved: string) => saved || DEFAULT
+const savedAs = (value: string) => (value === DEFAULT ? '' : value)
 
 const describePlan = (plan: Plan) =>
   `${plan.backend.name} · ${plan.model ?? 'default model'} · ${
@@ -58,12 +64,14 @@ const isHidden = atom({ plugin: 'engineering-router-panel', key: 'isHidden' } as
 
 // Lists the models of a backend that has a list command, once it has listed some: a
 // failure, a timeout or an empty list is kept as none, and asked again the next time.
+// While it runs the backend has no entry, so the pane says it is listing.
 async function listModels($: EngineInterface, name: string) {
   const backend = backendNamed(name)
-  if (!backend?.listModels || (await read($, models))[name]?.length) return
+  if (!backend?.modelsArgv || (await read($, models))[name]?.length) return
+  await update($, models, ({ [name]: _, ...rest }) => rest)
   let ids: string[] = []
   try {
-    const run = await $.process.run(backend.listModels, { timeoutMs: 15_000 })
+    const run = await $.process.run(backend.modelsArgv, { timeoutMs: 15_000 })
     if (run.exitCode === 0) ids = parseModelList(run.stdout)
   } catch {
     // Not installed, or still running at the timeout: the text field stands.
@@ -247,7 +255,8 @@ export const register: Register = on => {
 
   on('command.run', { command: 'router-models' }, async $ => {
     await $.ui.open({ id: MODELS_PANE, title: 'Review 2 model', focus: true, closeOnEscape: true })
-    await listModels($, (await read($, choice)).backend)
+    // In the background: a hung list command must not hold the command up.
+    void listModels($, (await read($, choice)).backend)
     return { text: 'Review 2 model pane opened.' }
   })
 
@@ -256,7 +265,7 @@ export const register: Register = on => {
     const c = await read($, choice)
     if (e.surface === 'mobile') {
       const { Text } = $.ui.resolve(e)
-      return <Text>Review 2: {c.backend} · {c.model || 'default'} · {c.effort || 'default'} (change it from a computer)</Text>
+      return <Text>Review 2: {c.backend} · {shownAs(c.model)} · {shownAs(c.effort)} (change it from a computer)</Text>
     }
     const { Box, Button, Input, Select, Text } = $.ui.resolve(e)
     const save = async (fn: (c: ReviewChoice) => ReviewChoice) => {
@@ -270,13 +279,17 @@ export const register: Register = on => {
     }
     const backend = c.backend === 'auto' ? undefined : backendNamed(c.backend)
     // The models its list command printed: undefined while not listed yet.
-    const listed = backend?.listModels ? (await read($, models))[backend.name] : undefined
+    const listed = backend?.modelsArgv ? (await read($, models))[backend.name] : undefined
     const preview =
       c.backend === 'auto'
         ? `as the router asks (config/preferences.yaml)${c.effort ? `, effort ${c.effort}` : ''}`
         : `${c.backend} · ${c.model || 'its default model'} · ${
             backend?.hasEffort ? c.effort || 'its default effort' : 'effort from its config'
           }`
+    // A saved model the list no longer prints stays shown and selectable.
+    const modelOptions = listed?.length
+      ? [DEFAULT_OPTION, ...(c.model && !listed.includes(c.model) ? [c.model, ...listed] : listed).map(id => ({ value: id, label: id }))]
+      : []
 
     return (
       <Box flexDirection="column">
@@ -294,17 +307,13 @@ export const register: Register = on => {
             await listModels($, value)
           }}
         />
-        {listed?.length ? (
+        {modelOptions.length ? (
           <Select
             key="model"
             label="Model   "
-            value={c.model || 'default'}
-            options={[
-              { value: 'default', label: 'default' },
-              // A saved model the list no longer prints stays shown and selectable.
-              ...(c.model && !listed.includes(c.model) ? [c.model] : []).concat(listed).map(id => ({ value: id, label: id })),
-            ]}
-            onSelect={(value: string) => void save(old => ({ ...old, model: value === 'default' ? '' : value }))}
+            value={shownAs(c.model)}
+            options={modelOptions}
+            onSelect={(value: string) => void save(old => ({ ...old, model: savedAs(value) }))}
           />
         ) : (
           <Input
@@ -316,22 +325,22 @@ export const register: Register = on => {
             onSubmit={(value: string) => void save(old => ({ ...old, model: value }))}
           />
         )}
-        {backend?.listModels && !listed?.length && (
+        {backend?.modelsArgv && !listed?.length && (
           <Text dimColor>
-            {listed ? `No model list from ${backend.listModels.join(' ')}; type one.` : 'Listing models…'}
+            {listed ? `No model list from ${backend.modelsArgv.join(' ')}; type one.` : 'Listing models…'}
           </Text>
         )}
         <Select
           key="effort"
           label="Effort  "
-          value={c.effort || 'default'}
+          value={shownAs(c.effort)}
           options={[
-            { value: 'default', label: 'default' },
+            DEFAULT_OPTION,
             { value: 'low', label: 'low' },
             { value: 'medium', label: 'medium' },
             { value: 'high', label: 'high' },
           ]}
-          onSelect={(value: string) => void save(old => ({ ...old, effort: value === 'default' ? '' : (value as ReviewChoice['effort']) }))}
+          onSelect={(value: string) => void save(old => ({ ...old, effort: savedAs(value) as ReviewChoice['effort'] }))}
         />
         <Text dimColor>Runs: {preview}</Text>
         <Button key="reset" onPress={() => void save(() => asChoice(undefined))}>

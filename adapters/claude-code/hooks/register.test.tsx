@@ -292,3 +292,48 @@ test('a saved model the list does not print stays shown and selectable', async (
   ])
   await ui.unmount()
 })
+
+test('/router-models returns while opencode is still listing, and the list shows when it ends', async ($, on) => {
+  let finish = (_: unknown) => {}
+  const listing = new Promise(resolve => (finish = resolve))
+  let calls = 0
+  // The first listing fails; the one /router-models starts hangs until `finish`.
+  on('process.run', () => (++calls === 1 ? { value: { exitCode: 1, stdout: '', stderr: 'offline' } } : (listing as any)))
+  on('ui.open', () => ({ value: { isPlaced: true } }))
+
+  const ui = await $.ui.mount(MODELS)
+  await ui.select({ key: 'backend', value: 'opencode' })
+  const returned = await Promise.race([
+    $.command.run({ command: 'router-models' } as any).then(() => 'returned'),
+    new Promise(resolve => setTimeout(() => resolve('waiting'), 1_000)),
+  ])
+
+  expect(returned).toBe('returned')
+  expect(await ui.find({ type: 'Text', text: /Listing models…/ })).toBeTruthy()
+  finish({ value: { exitCode: 0, stdout: OPENCODE_MODELS, stderr: '' } })
+  let select
+  for (let i = 0; i < 50 && !select; i++) {
+    await new Promise(resolve => setTimeout(resolve, 20))
+    select = await ui.find({ type: 'Select', key: 'model' })
+  }
+  expect(select).toBeTruthy()
+  await ui.unmount()
+})
+
+test('codex keeps the text field and runs no list command', async ($, on) => {
+  const runs: string[][] = []
+  on('process.run', (_: unknown, e: any) => {
+    runs.push([...e.argv])
+    return { value: { exitCode: 0, stdout: OPENCODE_MODELS, stderr: '' } }
+  })
+  on('ui.open', () => ({ value: { isPlaced: true } }))
+
+  const ui = await $.ui.mount(MODELS)
+  await ui.select({ key: 'backend', value: 'codex' })
+  await $.command.run({ command: 'router-models' } as any)
+
+  expect((await ui.find({ key: 'model' }))?.type).toBe('Input')
+  expect(await ui.find({ type: 'Text', text: /Listing models…|No model list/ })).toBeFalsy()
+  expect(runs).toEqual([])
+  await ui.unmount()
+})

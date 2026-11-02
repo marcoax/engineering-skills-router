@@ -16,7 +16,7 @@ export type Backend = {
   argv: (prompt: string, model?: string, effort?: Effort) => string[]
   // The command that prints the models it can run, one id per line, each as `-m` takes
   // it. Absent: /router-models asks for the model as text.
-  listModels?: string[]
+  modelsArgv?: string[]
 }
 
 export const BACKENDS: Backend[] = [
@@ -45,7 +45,7 @@ export const BACKENDS: Backend[] = [
     hasEffort: false,
     argv: (prompt, model) => ['opencode', 'run', '--agent', 'plan', ...(model ? ['-m', model] : []), prompt],
     // `provider/model` per line, e.g. `opencode/claude-opus-5-5`.
-    listModels: ['opencode', 'models'],
+    modelsArgv: ['opencode', 'models'],
   },
 ]
 
