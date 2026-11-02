@@ -11,7 +11,7 @@ Review 1's family is the one it will actually run on (SKILL.md §6, **Models**):
 - **available**: the harness can start a subagent on that model.
 - **unverified**: it seems able to, but you cannot confirm the provider ID before a subagent starts. Say so; a failed start is handled below.
 - **Claude Code with the panel mod** (`adapters/claude-code`): when the tool `mcp__engineering-router-panel__review_other_family` is listed, review 2 on a non-Claude family runs through it, not through a subagent. Call it with `model` set to `models.openai` and no `prompt`: an `available:` answer makes review 2 **available** and names the backend, model and effort that will run (the person may override them with `/router-models`); an error makes it **unavailable**, with that error as the reason.
-- **unavailable**: say why (no subagents, no model choice, provider not configured), and ask: skip review 2, or run it on the current model. Review 2 starts off, so ask when the user switches it on. Skipped, it goes under `Skipped:` with the comparison, and the rest runs as when they are off. On the current model, it stays a step with `model` `null`.
+- **unavailable**: say why (no subagents, no model choice, provider not configured), and ask: skip review 2, or run it on the current model. Review 2 starts off, so ask when the user switches it on. Skipped, it goes under `Skipped:` with the comparison, and the rest runs as when they are off. On the current model, it stays a step whose step model, once it runs, is the session's (SKILL.md §6, **Step model**).
 
 Show it as `Review 2: <available | unverified | unavailable>: <one-line reason or limitation>` in the workflow (§5).
 

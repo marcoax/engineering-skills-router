@@ -33,5 +33,5 @@ Read from SKILL.md §5. Write `.router/state.json` like this example, then run `
 - **confirm** `true` where §6 asks before the step (publishing, starting implementation, opening the PR).
 - **optional** `true` for review 2, comparison, independent-review, verification; while off: `status` `skipped`, `outcome` `off (optional)`.
 - **covered_by**: the id of the step whose skill runs this one (review 1 inside implementation); never on a light path.
-- **model** `provider/model-id` when the step will run on a model other than the session's, else `null`; **effort** `low`/`medium`/`high` when one will be passed, else `null`.
+- **model** `provider/model-id` when the step will run on a model other than the session's, else `null`; **effort** `low`/`medium`/`high` when one will be passed, else `null`. No step has run yet: from §6 on, `scripts/state` sets each step's step model when it starts and when it closes.
 - **handoff.issue** is `{number, url}` when the task is an issue; everything else starts empty and is set later with `scripts/state … handoff`.
