@@ -5,9 +5,10 @@
 //
 //   step <n|id> <status> [--outcome "..."] [--model <model ID>] [--effort low|medium|high]
 //        pending | running | waiting | done | skipped | failed; done, skipped and failed need
-//        an outcome. A step that covers others carries them: running starts them, done or
-//        failed closes those still open, and gives them its model and effort unless they
-//        have their own. A running or waiting step sets the workflow's status.
+//        an outcome. A step that covers others carries them: running starts them and gives
+//        those still open without a model its model and effort; done or failed closes those
+//        still open with its model and effort. A running or waiting step sets the workflow's
+//        status.
 //   workflow <status>        selecting | running | waiting | done | paused | stopped
 //   handoff issue <n> <url> | spec <path> | ticket <n> <url> | branch <name> | base <sha|HEAD> | pr <n> <url>
 //   reply <reply>            a selection reply: go, 2b, 5on, 5off, stop, pause, resume.

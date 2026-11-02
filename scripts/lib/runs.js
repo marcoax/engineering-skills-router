@@ -27,12 +27,14 @@ function parseRecord(body) {
   return { kind: 'ok', record: { ...raw, steps, findings } };
 }
 
-// Who a review step was: its skill and its step model. A record written before every step
-// that ran named its model has `null` there for the session's model, so it reads as
-// `session_model` and counts with records that name that model.
+// Who a review step was: its skill and its step model. In a record from before the step model
+// contract, a step that ran (done or failed) has `null` there for the session's model, so it
+// reads as `session_model` and counts with records that name that model. A step that did not
+// run has no model: `unknown`.
 function reviewerOf(record, stepId) {
   const step = record.steps.find((s) => s.id === stepId);
-  const model = step?.model ?? record.session_model ?? 'session';
+  const ran = step?.status === 'done' || step?.status === 'failed';
+  const model = step?.model ?? (ran ? record.session_model ?? 'session' : 'unknown');
   return { skill: step?.skill ?? '(router)', model: step?.effort ? `${model}:${step.effort}` : model };
 }
 

@@ -537,25 +537,35 @@ expectStateOk('unknown fields', variant((s) => { s.extra = 1; s.steps[0].extra =
   }
   // A record from before the step model contract (model null on a step that ran) counts
   // toward the same reviewer as one that names the session's model.
-  const recordWith = (model) => parseRecord(`<!-- engineering-router:run ${JSON.stringify({
+  const recordWith = (model, status = 'done') => parseRecord(`<!-- engineering-router:run ${JSON.stringify({
     version: 1, session_model: 'claude-opus-5-5', path: 'full', checklist: null, usage: { tokens: null, cost_usd: null },
-    steps: [{ id: 'review-1', skill: 'mattpocock/code-review', model, effort: null, status: 'done', tokens: null }],
+    steps: [{ id: 'review-1', skill: 'mattpocock/code-review', model, effort: null, status, tokens: null }],
     findings: [{ title: 'x', severity: 'low', found_by: ['review-1'], decision: 'fixed' }],
   })} -->`).record;
   const mixed = aggregate([recordWith(null), recordWith('claude-opus-5-5')]);
   const same = mixed.reviewers['review-1 claude-opus-5-5'];
   if (Object.keys(mixed.reviewers).length !== 1 || same?.runs !== 2 || same.found !== 2) fail(`old and new records should share a reviewer: ${JSON.stringify(mixed.reviewers)}`);
+  // A step that did not run never reads as the session's model.
+  const notRun = aggregate([recordWith(null, 'skipped')]).reviewers;
+  if (Object.keys(notRun).join() !== 'review-1 unknown') fail(`a step that did not run should not count as session_model: ${JSON.stringify(notRun)}`);
   if (parseRecord('no record').kind !== 'none' || parseRecord('<!-- engineering-router:run {"version":2} -->').kind !== 'version') {
     fail('run records: absent or newer records are not told apart');
   }
 }
 
-// setStep: a covered step that has its own step model keeps it when its covering step closes.
+// setStep: a covered step takes its covering step's step model; one with its own agent record
+// keeps it, whichever side of the covering step's close it is recorded on.
 {
   const { setStep } = require(path.join(ROOT, 'scripts/lib/state-ops'));
-  const own = variant((s) => { s.steps[3].status = 'running'; s.steps[3].model = 'openai-codex/gpt-6-sol'; s.steps[3].effort = 'low'; });
-  const closed = setStep(own, 'implementation', 'done', { outcome: 'Built', model: 'claude-opus-5-5' });
-  if (closed.steps[3].model !== 'openai-codex/gpt-6-sol' || closed.steps[3].effort !== 'low') fail(`a covered step's own model was overwritten: ${JSON.stringify(closed.steps[3])}`);
+  const started = setStep(variant((s) => { s.steps[3].status = 'waiting'; s.steps[3].model = null; }), 'implementation', 'running', { model: 'claude-opus-5-5', effort: 'medium' });
+  if (started.steps[3].model !== 'claude-opus-5-5' || started.steps[3].effort !== 'medium') fail(`a covered step that is open but not pending should take its covering step's model when it starts: ${JSON.stringify(started.steps[3])}`);
+  // Own agent record names the model the covering step started on; recorded after the close.
+  const covering = setStep(started, 'implementation', 'done', { outcome: 'Built', model: 'claude-sonnet-5-5', effort: 'high' });
+  const after = setStep(covering, 'review-1', 'done', { outcome: 'Reviewed', model: 'claude-opus-5-5', effort: 'low' });
+  if (after.steps[3].model !== 'claude-opus-5-5' || after.steps[3].effort !== 'low') fail(`a covered step's own agent record, recorded after its covering step closed, should stick: ${JSON.stringify(after.steps[3])}`);
+  // Recorded before the close: the closed covered step is left alone.
+  const before = setStep(setStep(started, 'review-1', 'done', { outcome: 'Reviewed', model: 'claude-opus-5-5', effort: 'low' }), 'implementation', 'done', { outcome: 'Built', model: 'claude-sonnet-5-5', effort: 'high' });
+  if (before.steps[3].model !== 'claude-opus-5-5' || before.steps[3].effort !== 'low') fail(`a covered step closed with its own agent record should keep it when its covering step closes: ${JSON.stringify(before.steps[3])}`);
 }
 
 // scripts/state: each change is applied and validated; an invalid one leaves the file as it was.
