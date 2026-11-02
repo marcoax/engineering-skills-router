@@ -10,7 +10,7 @@ task → classify → phases → one skill per phase → dedupe → show workflo
 
 The router first records the task's type, risk, size (`complexity`) and properties, each with a reason. A low-risk task gets no workflow: the router offers to do it directly, and if you want the workflow anyway it runs as at medium risk. Size helps pick skills: a skill's catalog `complexity` ranks it, but never leaves a phase without a skill.
 
-Default backbone: **requirements → spec + GitHub issue → tickets → implement + test → review**, trimmed or extended by task type and risk. Requirements (a grilling session) runs after any code-understanding step, so its questions build on the code; it is skipped only when the task is an issue or spec that already settles the decisions. At high risk a second review on the other model family and a comparison of both always run; below it they start off, and you switch them on when you approve the workflow.
+Default backbone: **requirements → spec + GitHub issue → tickets → implement + test → review**, trimmed or extended by task type and risk. Requirements (a grilling session) runs after any code-understanding step, so its questions build on the code; it is skipped only when the task is an issue or spec that already settles the decisions. One review runs by default at every risk; a second review on the other model family and a comparison of both (and, at high risk, an independent review) start off, and you switch them on when you approve the workflow.
 
 ## Light path
 
@@ -30,7 +30,13 @@ preferences:
     prefer: [addyosmani/spec-driven-development]
 ```
 
-The preference only picks the skill; since no selected skill then publishes an issue, the workflow has none. Every step uses skills that need no issue tracker (planning breaks the spec into tasks without publishing tickets), the branch is `<slug>` and starts by committing the spec file, review 2 checks the diff against the spec file, and the PR links it instead of closing an issue.
+The preference only picks the skill; since no selected skill then publishes an issue, the workflow has none. Steps use skills that need no issue tracker, except planning, which can publish tickets from the spec (below); the branch is `<slug>` and starts by committing the spec file, review 2 checks the diff against the spec file, and the PR links it instead of closing an issue.
+
+You can also start from a spec you already wrote: give its path as the task (`/engineering-router docs/specs/export.md`). The router skips the specification step, uses the file as the spec, and runs the rest of the workflow as above, without an issue. Requirements runs only when the file leaves decisions open.
+
+A spec file can still get tickets on the tracker: when the spec splits, planning uses `mattpocock/to-tickets`, which publishes them from the file (standalone, each naming the spec), and the PR closes them. It is the default when the target repo has `docs/agents/issue-tracker.md`; otherwise planning only breaks the spec into tasks, and `to-tickets` is offered as the alternative that publishes them (it adds the one-time tracker setup step).
+
+Tickets are decided on the spec, not before it: when the spec is still to be written, planning is a conditional step, and once the spec exists the router says whether it splits into more than one ticket (run planning) or not (skip it), with the reason.
 
 ## Project skills
 
