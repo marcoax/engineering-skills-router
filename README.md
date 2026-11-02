@@ -6,90 +6,59 @@ Routes an engineering task to the smallest workflow of skills drawn from several
 task → classify → phases → one skill per phase → dedupe → show workflow → run
 ```
 
-The router first records the task's type, risk, size (`complexity`) and properties, each with a reason. A low-risk task gets no workflow: the router offers to do it directly, and if you want the workflow anyway it runs as at medium risk. Size helps pick skills: a skill's catalog `complexity` ranks it, but never leaves a phase without a skill.
+The router records the task's type, risk and size, then builds a workflow on the backbone **requirements → spec + GitHub issue → tickets → implement + test → review**, trimmed or extended by type and risk. A low-risk task gets no workflow: the router offers to do it directly. At high risk a second review on the other model family and a comparison of both always run. Light path, run records, project and personal skills, specs without GitHub issues: [how it works](docs/how-it-works.md).
 
-Default backbone: **requirements → spec + GitHub issue → tickets → implement + test → review**, trimmed or extended by task type and risk. Requirements (a grilling session) runs after any code-understanding step, so its questions build on the code; it is skipped only when the task is an issue or spec that already settles the decisions. At high risk a second review on the other model family and a comparison of both always run; below it they start off, and you switch them on when you approve the workflow.
+## Install (Claude Code)
 
-**Light path.** A ticket that already says what to build, at low risk (or medium risk and low complexity), can run as one implementer and one independent look at its work: `branch → implementation → review 1 → [security] → [framework-review] → pull request`. Review 1 runs in a fresh agent, never inside the implementation step; security joins when the diff touches auth, input, queries, secrets, dependencies, config or permissions, and framework-review when the project lists its own best-practice skills. No grilling, spec, issue, review 2 or comparison. The router proposes it; `full` in the selection switches back. The run record marks the path, so `scripts/stats` shows whether light runs turned up serious findings.
+The whole setup on one machine, from a clone you keep and update with `git pull`. Shell commands run in a terminal; `/…` commands are typed in a Claude Code session.
 
-**What each run leaves.** The PR ends with a manual checklist of at most 15 points built from what the diff really changed, each tagged `[agent]` or `[you]`; the optional **verification** step has a fresh agent check the `[agent]` points first. The body also carries a hidden run record (skills, models, efforts, findings with severity, who found them and what was decided): `scripts/stats` adds them up across PRs, to see which reviews and models earn their place. Format: [run-record.md](skills/engineering-router/run-record.md).
+1. **Clone and set up** (skip the clone if you have one):
 
-**Without GitHub issues.** To keep the spec as a file in the target repo instead, prefer a specification skill that writes one, in `config/preferences.yaml`:
+   ```sh
+   git clone --recurse-submodules https://github.com/marcoax/engineering-skills-router ~/web/ai/engineering-skills-router
+   cd ~/web/ai/engineering-skills-router
+   scripts/setup
+   [ -f config/preferences.yaml ] || cp config/preferences.example.yaml config/preferences.yaml
+   ```
 
-```yaml
-preferences:
-  specification:
-    prefer: [addyosmani/spec-driven-development]
-```
+   The last line creates your preferences only when you have none. In them, `models.openai` picks review 2's backend: `openai-codex/<model>` (Codex) or `opencode/<provider>/<model>`.
 
-The preference only picks the skill; since no selected skill then publishes an issue, the workflow has none. Every step uses skills that need no issue tracker (planning breaks the spec into tasks without publishing tickets), the branch is `<slug>` and starts by committing the spec file, review 2 checks the diff against the spec file, and the PR links it instead of closing an issue.
+2. **Link the skill and point the router at the clone**:
 
-**Project skills.** A target repo can list its own skills in `docs/agents/skills.yaml`, in the format of `catalog/skills.yaml` with ids `project/<name>` and paths relative to that repo, inside it:
+   ```sh
+   mkdir -p ~/.claude/skills
+   ln -s ~/web/ai/engineering-skills-router/skills/engineering-router ~/.claude/skills/engineering-router
+   echo 'export ENGINEERING_ROUTER_HOME=~/web/ai/engineering-skills-router' >> ~/.zshrc && source ~/.zshrc
+   ```
 
-```yaml
-skills:
-  project/laravel-best-practices:
-    path: .claude/skills/laravel-best-practices/SKILL.md
-    categories: [framework-review]
-    use_when:
-      - change touches PHP/Laravel code
-```
+   Check with `ls -la ~/.claude/skills/engineering-router`: it must point into the clone. The skill follows the branch checked out in the clone; stay on `master`.
 
-When one fits the task, the workflow gets a `framework-review` step after the reviews: the change is checked against the project's own conventions, and its findings join the comparison. A repo without the file gets no such step. Only project skills fill `framework-review`; tagged with another phase (e.g. `implementation`), a project skill ranks right after a user preference there; `scripts/validate-catalog --target <repo>` checks the file.
+3. **Install the mod from the clone**, in a Claude Code session:
 
-**Personal skills.** Your own skills can be candidates too. Set `personal_path` in `config/preferences.yaml` to the folder that holds them (a leading `~` is your home dir; a relative path resolves against the router checkout), then copy `config/personal-skills.example.yaml` to `config/personal-skills.yaml` (git-ignored) and list them there, in the format of `catalog/skills.yaml` with ids `personal/<name>` and paths relative to `personal_path`, inside it:
+   ```text
+   /plugin marketplace add ~/web/ai/engineering-skills-router
+   /plugin install engineering-router-panel@engineering-skills-router
+   /reload-plugins
+   ```
 
-```yaml
-preferences:
-  personal_path: ~/my-skills
-```
+   `engineering-skills-router` is the marketplace's name (from `.claude-plugin/marketplace.json`), `engineering-router-panel` the plugin's. `/plugin` shows `1 mod active · engineering-router-panel` when it loaded. Done once; every later session loads it.
 
-They fill any phase but `framework-review`, after the ranked vendor skills; rank one first with `prefer` (`catalog/rankings.yaml` stays vendor-only). The router reads them in place and never writes there. They are not pinned: editing one changes the next workflow. One named like a cataloged vendor skill (`personal/tdd` next to `mattpocock/tdd`) is skipped with a warning, never used in its place. `scripts/validate-catalog` checks the file. A Pi package update wipes `config/`, so keep them in a personal clone, as for preferences.
+4. **Review 2 on OpenAI** (optional): `codex --version`, then `codex login`.
 
-While running, the router keeps `.router/state.json` and one note per step in `.router/steps/` in the target repo (git-excluded). Where the agent supports subagents, each skill step runs in a fresh subagent on the session's model; steps that talk with the user (requirements, specification, setup) stay in the main session. The review findings you choose to fix are fixed in a fresh subagent too. An unfinished workflow can be resumed later, also from a new session.
+5. **Use it**, in a session opened on the target repo:
 
-**Review 2 on another model family.** Review 2 runs on the family opposite to review 1's (`models` in `config/preferences.yaml`), which works only where the agent can actually reach both: subagents that take an explicit model, and a provider configured for each family under the ID the preferences name. Pi with a subagent extension and both providers set up is one such environment; it is an example, not a requirement, and Pi without them cannot do it either. An agent whose subagents run only its own vendor's models cannot (a run from Codex, for instance, could not reach the Claude family). Before the workflow starts, the router says whether review 2 on the other family is available, unverified (the provider ID is checked only when its subagent starts) or unavailable, and why. When it is unavailable, or its subagent fails to start, you choose: skip review 2, or run it on the current model. On the current model it is a second review, not an independent one, and the workflow and comparison say so.
+   ```text
+   /router-models                       pick review 2's backend, model and effort (optional; kept across sessions)
+   /engineering-router <issue or task>  classify, show the workflow, wait for go
+   /engineering-router                  resume an unfinished workflow
+   /router-panel                        open the workflow pane and choose with keys
+   ```
 
-## Layout
+   On first run the router prints `root:`: it must be the clone.
 
-| Path | What |
-|---|---|
-| `skills/engineering-router/SKILL.md` | the router skill: what every run needs; the files beside it (`light.md`, `review-2.md`, `after-implementation.md`, …) are read only when a run reaches them |
-| `skills/engineering-router/resolve-root.js` | finds the router checkout the skill works from |
-| `catalog/sources.yaml` | vendor repos and where their skills live |
-| `catalog/skills.yaml` | project-owned metadata per skill (phases, use_when, invokes) |
-| `catalog/rankings.yaml` | default + fallback skill per phase |
-| `catalog/categories.yaml` | the phases |
-| `config/preferences.example.yaml` | template for personal overrides (`config/preferences.yaml`, git-ignored) |
-| `config/personal-skills.example.yaml` | template for your own skills (`config/personal-skills.yaml`, git-ignored) |
-| `adapters/pi/` | Pi extension: workflow widget and panel from `.router/state.json` |
-| `vendors/` | git submodules, never edited |
-| `adapters/claude-code/` | Claude Code plugin: workflow band and panes, review 2 on another family |
-| `.claude-plugin/marketplace.json` | makes the repo a Claude Code marketplace for that plugin |
-| `skills/engineering-router/run-record.md` | the run record each PR carries, read by `scripts/stats` |
+The mod draws the workflow as a band above the prompt and a pane with the skill selection, and runs review 2 on Codex or opencode: [Claude Code mod](docs/claude-code.md).
 
-## Install (any agent)
-
-For Claude Code, Codex, Cursor, OpenCode and the other agents the [skills CLI](https://github.com/vercel-labs/skills) supports. Needs Node 22.18+ and git.
-
-```sh
-npx skills add marcoax/engineering-skills-router
-```
-
-This installs one skill, `engineering-router`, without its catalog, scripts or vendor skills. On each run the router looks for a full checkout and uses the first it finds:
-
-1. the checkout the skill folder sits in (clone and link installs, below);
-2. `$ENGINEERING_ROUTER_HOME`, for a personal clone;
-3. the Pi package checkout, `~/.pi/agent/git/github.com/marcoax/engineering-skills-router` (used read-only, so one copy of the vendors serves both);
-4. `~/.local/share/engineering-skills-router` (`$XDG_DATA_HOME/engineering-skills-router` when that is set).
-
-When none exists, the first run asks before cloning the repo with its submodules into the last of these and running `scripts/setup` there; decline and it stops. Nothing is written into agent skill folders. The router always says which checkout it uses and how it found it.
-
-**Preferences** live in `config/preferences.yaml` of that checkout, so `~/.local/share/engineering-skills-router/config/preferences.yaml` after a first-run fetch. With the Pi checkout, package updates wipe them, so use a personal clone instead. To keep them in a clone you control, or to edit the catalog, clone and set up as in the Pi section's **Personal preferences**, then `export ENGINEERING_ROUTER_HOME=/path/to/clone`.
-
-**Updating.** The installed skill folder is only a bootstrap: once it finds a checkout that contains `skills/engineering-router/SKILL.md`, it follows that file instead of its own, so the router's instructions match the checkout's catalog and scripts. `npx skills update` refreshes only that bootstrap. The checkout is updated by the router's own vendor update check, or by `git pull && scripts/setup` in it (for the Pi checkout, use the package update command in [Install (Pi)](#install-pi)).
-
-The workflow widget is Pi-only.
+**Updating**: `git pull && git submodule update --init && scripts/setup` in the clone, then `/plugin marketplace update engineering-skills-router` and `/reload-plugins` in Claude Code.
 
 ## Install (Pi)
 
@@ -124,98 +93,17 @@ Update that clone with `git pull && scripts/setup`.
 
 The extension reads `.router/state.json` in the session's repo and shows the steps above the editor. `ctrl+alt+w` (or `/router-panel`, for keyboard layouts where the shortcut arrives as another key) toggles a details panel on the right half. While a workflow is open, the panel takes the keyboard: during the skill selection `↑`/`↓` step, `enter` go, `a`/`b` swap the step's skill, `e` edit; `p` pauses (a running step finishes first); on a paused workflow `r` resumes; `x x` stops; `esc` goes back to the editor. At session start, a stopped workflow, or a done one with no PR or a merged/closed PR (checked with `gh`), is not shown. Choices are sent as chat messages; the extension never writes the state file.
 
-## Quick start: Claude Code from a clone
 
-The whole setup on one machine, from a clone you keep and update with `git pull`. Shell commands run in a terminal; `/…` commands are typed in a Claude Code session.
+## Other agents
 
-1. **Clone and set up** (skip the clone if you have one):
-
-   ```sh
-   git clone --recurse-submodules https://github.com/marcoax/engineering-skills-router ~/web/ai/engineering-skills-router
-   cd ~/web/ai/engineering-skills-router
-   scripts/setup
-   [ -f config/preferences.yaml ] || cp config/preferences.example.yaml config/preferences.yaml
-   ```
-
-   The last line creates your preferences only when you have none. In them, `models.openai` picks review 2's backend: `openai-codex/<model>` (Codex) or `opencode/<provider>/<model>`.
-
-2. **Link the skill and point the router at the clone**:
-
-   ```sh
-   ln -s ~/web/ai/engineering-skills-router/skills/engineering-router ~/.claude/skills/engineering-router
-   echo 'export ENGINEERING_ROUTER_HOME=~/web/ai/engineering-skills-router' >> ~/.zshrc && source ~/.zshrc
-   ```
-
-   Check with `ls -la ~/.claude/skills/engineering-router`: it must point into the clone. The skill follows the branch checked out in the clone; stay on `master`.
-
-3. **Install the mod from the clone**, in a Claude Code session:
-
-   ```text
-   /plugin marketplace add ~/web/ai/engineering-skills-router
-   /plugin install engineering-router-panel@engineering-skills-router
-   /reload-plugins
-   ```
-
-   `engineering-skills-router` is the marketplace's name (from `.claude-plugin/marketplace.json`), `engineering-router-panel` the plugin's. `/plugin` shows `1 mod active · engineering-router-panel` when it loaded. Done once; every later session loads it.
-
-4. **Review 2 on OpenAI** (optional): `codex --version`, then `codex login`.
-
-5. **Use it**, in a session opened on the target repo:
-
-   ```text
-   /router-models                       pick review 2's backend, model and effort (optional; kept across sessions)
-   /engineering-router <issue or task>  classify, show the workflow, wait for go
-   /router-panel                        open the workflow pane and choose with keys
-   ```
-
-   On first run the router prints `root:`: it must be the clone.
-
-**Updating**: `git pull && git submodule update --init && scripts/setup` in the clone, then `/plugin marketplace update engineering-skills-router` and `/reload-plugins` in Claude Code. **Trying a change to the mod** for one session, without installing: `claude --plugin-dir ~/web/ai/engineering-skills-router/adapters/claude-code` (not together with the installed one). If something does not show, `claude --debug` logs why a mod hook was skipped.
-
-## Install (Claude Code mod)
-
-`adapters/claude-code/` is a Claude Code plugin whose mod draws the workflow: a band above the prompt (the same lines as the Pi widget) and a pane with the skill selection. It reads `.router/state.json` of the session's working directory and never writes it; choices go to the agent as prompts in the router's selection syntax. Needs a Claude Code with mods (CLI, Code tab of the Desktop app or VS Code extension). A mod runs with your permissions: list what it does first with `claude plugin validate adapters/claude-code`.
-
-```
-/plugin install engineering-router-panel --marketplace marcoax/engineering-skills-router
-```
-
-The repo is its own marketplace (`.claude-plugin/marketplace.json`) holding this one plugin; it installs the mod only, the router skill is installed as in **Install (any agent)**. To try a local change for one session instead: `claude --plugin-dir /path/to/engineering-skills-router/adapters/claude-code`.
-
-Then `/router-panel` toggles the pane.
-
-**Review 2 on another family.** Claude Code's subagents run only Claude models, so the mod adds a tool, `review_other_family`, that runs the review through a local CLI, read-only, and streams it into a **Review 2** pane: `openai-codex/<model>` runs `codex exec --sandbox read-only`, `opencode/<provider>/<model>` runs `opencode run --agent plan`. The router calls it when it is listed (SKILL.md §5). `/router-models` opens a pane to pick backend, model and effort; left empty (`default`), each is the CLI's own default (`~/.codex/config.toml`, opencode's config). For opencode the model is picked from what `opencode models` lists; when that fails or lists nothing, and for Codex, it is typed. The choice is kept across sessions. New backends, and a backend's model-list command, are one entry in `adapters/claude-code/hooks/backends.ts`. In the pane the buttons carry hotkeys: `g` go · `j`/`k` next/previous step · `a`/`b` swap skill · `o` on/off an optional step · `f` full path (light workflow) · `e` edit · `p` pause · `r` resume · `x` stop (press twice). The router skill itself is installed as in **Install (any agent)**.
-
-Differences from the Pi adapter: no `ctrl+alt+w` shortcut (use `/router-panel`), no `gh` check that hides a done workflow with a merged PR, and the state file is looked up in the working directory only, not in the nearest `.git` root. Both adapters share one copy of the state logic, `adapters/claude-code/hooks/state-core.ts` (a mod imports only from its own folder; `adapters/pi/state.ts` re-exports it and adds the file reading). Tests: `claude plugin test adapters/claude-code`.
-
-## Install from a clone (other agents)
-
-Instead of `npx skills add`, clone and set up once, as in **Personal preferences** above (`git clone --recurse-submodules ...`, `scripts/setup`), then link the router skill into the agent's skills folder. The router then uses that clone directly.
-
-Claude Code:
-
-```sh
-mkdir -p ~/.claude/skills
-ln -s "$PWD/skills/engineering-router" ~/.claude/skills/engineering-router
-```
-
-Then `/engineering-router <task>` in any repo (or `/engineering-router` alone to resume). For one project only, link into that project's `.claude/skills/` instead. Update with `git pull && scripts/setup` in the clone.
-
-Codex, Cursor, OpenCode: link or point the agent at `skills/engineering-router/SKILL.md` with whatever skill/rule mechanism it offers.
+Codex, Cursor, OpenCode, or any agent through `npx skills add`: [install for other agents](docs/install-other-agents.md).
 
 ## Scripts
 
 | Script | Does |
 |---|---|
-| `scripts/list-skills [--target <repo>] [phase ...]` | ranked candidates per phase with availability; `--target` adds the repo's project skills |
-| `scripts/validate-catalog [--target <repo>] [--verbose]` | checks sources, paths, ids, categories, rankings, preferences, personal skills; `--target` also checks the repo's `docs/agents/skills.yaml`; `--verbose` lists uncataloged upstream skills |
-| `scripts/update` | pulls vendor submodules, prints added/removed skills; never edits the catalog |
-| `scripts/check-state <target-repo>` | checks the target repo's `.router/state.json` against `skills/engineering-router/state.md` |
-| `scripts/selftest` | checks the scripts against a scratch catalog and scratch state files, then runs the Pi adapter tests |
-| `scripts/state <target-repo> step\|workflow\|handoff\|reply\|show ...` | the router's only way to change `.router/state.json` after writing it: applies the change, validates it with `check-state`, keeps the old file when invalid |
-| `scripts/record <target-repo> [--findings f] [--checklist p,a[,ok,ko]] [--pr n] ...` | composes the run record from the state and the findings, and writes it into the PR body |
 | `scripts/stats [--repo <owner/name>] [--limit <n>] [--json]` | adds up the run records in a repo's PRs (via `gh`): per review and model, per skill, per severity, checklists, tokens |
+| `scripts/validate-catalog [--target <repo>]` | checks the catalog, your preferences and personal skills; `--target` also checks a repo's project skills (`docs/agents/skills.yaml`) |
+| `scripts/update` | pulls vendor submodules, prints added/removed skills; never edits the catalog |
 
-Scripts need Node 22.18+; `scripts/setup` installs their only dependency (`yaml`).
-
-Adding a collection: [docs/adding-a-source.md](docs/adding-a-source.md).
+Repo layout, every script, adding a collection: [reference](docs/reference.md).
