@@ -210,3 +210,85 @@ test('the models pane saves the picked backend', async ($, on) => {
   expect(saved).toEqual([{ backend: 'codex', model: '', effort: '' }])
   await ui.unmount()
 })
+
+const MODELS = { ...PANE, requestId: 'models', surface: 'terminal' } as const
+// What `opencode models` (v2.1.4) prints: one `provider/model` per line.
+const OPENCODE_MODELS = 'opencode/claude-opus-5-5\nopencode/gemini-3.1-pro\n'
+
+test('picking opencode lists its models in a select, default first, and saves the pick', async ($, on) => {
+  const runs: string[][] = []
+  on('process.run', (_: unknown, e: any) => {
+    runs.push([...e.argv])
+    return { value: { exitCode: 0, stdout: OPENCODE_MODELS, stderr: '' } }
+  })
+  const saved: any[] = []
+  on('store.set', (_: unknown, e: any) => {
+    saved.push(e.value)
+    return { value: undefined }
+  })
+
+  const ui = await $.ui.mount(MODELS)
+  await ui.select({ key: 'backend', value: 'opencode' })
+
+  expect(runs).toEqual([['opencode', 'models']])
+  const select = await ui.find({ type: 'Select', key: 'model' })
+  expect((select?.props.options as any[]).map(o => o.value)).toEqual([
+    'default',
+    'opencode/claude-opus-5-5',
+    'opencode/gemini-3.1-pro',
+  ])
+  await ui.select({ key: 'model', value: 'opencode/gemini-3.1-pro' })
+  expect(saved.at(-1)).toEqual({ backend: 'opencode', model: 'opencode/gemini-3.1-pro', effort: '' })
+  await ui.select({ key: 'model', value: 'default' })
+  expect(saved.at(-1)).toEqual({ backend: 'opencode', model: '', effort: '' })
+  await ui.unmount()
+})
+
+test('when opencode cannot list its models the pane keeps the text field with a note', async ($, on) => {
+  // Fails, prints no models, or never ends (the run rejects at its timeout).
+  const answers: (() => unknown)[] = [
+    () => ({ value: { exitCode: 1, stdout: '', stderr: 'boom' } }),
+    () => ({ value: { exitCode: 0, stdout: '\n', stderr: '' } }),
+    () => {
+      throw new Error('timed out')
+    },
+  ]
+  let answer = answers[0]!
+  on('process.run', () => answer() as any)
+  for (answer of answers) {
+    const ui = await $.ui.mount(MODELS)
+    await ui.select({ key: 'backend', value: 'opencode' })
+
+    expect((await ui.find({ key: 'model' }))?.type).toBe('Input')
+    expect(await ui.find({ type: 'Text', text: /No model list from opencode models; type one\./ })).toBeTruthy()
+    await ui.select({ key: 'backend', value: 'auto' })
+    await ui.unmount()
+  }
+})
+
+test('a saved model the list does not print stays shown and selectable', async ($, on) => {
+  let isListing = false
+  on('process.run', () =>
+    isListing
+      ? { value: { exitCode: 0, stdout: OPENCODE_MODELS, stderr: '' } }
+      : { value: { exitCode: 1, stdout: '', stderr: 'offline' } },
+  )
+  on('ui.open', () => ({ value: { isPlaced: true } }))
+
+  const ui = await $.ui.mount(MODELS)
+  await ui.select({ key: 'backend', value: 'opencode' })
+  await ui.input({ key: 'model', text: 'anthropic/claude-old' })
+  isListing = true
+  // Opening /router-models again lists them anew, now that it works.
+  await $.command.run({ command: 'router-models' } as any)
+
+  const select = await ui.find({ type: 'Select', key: 'model' })
+  expect(select?.props.value).toBe('anthropic/claude-old')
+  expect((select?.props.options as any[]).map(o => o.value)).toEqual([
+    'default',
+    'anthropic/claude-old',
+    'opencode/claude-opus-5-5',
+    'opencode/gemini-3.1-pro',
+  ])
+  await ui.unmount()
+})

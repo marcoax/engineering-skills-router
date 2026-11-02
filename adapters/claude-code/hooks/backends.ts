@@ -2,6 +2,7 @@
 // The router passes the model as `config/preferences.yaml` names it; its first segment
 // picks the backend, the rest is the backend's own model id. Each backend runs read-only.
 // To add one, add an entry: its prefixes, its executable, and its argument vector.
+// A backend that can list its models names the command; /router-models offers its output.
 
 export type Effort = 'low' | 'medium' | 'high'
 
@@ -13,6 +14,9 @@ export type Backend = {
   hasEffort: boolean
   // The review run. No model or effort: the CLI's own default, from its config.
   argv: (prompt: string, model?: string, effort?: Effort) => string[]
+  // The command that prints the models it can run, one id per line, each as `-m` takes
+  // it. Absent: /router-models asks for the model as text.
+  listModels?: string[]
 }
 
 export const BACKENDS: Backend[] = [
@@ -40,8 +44,18 @@ export const BACKENDS: Backend[] = [
     cli: 'opencode',
     hasEffort: false,
     argv: (prompt, model) => ['opencode', 'run', '--agent', 'plan', ...(model ? ['-m', model] : []), prompt],
+    // `provider/model` per line, e.g. `opencode/claude-opus-5-5`.
+    listModels: ['opencode', 'models'],
   },
 ]
+
+// The ids a list command printed: one per line, blank lines and anything with spaces
+// (a banner, a warning) left out.
+export const parseModelList = (stdout: string) =>
+  stdout
+    .split('\n')
+    .map(line => line.trim())
+    .filter(line => line !== '' && !/\s/.test(line))
 
 export const backendNamed = (name: string) => BACKENDS.find(b => b.name === name)
 

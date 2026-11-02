@@ -3,7 +3,7 @@
 // selection. It never writes the state file; choices go to the agent as prompts in the
 // router's own selection syntax (`go`, `2b`, `5on`, `pause`, ...).
 import { atom, read, update } from 'claude-code'
-import type { Register, RouterReview } from 'claude-code'
+import type { EngineInterface, Register, RouterReview } from 'claude-code'
 
 import {
   currentStep,
@@ -18,7 +18,7 @@ import {
   widgetLines,
 } from './state-core.ts'
 import type { Choice } from './state-core.ts'
-import { asChoice, BACKENDS, backendNamed, planRun } from './backends.ts'
+import { asChoice, BACKENDS, backendNamed, parseModelList, planRun } from './backends.ts'
 import type { Choice as ReviewChoice, Plan } from './backends.ts'
 
 const PANE = 'router'
@@ -43,6 +43,9 @@ const choice = atom(
   { backend: 'auto', model: '', effort: '' },
 )
 
+// What each backend's list command printed, by backend name (see listModels below).
+const models = atom({ plugin: 'engineering-router-panel', key: 'models' } as const, {})
+
 const describePlan = (plan: Plan) =>
   `${plan.backend.name} · ${plan.model ?? 'default model'} · ${
     plan.backend.hasEffort ? (plan.effort ?? 'default effort') : 'effort from its config'
@@ -52,6 +55,21 @@ const state = atom({ plugin: 'engineering-router-panel', key: 'state' } as const
 const selected = atom({ plugin: 'engineering-router-panel', key: 'selected' } as const, 0)
 const confirmStop = atom({ plugin: 'engineering-router-panel', key: 'confirmStop' } as const, false)
 const isHidden = atom({ plugin: 'engineering-router-panel', key: 'isHidden' } as const, false)
+
+// Lists the models of a backend that has a list command, once it has listed some: a
+// failure, a timeout or an empty list is kept as none, and asked again the next time.
+async function listModels($: EngineInterface, name: string) {
+  const backend = backendNamed(name)
+  if (!backend?.listModels || (await read($, models))[name]?.length) return
+  let ids: string[] = []
+  try {
+    const run = await $.process.run(backend.listModels, { timeoutMs: 15_000 })
+    if (run.exitCode === 0) ids = parseModelList(run.stdout)
+  } catch {
+    // Not installed, or still running at the timeout: the text field stands.
+  }
+  await update($, models, m => ({ ...m, [name]: ids }))
+}
 
 export const register: Register = on => {
   // The last text read, so a poll that finds the same file redraws nothing.
@@ -229,6 +247,7 @@ export const register: Register = on => {
 
   on('command.run', { command: 'router-models' }, async $ => {
     await $.ui.open({ id: MODELS_PANE, title: 'Review 2 model', focus: true, closeOnEscape: true })
+    await listModels($, (await read($, choice)).backend)
     return { text: 'Review 2 model pane opened.' }
   })
 
@@ -250,6 +269,8 @@ export const register: Register = on => {
       }
     }
     const backend = c.backend === 'auto' ? undefined : backendNamed(c.backend)
+    // The models its list command printed: undefined while not listed yet.
+    const listed = backend?.listModels ? (await read($, models))[backend.name] : undefined
     const preview =
       c.backend === 'auto'
         ? `as the router asks (config/preferences.yaml)${c.effort ? `, effort ${c.effort}` : ''}`
@@ -268,16 +289,38 @@ export const register: Register = on => {
             { value: 'auto', label: 'auto: follow the router' },
             ...BACKENDS.map(b => ({ value: b.name, label: b.name })),
           ]}
-          onSelect={(value: string) => void save(old => ({ ...old, backend: value }))}
+          onSelect={async (value: string) => {
+            await save(old => ({ ...old, backend: value }))
+            await listModels($, value)
+          }}
         />
-        <Input
-          key="model"
-          label="Model   "
-          value={c.model}
-          placeholder={c.backend === 'opencode' ? 'provider/model · empty = default' : 'empty = default'}
-          submitLabel="save"
-          onSubmit={(value: string) => void save(old => ({ ...old, model: value }))}
-        />
+        {listed?.length ? (
+          <Select
+            key="model"
+            label="Model   "
+            value={c.model || 'default'}
+            options={[
+              { value: 'default', label: 'default' },
+              // A saved model the list no longer prints stays shown and selectable.
+              ...(c.model && !listed.includes(c.model) ? [c.model] : []).concat(listed).map(id => ({ value: id, label: id })),
+            ]}
+            onSelect={(value: string) => void save(old => ({ ...old, model: value === 'default' ? '' : value }))}
+          />
+        ) : (
+          <Input
+            key="model"
+            label="Model   "
+            value={c.model}
+            placeholder={c.backend === 'opencode' ? 'provider/model · empty = default' : 'empty = default'}
+            submitLabel="save"
+            onSubmit={(value: string) => void save(old => ({ ...old, model: value }))}
+          />
+        )}
+        {backend?.listModels && !listed?.length && (
+          <Text dimColor>
+            {listed ? `No model list from ${backend.listModels.join(' ')}; type one.` : 'Listing models…'}
+          </Text>
+        )}
         <Select
           key="effort"
           label="Effort  "
