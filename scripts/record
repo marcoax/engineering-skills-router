@@ -1,0 +1,109 @@
+#!/usr/bin/env node
+// Usage: scripts/record <target-repo> [--findings <file.json>] [--checklist <points>,<agent>[,<passed>,<failed>]]
+//                       [--session-model <id>] [--tokens <n>] [--cost <usd>] [--pr <number>]
+// Composes the run record (skills/engineering-router/run-record.md) from `.router/state.json`
+// and what only the router knows: the findings (a JSON array of {title, severity, found_by,
+// decision}), the checklist counts, the session model, reported usage. Prints the block to
+// append to the PR body; with --pr, writes it into that PR's body through gh, replacing an
+// earlier record. Invalid input is refused with the reason, nothing is written.
+const fs = require('node:fs');
+const os = require('node:os');
+const path = require('node:path');
+const { spawnSync } = require('node:child_process');
+const { parseRecord, SEVERITIES, DECISIONS } = require('./lib/runs');
+
+const ROOT = path.resolve(__dirname, '..');
+const argv = process.argv.slice(2);
+const target = argv[0];
+const flags = {};
+for (let i = 1; i < argv.length; i++) if (argv[i].startsWith('--')) flags[argv[i].slice(2)] = argv[++i] ?? '';
+const die = (msg) => {
+  console.error(`error: ${msg}`);
+  process.exit(1);
+};
+if (!target) die('usage: scripts/record <target-repo> [--findings f.json] [--checklist p,a[,passed,failed]] [--session-model id] [--tokens n] [--cost usd] [--pr n]');
+
+let state;
+try {
+  state = JSON.parse(fs.readFileSync(path.join(target, '.router', 'state.json'), 'utf8'));
+} catch (e) {
+  die(`cannot read .router/state.json in ${target}: ${e.message}`);
+}
+
+const ids = new Set(state.steps.map((s) => s.id));
+let findings = [];
+if (flags.findings) {
+  try {
+    findings = JSON.parse(fs.readFileSync(flags.findings, 'utf8'));
+  } catch (e) {
+    die(`--findings: ${e.message}`);
+  }
+  if (!Array.isArray(findings)) die('--findings: expected a JSON array');
+  findings.forEach((f, i) => {
+    const at = `--findings[${i}]`;
+    if (typeof f?.title !== 'string' || !f.title.trim()) die(`${at}.title: required`);
+    if (!SEVERITIES.includes(f.severity)) die(`${at}.severity: one of ${SEVERITIES.join(', ')}`);
+    if (!DECISIONS.includes(f.decision)) die(`${at}.decision: one of ${DECISIONS.join(', ')}`);
+    if (!Array.isArray(f.found_by) || f.found_by.length === 0) die(`${at}.found_by: at least one step id`);
+    for (const id of f.found_by) if (!ids.has(id)) die(`${at}.found_by: no step ${JSON.stringify(id)} in the workflow`);
+  });
+  findings = findings.map(({ title, severity, found_by, decision }) => ({ title, severity, found_by, decision }));
+}
+
+let checklist = null;
+if (flags.checklist) {
+  const n = flags.checklist.split(',').map((x) => (x.trim() === '' ? null : Number(x)));
+  if (n.length < 2 || n.some((x) => x !== null && !Number.isInteger(x))) die('--checklist: <points>,<agent>[,<passed>,<failed>]');
+  checklist = { points: n[0], agent: n[1], passed: n[2] ?? null, failed: n[3] ?? null };
+}
+const num = (v, name) => {
+  if (v === undefined) return null;
+  const x = Number(v);
+  if (!Number.isFinite(x)) die(`--${name}: a number`);
+  return x;
+};
+
+const commit = spawnSync('git', ['-C', ROOT, 'rev-parse', '--short', 'HEAD'], { encoding: 'utf8' });
+const record = {
+  version: 1,
+  router: { commit: commit.status === 0 ? commit.stdout.trim() : null },
+  task: state.task ?? null,
+  type: state.type ?? null,
+  risk: state.risk ?? null,
+  complexity: state.complexity ?? null,
+  path: state.path ?? null,
+  steps: state.steps.map((s) => ({
+    id: s.id,
+    skill: s.skill ?? null,
+    model: s.model ?? null,
+    effort: s.effort ?? null,
+    status: s.status,
+    tokens: null,
+  })),
+  session_model: flags['session-model'] || null,
+  findings,
+  checklist,
+  usage: { tokens: num(flags.tokens, 'tokens'), cost_usd: num(flags.cost, 'cost') },
+};
+
+// `-->` would end the comment early.
+const text = JSON.stringify(record, null, 2).replaceAll('-->', '--\\u003e');
+const block = `<!-- engineering-router:run\n${text}\n-->`;
+if (parseRecord(block).kind !== 'ok') die('composed a record scripts/stats could not read back (a bug in scripts/record)');
+
+if (!flags.pr) {
+  console.log(block);
+  process.exit(0);
+}
+const view = spawnSync('gh', ['pr', 'view', flags.pr, '--json', 'body', '-q', '.body'], { cwd: target, encoding: 'utf8' });
+if (view.status !== 0) die(`gh pr view ${flags.pr}: ${view.stderr.trim()}`);
+const old = view.stdout.replace(/\n$/, '');
+const body = /<!--\s*engineering-router:run[\s\S]*?-->/.test(old)
+  ? old.replace(/<!--\s*engineering-router:run[\s\S]*?-->/, block)
+  : `${old}\n\n${block}`;
+const tmp = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'router-record-')), 'body.md');
+fs.writeFileSync(tmp, `${body}\n`);
+const edit = spawnSync('gh', ['pr', 'edit', flags.pr, '--body-file', tmp], { cwd: target, encoding: 'utf8' });
+fs.rmSync(path.dirname(tmp), { recursive: true, force: true });
+if (edit.status !== 0) die(`gh pr edit ${flags.pr}: ${edit.stderr.trim()}`);
+console.log(`run record written to PR #${flags.pr}`);

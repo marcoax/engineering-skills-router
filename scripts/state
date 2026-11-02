@@ -1,0 +1,81 @@
+#!/usr/bin/env node
+// Usage: scripts/state <target-repo> <command> ...
+// The router's only way to change `.router/state.json` after writing it the first time.
+// Every change is validated with scripts/check-state; an invalid one is not kept.
+//
+//   step <n|id> <status> [--outcome "..."] [--model provider/model-id] [--effort low|medium|high]
+//        pending | running | waiting | done | skipped | failed; done, skipped and failed need
+//        an outcome. A step that covers others carries them: running starts them, done or
+//        failed closes those still open. A running or waiting step sets the workflow's status.
+//   workflow <status>        selecting | running | waiting | done | paused | stopped
+//   handoff issue <n> <url> | spec <path> | ticket <n> <url> | branch <name> | base <sha|HEAD> | pr <n> <url>
+//   reply <reply>            a selection reply: go, 2b, 5on, 5off, stop, pause, resume.
+//                            edit and full exit 2: recompose the workflow (SKILL.md §2-§4).
+//   show                     the workflow, one line per step
+const fs = require('node:fs');
+const path = require('node:path');
+const { spawnSync } = require('node:child_process');
+const ops = require('./lib/state-ops');
+
+const [target, command, ...rest] = process.argv.slice(2);
+if (!target || !command) {
+  console.error('usage: scripts/state <target-repo> step|workflow|handoff|reply|show ...');
+  process.exit(1);
+}
+const file = path.join(target, '.router', 'state.json');
+const die = (msg, code = 1) => {
+  console.error(`error: ${msg}`);
+  process.exit(code);
+};
+if (!fs.existsSync(file)) die(`.router/state.json not found in ${target}`);
+const before = fs.readFileSync(file, 'utf8');
+let state;
+try {
+  state = JSON.parse(before);
+} catch (e) {
+  die(`invalid JSON in ${file}: ${e.message}`);
+}
+
+const flags = {};
+const args = [];
+for (let i = 0; i < rest.length; i++) {
+  if (rest[i].startsWith('--')) flags[rest[i].slice(2)] = rest[++i] ?? '';
+  else args.push(rest[i]);
+}
+
+if (command === 'show') {
+  const mark = { done: '✓', running: '▶', pending: '○', waiting: '⏸', skipped: '–', failed: '✗' };
+  console.log(`${state.task} · ${state.status}${state.path ? ` · ${state.path}` : ''}`);
+  state.steps.forEach((s, i) => {
+    const inside = s.covered_by ? ` inside ${s.covered_by}` : '';
+    console.log(`${mark[s.status] ?? '?'} ${i + 1}. ${s.id}  ${s.skill ?? '(router)'}${inside}${s.outcome ? ` → ${s.outcome}` : ''}`);
+  });
+  process.exit(0);
+}
+
+let next;
+try {
+  if (command === 'step') next = ops.setStep(state, args[0], args[1], flags);
+  else if (command === 'workflow') next = ops.setWorkflow(state, args[0]);
+  else if (command === 'handoff') {
+    let values = args.slice(1);
+    if (args[0] === 'base' && values[0] === 'HEAD') {
+      const r = spawnSync('git', ['-C', target, 'rev-parse', 'HEAD'], { encoding: 'utf8' });
+      if (r.status !== 0) die(`git rev-parse HEAD failed in ${target}: ${r.stderr.trim()}`);
+      values = [r.stdout.trim()];
+    }
+    next = ops.setHandoff(state, args[0], values);
+  } else if (command === 'reply') next = ops.applyReply(state, args.join(' '));
+  else die(`unknown command ${command}`);
+} catch (e) {
+  die(e.message, e.code === 'RECOMPOSE' ? 2 : 1);
+}
+
+next.updated_at = new Date().toISOString().replace(/\.\d{3}Z$/, 'Z');
+fs.writeFileSync(file, `${JSON.stringify(next, null, 2)}\n`);
+const check = spawnSync(path.join(__dirname, 'check-state'), [target], { encoding: 'utf8' });
+if (check.status !== 0) {
+  fs.writeFileSync(file, before);
+  die(`the change would make the state invalid; kept the previous state\n${check.stdout}${check.stderr}`);
+}
+console.log(`state: ${command} ${[...args].join(' ')} → workflow ${next.status}`);

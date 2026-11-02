@@ -405,6 +405,9 @@ const expectStateOk = (label, state) => {
   if (!r.ok) fail(`check-state should accept ${label}\n${r.out}`);
 };
 expectStateOk('the state.md example', stateExample());
+// The agent writes the first state from state-brief.md: its example must pass too.
+expectStateOk('the state-brief.md example',
+  JSON.parse(fs.readFileSync(path.join(tmp, 'skills/engineering-router/state-brief.md'), 'utf8').match(/```json\n([\s\S]*?)```/)[1]));
 const expectState = (label, state, ...msgs) => {
   const r = checkState(state);
   const missing = msgs.filter((m) => !r.out.includes(`error: ${m}`));
@@ -514,8 +517,8 @@ expectStateOk('a covered step running with its covering step', variant((s) => { 
 // The format is read from state.md, so a field added there is required here.
 const stateMd = path.join(tmp, STATE_MD);
 const stateMdText = fs.readFileSync(stateMd, 'utf8');
-fs.writeFileSync(stateMd, stateMdText.replace(/^\| `outcome` .*$/m, '$&\n| `effort` | integer \\| null | Test field. |'));
-expectState('field added to state.md', stateExample(), 'steps[0].effort: missing');
+fs.writeFileSync(stateMd, stateMdText.replace(/^\| `outcome` .*$/m, '$&\n| `probe` | integer \\| null | Test field. |'));
+expectState('field added to state.md', stateExample(), 'steps[0].probe: missing');
 fs.writeFileSync(stateMd, stateMdText);
 expectStateOk('unknown fields', variant((s) => { s.extra = 1; s.steps[0].extra = {}; s.handoff.issue.extra = null; }));
 
@@ -535,6 +538,56 @@ expectStateOk('unknown fields', variant((s) => { s.extra = 1; s.steps[0].extra =
   if (parseRecord('no record').kind !== 'none' || parseRecord('<!-- engineering-router:run {"version":2} -->').kind !== 'version') {
     fail('run records: absent or newer records are not told apart');
   }
+}
+
+// scripts/state: each change is applied and validated; an invalid one leaves the file as it was.
+{
+  const repo = fs.mkdtempSync(path.join(tmp, 'state-ops-'));
+  fs.mkdirSync(path.join(repo, '.router'));
+  const stateFile = path.join(repo, '.router/state.json');
+  const read = () => JSON.parse(fs.readFileSync(stateFile, 'utf8'));
+  const optional = (id) => ({ id, phases: [], skill: null, reason: 'r', summary: 's', alternatives: [], confirm: false,
+    optional: true, covered_by: null, model: null, effort: null, status: 'skipped', outcome: 'off (optional)' });
+  const start = variant((s) => { s.steps.push(optional('review-2'), optional('comparison')); });
+  fs.writeFileSync(stateFile, JSON.stringify(start));
+  const st = (...a) => run('state', repo, ...a);
+  const expectOk = (label, r) => { if (!r.ok) fail(`scripts/state ${label}\n${r.out}`); };
+
+  expectOk('step done', st('step', 'implementation', 'done', '--outcome', 'Built'));
+  let s = read();
+  if (s.steps[3].status !== 'done' || s.steps[3].outcome !== 'ran inside implementation') fail(`a covering step should close its covered step: ${JSON.stringify(s.steps[3])}`);
+  expectOk('step pending', st('step', 'review-2', 'pending'));
+  if (read().steps[4].outcome !== null) fail('an open step keeps no outcome');
+  const kept = fs.readFileSync(stateFile, 'utf8');
+  if (st('step', 'review-2', 'failed').ok) fail('scripts/state should refuse failed without an outcome');
+  if (fs.readFileSync(stateFile, 'utf8') !== kept) fail('a refused change must leave the state file as it was');
+  expectOk('handoff pr', st('handoff', 'pr', '77', 'https://example.test/pr/77'));
+  if (read().handoff.pr?.number !== 77) fail('handoff pr not set');
+
+  expectOk('workflow selecting', st('workflow', 'selecting'));
+  expectOk('reply 5on', st('reply', '5on'));
+  s = read();
+  if (s.steps[4].status !== 'pending' || s.steps[5].status !== 'pending') fail('review 2 and the comparison switch on together');
+  expectOk('reply 1a', st('reply', '1a'));
+  s = read();
+  if (s.steps[0].skill !== 'addyosmani/spec-driven-development' || s.steps[0].alternatives[0].skill !== 'mattpocock/to-spec') fail(`swap: ${JSON.stringify(s.steps[0])}`);
+  const edit = spawnSync(path.join(tmp, 'scripts', 'state'), [repo, 'reply', 'edit'], { encoding: 'utf8' });
+  if (edit.status !== 2) fail(`reply edit should exit 2 (recompose), got ${edit.status}`);
+  if (st('reply', '2a').ok) fail('a swap with no alternative should be refused');
+  expectOk('reply go', st('reply', 'go'));
+  if (read().status !== 'running') fail('go should start the workflow');
+
+  // scripts/record: composes a record scripts/stats reads back, and refuses unknown reviewers.
+  const { parseRecord: parseBack } = require(path.join(ROOT, 'scripts/lib/runs'));
+  const findingsFile = path.join(repo, 'findings.json');
+  fs.writeFileSync(findingsFile, JSON.stringify([{ title: 'x', severity: 'high', found_by: ['review-1', 'review-2'], decision: 'fixed' }]));
+  const rec = run('record', repo, '--findings', findingsFile, '--checklist', '9,5', '--session-model', 'claude-opus-5-5');
+  const back = parseBack(rec.out);
+  if (!rec.ok || back.kind !== 'ok' || back.record.findings.length !== 1 || back.record.steps.length !== 6 || back.record.checklist.passed !== null) {
+    fail(`scripts/record\n${rec.out}`);
+  }
+  fs.writeFileSync(findingsFile, JSON.stringify([{ title: 'x', severity: 'high', found_by: ['review-9'], decision: 'fixed' }]));
+  if (run('record', repo, '--findings', findingsFile).ok) fail('scripts/record should refuse a finding from a step not in the workflow');
 }
 
 const adapter = spawnSync(process.execPath, ['--test', path.join(ROOT, 'adapters/pi/state.test.ts')], { encoding: 'utf8' });
