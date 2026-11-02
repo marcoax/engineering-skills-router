@@ -139,7 +139,8 @@ export const register: Register = on => {
     const prompt = typeof input.prompt === 'string' ? input.prompt : ''
     const cwd = typeof input.cwd === 'string' && input.cwd ? input.cwd : undefined
     const known = BACKENDS.map(b => `${b.prefixes[0]}/<model>`).join(', ')
-    const fail = (text: string) => ({ result: { text }, isError: true }) as never
+    // The harness takes a tool's result as a string (or content blocks), not an object.
+    const fail = (text: string) => ({ result: text, isError: true as const })
 
     const plan = planRun(await read($, choice), asked)
     if (!plan) {
@@ -152,7 +153,7 @@ export const register: Register = on => {
       try {
         const run = await $.process.run([backend.cli, '--version'], { cwd, timeoutMs: 15_000 })
         if (run.exitCode !== 0) return fail(`${backend.cli} --version exited ${run.exitCode}: ${run.stderr.trim()}`)
-        return { result: { text: `available: ${label} (${backend.cli} ${run.stdout.trim()})` } } as never
+        return { result: `available: ${label} (${backend.cli} ${run.stdout.trim()})` }
       } catch (err) {
         return fail(`${backend.cli} not found or not runnable: ${String(err)}`)
       }
@@ -198,11 +199,11 @@ export const register: Register = on => {
     await setStatus(isOk ? 'done' : 'failed')
     if (!isOk) return fail(`${backend.cli} ended with ${next.signal.aborted ? 'an interrupt' : `exit ${code}`}:\n${all.slice(-4000)}`)
     // Codex and opencode write the answer to stdout and their progress to stderr.
-    return { result: { text: `Reviewed by ${label}.\n\n${(out.trim() || all).slice(-KEEP)}` } } as never
+    return { result: `Reviewed by ${label}.\n\n${(out.trim() || all).slice(-KEEP)}` }
   }).catch(($, e, next) =>
     next.called
       ? next(e)
-      : ({ result: { text: 'review_other_family failed inside the mod; see claude --debug' }, isError: true } as never),
+      : { result: 'review_other_family failed inside the mod; see claude --debug', isError: true as const },
   )
 
   on('ui.render', { component: 'Pane', requestId: REVIEW_PANE }, async ($, e) => {

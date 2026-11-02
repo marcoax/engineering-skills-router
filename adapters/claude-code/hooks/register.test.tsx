@@ -165,9 +165,36 @@ test('review 2 runs codex read-only and returns its stdout', async ($, on) => {
   expect(argvs).toEqual([
     ['codex', 'exec', '--sandbox', 'read-only', '-m', 'gpt-6-sol', '-c', 'model_reasoning_effort="high"', 'Review the diff'],
   ])
-  expect(String(ran.result?.text)).toContain('No blocking findings.')
+  // The harness takes a tool result as a string or a content-block array, not an object.
+  expect(typeof ran.result).toBe('string')
+  expect(ran.result).toBe('Reviewed by codex · gpt-6-sol · high (router).\n\nNo blocking findings.')
   expect(ran.isError).toBe(undefined)
   expect(opened.find(p => p.id === 'review')?.columns).toBeGreaterThanOrEqual(60)
+})
+
+test('review 2 without a prompt checks the CLI and answers "available" as text', async ($, on) => {
+  seed(null, on)
+  const runs: string[][] = []
+  on('process.run', (_: unknown, e: any) => {
+    runs.push([...e.argv])
+    return { value: { exitCode: 0, stdout: 'codex-cli 0.166.0\n', stderr: '' } }
+  })
+
+  const ran: any = await $.tool.call({ tool: TOOL, model: 'openai-codex/gpt-6-sol' } as any)
+
+  expect(runs).toEqual([['codex', '--version']])
+  expect(ran.result).toBe('available: codex · gpt-6-sol · default effort (router) (codex codex-cli 0.166.0)')
+  expect(ran.isError).toBe(undefined)
+})
+
+test('review 2 reports a failing CLI as an error with readable text', async ($, on) => {
+  seed(null, on)
+  on('process.run', () => ({ value: { exitCode: 2, stdout: '', stderr: 'not logged in\n' } }))
+
+  const ran: any = await $.tool.call({ tool: TOOL, model: 'openai-codex/gpt-6-sol' } as any)
+
+  expect(ran.result).toBe('codex --version exited 2: not logged in')
+  expect(ran.isError).toBe(true)
 })
 
 test('the models pane saves the picked backend', async ($, on) => {
