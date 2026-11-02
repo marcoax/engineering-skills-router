@@ -125,7 +125,9 @@ The extension reads `.router/state.json` in the session's repo and shows the ste
 claude --plugin-dir /path/to/engineering-skills-router/adapters/claude-code
 ```
 
-Then `/router-panel` toggles the pane. In the pane the buttons carry hotkeys: `g` go · `j`/`k` next/previous step · `a`/`b` swap skill · `o` on/off an optional step · `e` edit · `p` pause · `r` resume · `x` stop (press twice). The router skill itself is installed as in **Install (any agent)**.
+Then `/router-panel` toggles the pane.
+
+**Review 2 on another family.** Claude Code's subagents run only Claude models, so the mod adds a tool, `review_other_family`, that runs the review through a local CLI, read-only, and streams it into a **Review 2** pane: `openai-codex/<model>` runs `codex exec --sandbox read-only`, `opencode/<provider>/<model>` runs `opencode run --agent plan`. The router calls it when it is listed (SKILL.md §5). `/router-models` opens a pane to pick backend, model and effort; left empty, each is the CLI's own default (`~/.codex/config.toml`, opencode's config). The choice is kept across sessions. New backends are one entry in `adapters/claude-code/hooks/backends.ts`. In the pane the buttons carry hotkeys: `g` go · `j`/`k` next/previous step · `a`/`b` swap skill · `o` on/off an optional step · `e` edit · `p` pause · `r` resume · `x` stop (press twice). The router skill itself is installed as in **Install (any agent)**.
 
 Differences from the Pi adapter: no `ctrl+alt+w` shortcut (use `/router-panel`), no `gh` check that hides a done workflow with a merged PR, and the state file is looked up in the working directory only, not in the nearest `.git` root. `adapters/claude-code/hooks/state-core.ts` is `adapters/pi/state.ts` without its `node:fs`/`node:path` parts (a mod has no Node and imports only from its own folder); change one, change the other. Tests: `claude plugin test adapters/claude-code`.
 
