@@ -23,7 +23,7 @@ When the implementation step ends, show the files changed since the base commit 
 
 **Comparison** (when on): merge both reviews, plus framework-review's findings when it ran, into three lists: found by both, found by one only (say which), disagreements. Name each review by the model it ran on.
 
-**Findings.** Give each finding a severity, `critical`, `high`, `medium` or `low` (defined in [run-record.md](run-record.md)), and keep which reviews reported it. Then ask once which findings to fix; one the user rejects is `declined`, one kept for later `deferred`.
+**Findings.** Give each finding a severity and keep which reviews reported it (their step ids). Severity: `critical` wrong results, data loss or a security hole; `high` a bug or risk a user will meet; `medium` a real but contained problem; `low` style, naming, small clean-ups. Then ask once which findings to fix; one the user fixes is `fixed`, one the user rejects `declined`, one kept for later `deferred`.
 
 **Security question.** If security is not already in the workflow, inspect the diff for auth, user input, queries, secrets, new dependencies, config and permissions (the `use_when` of the `security` candidate). When any appear, or the task is security- or data-sensitive, suggest that skill in the same question as the findings, with the reason. The user decides.
 
@@ -39,6 +39,6 @@ Start a fresh subagent (without subagents, the main session) that has not seen t
 
 The `pull-request` skill writes the body, and the body links the issue with `Closes #<issue>` (issue-free: [issue-free.md](issue-free.md)) and ends with the manual checklist, updated for the fixes since.
 
-Then write the run record ([run-record.md](run-record.md)) into the PR with `scripts/record <target repo> --pr <number> --findings <file> --checklist <points>,<agent>[,<passed>,<failed>] --session-model <id>`, adding `--tokens` / `--cost` only when the harness or tool reported them. It takes the steps, skills, models and efforts from the state; you give it what only you know: the findings file, a JSON array with every review finding as `{title, severity, found_by, decision}` (with the comparison off, review 1's findings and the fixes chosen after it), and the checklist counts. It refuses invalid input with the reason; without `--pr` it prints the block instead.
+Then write the run record (what ran and what the reviews found, read back by `scripts/stats`) into the PR with `scripts/record <target repo> --pr <number> --findings <file> --checklist <points>,<agent>[,<passed>,<failed>] --session-model <id>`, adding `--tokens` / `--cost` only when the harness or tool reported them. It takes the steps, skills, models and efforts from the state; you give it what only you know: the findings file, a JSON array with every review finding as `{"title": one line, "severity", "found_by": [step ids], "decision"}` (with the comparison off, review 1's findings and the fixes chosen after it), and the checklist counts. It refuses invalid input with the reason; without `--pr` it prints the block instead.
 
 Open the PR, show the checklist again, and stop. The user merges. `scripts/stats` adds the records of a repo's PRs up.

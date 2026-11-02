@@ -405,6 +405,9 @@ const expectStateOk = (label, state) => {
   if (!r.ok) fail(`check-state should accept ${label}\n${r.out}`);
 };
 expectStateOk('the state.md example', stateExample());
+// The agent writes the first state from state-brief.md: its example must pass too.
+expectStateOk('the state-brief.md example',
+  JSON.parse(fs.readFileSync(path.join(tmp, 'skills/engineering-router/state-brief.md'), 'utf8').match(/```json\n([\s\S]*?)```/)[1]));
 const expectState = (label, state, ...msgs) => {
   const r = checkState(state);
   const missing = msgs.filter((m) => !r.out.includes(`error: ${m}`));

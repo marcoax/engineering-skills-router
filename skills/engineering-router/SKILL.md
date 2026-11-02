@@ -17,8 +17,7 @@ This file holds what every run needs. The rest is in files beside it, read only 
 | [issue-free.md](issue-free.md) | §4 finds the workflow issue-free |
 | [review-2.md](review-2.md) | the workflow has a review 2 step: before showing it (§5) and when it runs (§6) |
 | [after-implementation.md](after-implementation.md) | the implementation step is about to start (§6) |
-| [state.md](state.md) | writing `.router/state.json` the first time (§5) |
-| [run-record.md](run-record.md) | writing the PR's run record (after-implementation.md) |
+| [state-brief.md](state-brief.md) | writing `.router/state.json` the first time (§5) |
 
 **Repo root** is the router checkout (catalog, scripts, vendors) this skill works from. Find it before anything else with `node <this skill's folder>/resolve-root.js`, and use the `root:` it prints. When it prints `missing` instead, follow [checkout.md](checkout.md).
 
@@ -108,7 +107,7 @@ Done when no two steps share a purpose.
 
 When the workflow has a review 2 step, follow [review-2.md](review-2.md) first, to decide whether it can run on the other model family.
 
-Write the workflow to `.router/state.json` in the target repo, in the format of [state.md](state.md) with status `selecting`, and run `scripts/check-state <target repo>` until it passes. This is the only time you write the file by hand: every later change goes through `scripts/state` (§6). Add `.router/` to the target repo's `.git/info/exclude` if missing. Then show it and stop for the user's answer:
+Write the workflow to `.router/state.json` in the target repo, as in [state-brief.md](state-brief.md) with status `selecting`, and run `scripts/check-state <target repo>` until it passes. This is the only time you write the file by hand: every later change goes through `scripts/state` (§6). Add `.router/` to the target repo's `.git/info/exclude` if missing. Then show it and stop for the user's answer:
 
 ```text
 Task: <one line>
