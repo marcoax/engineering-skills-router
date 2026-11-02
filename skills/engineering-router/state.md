@@ -117,14 +117,14 @@ Workflow `status`:
 
 | Field | Type | Meaning |
 |---|---|---|
-| `id` | string | Unique, stable within the workflow. Usually the phase name; router steps use `branch`, `review-1`, `review-2`, `comparison`, `pull-request`. |
+| `id` | string | Unique, stable within the workflow. Usually the phase name; router steps use `branch`, `review-1`, `review-2`, `comparison`, `verification`, `pull-request`. |
 | `phases` | string[] | Catalog categories this step fills; empty for router steps without a phase (`branch`, `comparison`). |
 | `skill` | string \| null | Chosen catalog id (`source/name`); `null` when the router does the step itself. |
 | `reason` | string | One line: why this skill (or step) was chosen. |
 | `summary` | string | One line: what the step does for this task. |
 | `alternatives` | `{skill, reason}[]` | At most two other `ok` candidates, each with a one-line reason. After a swap, the previous skill takes the swapped alternative's place. |
 | `confirm` | boolean | `true` when the router pauses for the user before this step (outward-facing action or start of implementation). |
-| `optional` (optional) | boolean | `true` when the user may switch the step on and off during selection (review 2, comparison, independent-review). An optional step that is off is `skipped` with outcome `off (optional)`; switching it on sets `pending`. |
+| `optional` (optional) | boolean | `true` when the user may switch the step on and off during selection (review 2, comparison, independent-review, verification). An optional step that is off is `skipped` with outcome `off (optional)`; switching it on sets `pending`. |
 | `covered_by` | string \| null | `id` of the step whose skill runs this one internally (e.g. review 1 inside implementation). |
 | `model` | string \| null | `provider/model-id` when the step runs on a model other than the session's (review 2, or a per-phase `model` preference). `null` for a review 2 the user chose to run on the session's model because the other family is unreachable. Recorded as `config/preferences.yaml` names it, also where the subagent tool takes only an alias. |
 | `status` | string | Step status, see below. |

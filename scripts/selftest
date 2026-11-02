@@ -519,6 +519,24 @@ expectState('field added to state.md', stateExample(), 'steps[0].effort: missing
 fs.writeFileSync(stateMd, stateMdText);
 expectStateOk('unknown fields', variant((s) => { s.extra = 1; s.steps[0].extra = {}; s.handoff.issue.extra = null; }));
 
+// Run records: the example in run-record.md parses and adds up as documented.
+{
+  const { parseRecord, aggregate } = require(path.join(ROOT, 'scripts/lib/runs'));
+  const doc = fs.readFileSync(path.join(ROOT, 'skills/engineering-router/run-record.md'), 'utf8');
+  const example = doc.match(/```json\n([\s\S]*?)```/)[1];
+  const parsed = parseRecord(`Body\n\n<!-- engineering-router:run\n${example}-->\n`);
+  if (parsed.kind !== 'ok') fail(`run-record.md example does not parse: ${parsed.kind}`);
+  const t = aggregate([parsed.record, parsed.record]);
+  const r2 = t.reviewers['review-2 openai-codex/gpt-6-sol:high'];
+  const r1 = t.reviewers['review-1 session:claude-opus-5-5'];
+  if (t.checklist.points !== 18 || t.checklist.failed !== 2 || t.runs !== 2 || r2?.runs !== 2 || r2.found !== 4 || r2.only !== 2 || r2.fixed !== 4 || r1?.declined !== 2 || r1.serious !== 2) {
+    fail(`run record totals: ${JSON.stringify(t)}`);
+  }
+  if (parseRecord('no record').kind !== 'none' || parseRecord('<!-- engineering-router:run {"version":2} -->').kind !== 'version') {
+    fail('run records: absent or newer records are not told apart');
+  }
+}
+
 const adapter = spawnSync(process.execPath, ['--test', path.join(ROOT, 'adapters/pi/state.test.ts')], { encoding: 'utf8' });
 if (adapter.status !== 0) fail(`Pi adapter tests\n${adapter.stdout}${adapter.stderr}`);
 console.log('selftest OK');

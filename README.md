@@ -10,6 +10,8 @@ The router first records the task's type, risk, size (`complexity`) and properti
 
 Default backbone: **requirements → spec + GitHub issue → tickets → implement + test → review**, trimmed or extended by task type and risk. Requirements (a grilling session) runs after any code-understanding step, so its questions build on the code; it is skipped only when the task is an issue or spec that already settles the decisions. At high risk a second review on the other model family and a comparison of both always run; below it they start off, and you switch them on when you approve the workflow.
 
+**What each run leaves.** The PR ends with a manual checklist of at most 15 points built from what the diff really changed, each tagged `[agent]` or `[you]`; the optional **verification** step has a fresh agent check the `[agent]` points first. The body also carries a hidden run record (skills, models, efforts, findings with severity, who found them and what was decided): `scripts/stats` adds them up across PRs, to see which reviews and models earn their place. Format: [run-record.md](skills/engineering-router/run-record.md).
+
 **Without GitHub issues.** To keep the spec as a file in the target repo instead, prefer a specification skill that writes one, in `config/preferences.yaml`:
 
 ```yaml
@@ -60,6 +62,9 @@ While running, the router keeps `.router/state.json` and one note per step in `.
 | `config/personal-skills.example.yaml` | template for your own skills (`config/personal-skills.yaml`, git-ignored) |
 | `adapters/pi/` | Pi extension: workflow widget and panel from `.router/state.json` |
 | `vendors/` | git submodules, never edited |
+| `adapters/claude-code/` | Claude Code plugin: workflow band and panes, review 2 on another family |
+| `.claude-plugin/marketplace.json` | makes the repo a Claude Code marketplace for that plugin |
+| `skills/engineering-router/run-record.md` | the run record each PR carries, read by `scripts/stats` |
 
 ## Install (any agent)
 
@@ -122,14 +127,16 @@ The extension reads `.router/state.json` in the session's repo and shows the ste
 `adapters/claude-code/` is a Claude Code plugin whose mod draws the workflow: a band above the prompt (the same lines as the Pi widget) and a pane with the skill selection. It reads `.router/state.json` of the session's working directory and never writes it; choices go to the agent as prompts in the router's selection syntax. Needs a Claude Code with mods (CLI, Code tab of the Desktop app or VS Code extension). A mod runs with your permissions: list what it does first with `claude plugin validate adapters/claude-code`.
 
 ```
-claude --plugin-dir /path/to/engineering-skills-router/adapters/claude-code
+/plugin install engineering-router-panel --marketplace marcoax/engineering-skills-router
 ```
+
+The repo is its own marketplace (`.claude-plugin/marketplace.json`) holding this one plugin; it installs the mod only, the router skill is installed as in **Install (any agent)**. To try a local change for one session instead: `claude --plugin-dir /path/to/engineering-skills-router/adapters/claude-code`.
 
 Then `/router-panel` toggles the pane.
 
 **Review 2 on another family.** Claude Code's subagents run only Claude models, so the mod adds a tool, `review_other_family`, that runs the review through a local CLI, read-only, and streams it into a **Review 2** pane: `openai-codex/<model>` runs `codex exec --sandbox read-only`, `opencode/<provider>/<model>` runs `opencode run --agent plan`. The router calls it when it is listed (SKILL.md §5). `/router-models` opens a pane to pick backend, model and effort; left empty, each is the CLI's own default (`~/.codex/config.toml`, opencode's config). The choice is kept across sessions. New backends are one entry in `adapters/claude-code/hooks/backends.ts`. In the pane the buttons carry hotkeys: `g` go · `j`/`k` next/previous step · `a`/`b` swap skill · `o` on/off an optional step · `e` edit · `p` pause · `r` resume · `x` stop (press twice). The router skill itself is installed as in **Install (any agent)**.
 
-Differences from the Pi adapter: no `ctrl+alt+w` shortcut (use `/router-panel`), no `gh` check that hides a done workflow with a merged PR, and the state file is looked up in the working directory only, not in the nearest `.git` root. `adapters/claude-code/hooks/state-core.ts` is `adapters/pi/state.ts` without its `node:fs`/`node:path` parts (a mod has no Node and imports only from its own folder); change one, change the other. Tests: `claude plugin test adapters/claude-code`.
+Differences from the Pi adapter: no `ctrl+alt+w` shortcut (use `/router-panel`), no `gh` check that hides a done workflow with a merged PR, and the state file is looked up in the working directory only, not in the nearest `.git` root. Both adapters share one copy of the state logic, `adapters/claude-code/hooks/state-core.ts` (a mod imports only from its own folder; `adapters/pi/state.ts` re-exports it and adds the file reading). Tests: `claude plugin test adapters/claude-code`.
 
 ## Install from a clone (other agents)
 
@@ -155,6 +162,7 @@ Codex, Cursor, OpenCode: link or point the agent at `skills/engineering-router/S
 | `scripts/update` | pulls vendor submodules, prints added/removed skills; never edits the catalog |
 | `scripts/check-state <target-repo>` | checks the target repo's `.router/state.json` against `skills/engineering-router/state.md` |
 | `scripts/selftest` | checks the scripts against a scratch catalog and scratch state files, then runs the Pi adapter tests |
+| `scripts/stats [--repo <owner/name>] [--limit <n>] [--json]` | adds up the run records in a repo's PRs (via `gh`): per review and model, per skill, per severity, checklists, tokens |
 
 Scripts need Node 22.18+; `scripts/setup` installs their only dependency (`yaml`).
 

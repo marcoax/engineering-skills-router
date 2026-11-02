@@ -1,7 +1,7 @@
-// Pure logic of the Claude Code adapter: parses `.router/state.json` (format in
+// UI-independent logic of both adapters: parses `.router/state.json` (format in
 // skills/engineering-router/state.md) and turns it into lines and chat replies.
-// Copied from adapters/pi/state.ts minus its node:fs/node:path parts, because a mod
-// has no Node and can import only files inside its own plugin folder. Keep the two in step.
+// The one copy: it lives here because a mod can import only files inside its own plugin
+// folder, and adapters/pi/state.ts re-exports it. No Node, no Pi, no Claude Code imports.
 
 export type Ref = { number: number; url: string };
 export type Alternative = { skill: string; reason: string };
