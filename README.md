@@ -117,6 +117,18 @@ Update that clone with `git pull && scripts/setup`.
 
 The extension reads `.router/state.json` in the session's repo and shows the steps above the editor. `ctrl+alt+w` (or `/router-panel`, for keyboard layouts where the shortcut arrives as another key) toggles a details panel on the right half. While a workflow is open, the panel takes the keyboard: during the skill selection `↑`/`↓` step, `enter` go, `a`/`b` swap the step's skill, `e` edit; `p` pauses (a running step finishes first); on a paused workflow `r` resumes; `x x` stops; `esc` goes back to the editor. At session start, a stopped workflow, or a done one with no PR or a merged/closed PR (checked with `gh`), is not shown. Choices are sent as chat messages; the extension never writes the state file.
 
+## Install (Claude Code mod)
+
+`adapters/claude-code/` is a Claude Code plugin whose mod draws the workflow: a band above the prompt (the same lines as the Pi widget) and a pane with the skill selection. It reads `.router/state.json` of the session's working directory and never writes it; choices go to the agent as prompts in the router's selection syntax. Needs a Claude Code with mods (CLI, Code tab of the Desktop app or VS Code extension). A mod runs with your permissions: list what it does first with `claude plugin validate adapters/claude-code`.
+
+```
+claude --plugin-dir /path/to/engineering-skills-router/adapters/claude-code
+```
+
+Then `/router-panel` toggles the pane. In the pane the buttons carry hotkeys: `g` go · `j`/`k` next/previous step · `a`/`b` swap skill · `o` on/off an optional step · `e` edit · `p` pause · `r` resume · `x` stop (press twice). The router skill itself is installed as in **Install (any agent)**.
+
+Differences from the Pi adapter: no `ctrl+alt+w` shortcut (use `/router-panel`), no `gh` check that hides a done workflow with a merged PR, and the state file is looked up in the working directory only, not in the nearest `.git` root. `adapters/claude-code/hooks/state-core.ts` is `adapters/pi/state.ts` without its `node:fs`/`node:path` parts (a mod has no Node and imports only from its own folder); change one, change the other. Tests: `claude plugin test adapters/claude-code`.
+
 ## Install from a clone (other agents)
 
 Instead of `npx skills add`, clone and set up once, as in **Personal preferences** above (`git clone --recurse-submodules ...`, `scripts/setup`), then link the router skill into the agent's skills folder. The router then uses that clone directly.

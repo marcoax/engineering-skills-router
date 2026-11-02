@@ -1,0 +1,6 @@
+{
+  "name": "engineering-router-panel",
+  "version": "0.1.0",
+  "description": "Workflow band and skill-selection pane for the engineering-router skill, read from .router/state.json",
+  "types": "./types/index.d.ts"
+}
