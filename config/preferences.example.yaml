@@ -31,6 +31,10 @@ preferences:
   # (claude-bridge, openai-codex) is a local name: set it to the provider ID
   # your harness uses, or subagents will fail to start. A harness that cannot
   # reach the other family can only skip review 2 or run it on its own model.
+  # In Claude Code with the panel mod (adapters/claude-code), the other family
+  # runs through a local CLI: openai-codex/<model> runs Codex, and
+  # opencode/<provider>/<model> runs opencode with any provider it is set up for.
+  # /router-models overrides backend, model and effort for that review.
   models:
     claude: claude-bridge/claude-opus-5-5
     openai: openai-codex/gpt-6-sol

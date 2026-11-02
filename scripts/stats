@@ -1,0 +1,75 @@
+#!/usr/bin/env node
+// Usage: scripts/stats [--repo <owner/name>] [--limit <n>] [--json]
+// Reads the run records (skills/engineering-router/run-record.md) from the repo's pull
+// requests, open, closed and merged, through `gh`, and prints what they add up to:
+//   per review and model: runs, findings, found only by it, critical/high, fixed, declined
+//   per step and skill: how each ended
+//   per severity: what was decided
+// Without --repo, the repo of the current directory. Needs gh, signed in.
+const { spawnSync } = require('node:child_process');
+const { aggregate, parseRecord } = require('./lib/runs');
+
+const args = process.argv.slice(2);
+const opt = (name) => {
+  const i = args.indexOf(name);
+  return i >= 0 ? args[i + 1] : undefined;
+};
+const repo = opt('--repo');
+const limit = opt('--limit') ?? '200';
+const asJson = args.includes('--json');
+
+const gh = spawnSync(
+  'gh',
+  ['pr', 'list', '--state', 'all', '--limit', limit, '--search', 'engineering-router:run in:body', '--json', 'number,url,body',
+    ...(repo ? ['--repo', repo] : [])],
+  { encoding: 'utf8' },
+);
+if (gh.error || gh.status !== 0) {
+  console.error(`gh failed: ${gh.error?.message ?? gh.stderr.trim()}`);
+  process.exit(1);
+}
+
+const records = [];
+const skipped = [];
+for (const pr of JSON.parse(gh.stdout)) {
+  const parsed = parseRecord(pr.body);
+  if (parsed.kind === 'ok') records.push(parsed.record);
+  else if (parsed.kind !== 'none') skipped.push(`#${pr.number} (${parsed.kind}${parsed.version !== undefined ? ` ${parsed.version}` : ''})`);
+}
+const totals = aggregate(records);
+
+if (asJson) {
+  console.log(JSON.stringify({ ...totals, skipped }, null, 2));
+  process.exit(0);
+}
+
+const pct = (a, b) => (b ? `${Math.round((100 * a) / b)}%` : '—');
+console.log(`${totals.runs} run(s)${skipped.length ? `; skipped ${skipped.join(', ')}` : ''}\n`);
+
+console.log('Reviews (step model): runs · found · only it · critical+high · fixed · declined · fixed of decided');
+for (const [key, r] of Object.entries(totals.reviewers)) {
+  const fixed = r.fixed ?? 0;
+  const declined = r.declined ?? 0;
+  console.log(`  ${key}: ${r.runs ?? 0} · ${r.found ?? 0} · ${r.only ?? 0} · ${r.serious ?? 0} · ${fixed} · ${declined} · ${pct(fixed, fixed + declined)}`);
+}
+
+console.log('\nPaths: runs · findings · critical+high · fixed');
+for (const [p, r] of Object.entries(totals.paths)) {
+  console.log(`  ${p}: ${r.runs ?? 0} · ${r.findings ?? 0} · ${r.serious ?? 0} · ${r.fixed ?? 0}`);
+}
+
+console.log('\nSteps (step skill): how they ended');
+for (const [key, r] of Object.entries(totals.skills)) {
+  console.log(`  ${key}: ${Object.entries(r).map(([k, v]) => `${k} ${v}`).join(', ')}`);
+}
+
+console.log('\nFindings by severity: decisions');
+for (const [sev, r] of Object.entries(totals.severity)) {
+  console.log(`  ${sev}: ${Object.entries(r).map(([k, v]) => `${k} ${v}`).join(', ')}`);
+}
+
+const c = totals.checklist;
+console.log(`\nChecklists: ${c.runs} PR(s), ${c.points} point(s), ${c.agent} agent-checkable (${pct(c.agent, c.points)}); verification in ${c.verifiedRuns}: ${c.passed} passed, ${c.failed} failed`);
+
+const u = totals.usage;
+console.log(`\nTokens: ${u.tokens ?? '—'} over ${u.tokenRuns} run(s) that reported them · cost: ${u.cost_usd ?? '—'} over ${u.costRuns}`);

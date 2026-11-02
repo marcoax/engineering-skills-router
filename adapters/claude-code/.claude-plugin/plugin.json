@@ -1,0 +1,11 @@
+{
+  "name": "engineering-router-panel",
+  "version": "0.2.0",
+  "description": "Workflow band and pane for the engineering-router skill, plus review 2 through Codex or opencode",
+  "types": "./types/index.d.ts",
+  "author": {
+    "name": "Marco Asperti",
+    "url": "https://github.com/marcoax"
+  },
+  "repository": "https://github.com/marcoax/engineering-skills-router"
+}

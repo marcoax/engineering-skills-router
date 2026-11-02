@@ -14,6 +14,7 @@ import {
 	hiddenAtStart,
 	isClosed,
 	KEYS,
+	keysFor,
 	type Paint,
 	readState,
 	replyFor,
@@ -98,6 +99,8 @@ class RouterOverlay implements Component {
 			this.send({ kind: "switch", step: this.selected });
 		} else if (matchesKey(data, "e")) {
 			this.send({ kind: "edit" });
+		} else if (matchesKey(data, "f") && state.path === "light") {
+			this.send({ kind: "full" });
 		}
 		this.tui.requestRender();
 	}
@@ -121,7 +124,7 @@ class RouterOverlay implements Component {
 			lineAt.push(body.length);
 			body.push(...wrap(line));
 		}
-		const keys = this.handle?.isFocused() ? KEYS[state.status] : undefined;
+		const keys = this.handle?.isFocused() ? keysFor(state) : undefined;
 		const footer = keys
 			? this.confirmStop
 				? paint("warning", " press x again to stop · any other key cancels")

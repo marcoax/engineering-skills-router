@@ -3,7 +3,7 @@
 The router writes this file in the **target repo** during a workflow so that adapters (agent-specific UIs) can show progress. This document is the only definition of the format.
 
 - **Writer**: only the router. It rewrites the whole file after every change of state (selection made, step started, step finished, pause, handoff produced).
-- **Readers**: adapters. They never write the file. A user choice made in an adapter UI is sent to the agent as a chat message in the text syntax of the router's selection (`go`, `2b`, `5on`, `5off`, `edit`, `stop`, `pause`, `resume`); the router applies it and rewrites the file. In a selection reply, `<step>` is the 1-based position in `steps` and the letter is the position in that step's `alternatives` (`a` = first).
+- **Readers**: adapters. They never write the file. A user choice made in an adapter UI is sent to the agent as a chat message in the text syntax of the router's selection (`go`, `2b`, `5on`, `5off`, `edit`, `full`, `stop`, `pause`, `resume`; `full` only on a light path); the router applies it and rewrites the file. In a selection reply, `<step>` is the 1-based position in `steps` and the letter is the position in that step's `alternatives` (`a` = first).
 - The router adds `.router/` to the target repo's `.git/info/exclude`, so the file is never committed.
 - Readers ignore unknown fields. Adding a field keeps `version`; renaming, removing or changing the meaning of a field bumps it.
 - A field added within a version is marked *(optional)* in its table: the router always writes it, and readers treat a missing one as `null`.
@@ -17,6 +17,7 @@ The router writes this file in the **target repo** during a workflow so that ada
   "type": "feature",
   "risk": "medium",
   "complexity": "medium",
+  "path": "full",
   "properties": ["brownfield", "user-facing"],
   "status": "running",
   "updated_at": "2026-10-17T09:42:00Z",
@@ -96,6 +97,7 @@ The router writes this file in the **target repo** during a workflow so that ada
 | `type` | string | Task type from the classification (`feature`, `bug`, …). |
 | `risk` | `"low"` \| `"medium"` \| `"high"` | A low-risk task gets a workflow only when the user asks for one anyway (it then runs as at medium risk). |
 | `complexity` (optional) | `"low"` \| `"medium"` \| `"high"` | Task size from the classification, matched against each skill's catalog `complexity`. |
+| `path` (optional) | `"light"` \| `"full"` | Light: a ticket of low risk (or medium risk and low complexity) run as branch → implementation → independent review 1 → [security] → [framework-review] → pull request; full: every other workflow. |
 | `properties` | string[] | Task properties from the classification; may be empty. |
 | `status` | string | Workflow status, see below. |
 | `updated_at` | string | ISO-8601 UTC time of the last write. |
@@ -117,14 +119,14 @@ Workflow `status`:
 
 | Field | Type | Meaning |
 |---|---|---|
-| `id` | string | Unique, stable within the workflow. Usually the phase name; router steps use `branch`, `review-1`, `review-2`, `comparison`, `pull-request`. |
+| `id` | string | Unique, stable within the workflow. Usually the phase name; router steps use `branch`, `review-1`, `review-2`, `comparison`, `verification`, `pull-request`. |
 | `phases` | string[] | Catalog categories this step fills; empty for router steps without a phase (`branch`, `comparison`). |
 | `skill` | string \| null | Chosen catalog id (`source/name`); `null` when the router does the step itself. |
 | `reason` | string | One line: why this skill (or step) was chosen. |
 | `summary` | string | One line: what the step does for this task. |
 | `alternatives` | `{skill, reason}[]` | At most two other `ok` candidates, each with a one-line reason. After a swap, the previous skill takes the swapped alternative's place. |
 | `confirm` | boolean | `true` when the router pauses for the user before this step (outward-facing action or start of implementation). |
-| `optional` (optional) | boolean | `true` when the user may switch the step on and off during selection (review 2, comparison, independent-review). An optional step that is off is `skipped` with outcome `off (optional)`; switching it on sets `pending`. |
+| `optional` (optional) | boolean | `true` when the user may switch the step on and off during selection (review 2, comparison, independent-review, verification). An optional step that is off is `skipped` with outcome `off (optional)`; switching it on sets `pending`. |
 | `covered_by` | string \| null | `id` of the step whose skill runs this one internally (e.g. review 1 inside implementation). |
 | `model` | string \| null | `provider/model-id` when the step runs on a model other than the session's (review 2, or a per-phase `model` preference). `null` for a review 2 the user chose to run on the session's model because the other family is unreachable. Recorded as `config/preferences.yaml` names it, also where the subagent tool takes only an alias. |
 | `status` | string | Step status, see below. |

@@ -1,0 +1,13 @@
+{
+  "name": "engineering-skills-router",
+  "owner": { "name": "Marco Asperti", "url": "https://github.com/marcoax" },
+  "description": "The engineering router's Claude Code plugin: workflow pane, review 2 on another model family.",
+  "plugins": [
+    {
+      "name": "engineering-router-panel",
+      "source": "./adapters/claude-code",
+      "description": "Workflow band and pane for the engineering-router skill, plus review 2 through Codex or opencode",
+      "category": "development"
+    }
+  ]
+}
