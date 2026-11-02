@@ -14,7 +14,7 @@ This file holds what every run needs. The rest is in files beside it, read only 
 | [checkout.md](checkout.md) | the resolver prints `missing`, or the update check is due (§0) |
 | [resume.md](resume.md) | the target repo holds an unfinished workflow (§1), or on `pause` / `resume` |
 | [light.md](light.md) | §1 offers or sets the light path |
-| [issue-free.md](issue-free.md) | §4 finds the workflow issue-free |
+| [issue-free.md](issue-free.md) | the task is a spec file (§2), or §4 finds the workflow issue-free |
 | [review-2.md](review-2.md) | the workflow has a review 2 step: before showing it (§5) and when it runs (§6) |
 | [after-implementation.md](after-implementation.md) | the implementation step is about to start (§6) |
 | [state-brief.md](state-brief.md) | writing `.router/state.json` the first time (§5) |
@@ -35,7 +35,7 @@ Read `update_check_days` from `config/preferences.yaml` (default 14; `0` means n
 
 First look for an unfinished workflow: `.router/state.json` in the target repo with status `running`, `waiting`, `paused` or `stopped`. If there is one, follow [resume.md](resume.md) before anything else.
 
-Read the task (fetch it first if it is an issue URL or number). Record, each with a one-line reason:
+Read the task (fetch it first if it is an issue URL or number; read the file if it is a path to a spec in the target repo). Record, each with a one-line reason:
 
 - **type**: bug | feature | refactor | architecture | performance | security | documentation | investigation | prototype | review | maintenance
 - **risk**: low | medium | high
@@ -59,8 +59,8 @@ requirements → specification + issue ⏸ → [planning ⏸] → branch → ⏸
 ```
 
 - **requirements** by default, after debugging or code-understanding when those are in the flow, so its questions build on what the code shows. Skip it only when the task is an issue or spec that already settles the decisions; say why. A short exchange in chat before the workflow does not count as settled.
-- **specification + issue**: skip when the task is already an issue; it becomes the handoff issue. Otherwise the issue exists only when the selected specification skill publishes one (§4).
-- **planning** (tickets) only when the spec splits into more than one ticket.
+- **specification + issue**: skip when the task is already an issue; it becomes the handoff issue. Skip it too when the task is an existing spec file: the file becomes `handoff.spec` and the workflow is issue-free ([issue-free.md](issue-free.md)). Otherwise the issue exists only when the selected specification skill publishes one (§4).
+- **planning** (tickets) runs only when the spec splits into more than one ticket, and that is judged on the spec, never guessed before it exists. When the task is already an issue or spec, judge it now: keep planning, or drop it with the reason. When the spec is still to be written, keep planning as a conditional step (`[planning]`) whenever the task could split; the decision is made when the specification step closes (§6).
 - **One review by default**, at every risk. **review 2** and **comparison** are optional: both stay in the workflow but start off, and the user switches them on in §5.
 - **security** is decided after the reviews (after-implementation.md).
 - **framework-review** (the project's own best practices) only when the target repo has `docs/agents/skills.yaml` and §3 finds a fitting candidate in it. It runs after review 2, or after review 1 when review 2 is skipped. Without one it is dropped, not missing.
@@ -154,6 +154,8 @@ For each step:
 3. When it says to call or invoke another skill by name (e.g. "call the Skill tool with tdd"), read the `path` of `<same-source>/<name>` in `catalog/skills.yaml` (for a personal skill, `personal/<name>` as `list-skills` prints it); if it is not cataloged, use an installed skill with that name.
 4. Carry the **handoff** forward: issue (spec file when issue-free), tickets, branch, base commit, PR.
 5. Close the step with a one-line outcome and the handoff it produced. For a skill step, write its note to `.router/steps/<n>-<id>.md`: what it did, decisions, files touched, open points.
+
+**Planning decision** (when the specification step closes and the workflow holds a conditional planning step): read the spec and judge whether it splits into more than one ticket: more than one independently demoable or verifiable slice, or more than one fresh context window of work. Tell the user the decision in one line with its reason, then either run planning, or `step <n> skipped --outcome "single ticket: <reason>"`. The user may overrule it before the next step starts. When planning is skipped, an implementation step whose skill builds from tickets (`mattpocock/implement-spec`) is swapped to its first alternative, and the user is told.
 
 **branch** (router step): right after the issue exists, create `<issue-number>-<slug>` from the current default branch (issue-free: [issue-free.md](issue-free.md)) and record it with `handoff branch <name>`. Before implementation, record the base commit with `handoff base HEAD`: the fixed point for every review. With `implement-spec`, tell it this branch is its integration branch.
 
