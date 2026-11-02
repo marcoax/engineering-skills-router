@@ -34,6 +34,7 @@ The router writes this file in the **target repo** during a workflow so that ada
       "confirm": true,
       "covered_by": null,
       "model": null,
+      "effort": null,
       "status": "done",
       "outcome": "Published #42"
     },
@@ -47,6 +48,7 @@ The router writes this file in the **target repo** during a workflow so that ada
       "confirm": false,
       "covered_by": null,
       "model": null,
+      "effort": null,
       "status": "done",
       "outcome": "On 42-csv-export"
     },
@@ -60,6 +62,7 @@ The router writes this file in the **target repo** during a workflow so that ada
       "confirm": true,
       "covered_by": null,
       "model": null,
+      "effort": null,
       "status": "running",
       "outcome": null
     },
@@ -73,6 +76,7 @@ The router writes this file in the **target repo** during a workflow so that ada
       "confirm": false,
       "covered_by": "implementation",
       "model": null,
+      "effort": null,
       "status": "pending",
       "outcome": null
     }
@@ -129,6 +133,7 @@ Workflow `status`:
 | `optional` (optional) | boolean | `true` when the user may switch the step on and off during selection (review 2, comparison, independent-review, verification). An optional step that is off is `skipped` with outcome `off (optional)`; switching it on sets `pending`. |
 | `covered_by` | string \| null | `id` of the step whose skill runs this one internally (e.g. review 1 inside implementation). |
 | `model` | string \| null | `provider/model-id` when the step runs on a model other than the session's (review 2, or a per-phase `model` preference). `null` for a review 2 the user chose to run on the session's model because the other family is unreachable. Recorded as `config/preferences.yaml` names it, also where the subagent tool takes only an alias. |
+| `effort` (optional) | `"low"` \| `"medium"` \| `"high"` \| null | Effort passed to the step's subagent or tool; `null` for the default. |
 | `status` | string | Step status, see below. |
 | `outcome` | string \| null | One-line result once the step ends. |
 
