@@ -8,7 +8,7 @@ A light workflow is one implementer, then one independent look at its work:
 branch → implementation → review 1 → [security] → [framework-review] → pull request → stop
 ```
 
-- **Fits** a task given as an issue or spec that already settles what to build (the ticket is the spec) when risk is `low`, or `medium` with complexity `low`.
+- **Fits** when `scripts/check-classification` offers it: a ticket (an issue or spec that already settles what to build) at risk `low`, or `medium` with complexity `low`, as [classification.md](classification.md) defines. A fact that sets risk `high` (authorization, payment, destructive) rules it out.
 - **Not in it**: requirements, specification, issue, planning, review 2, comparison, verification.
 - **Review 1 is independent**: it never runs inside the implementation step (no covered review, even when the implementation skill offers one); it runs in a fresh subagent that has not seen the implementation, on `git diff <base commit>...HEAD` against the ticket.
 - **security** is conditional after review 1: select its candidate with the workflow, then run or skip it as [after-implementation.md](after-implementation.md) describes (auth, user input, queries, secrets, new dependencies, config, permissions).

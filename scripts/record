@@ -72,6 +72,9 @@ const record = {
   risk: state.risk ?? null,
   complexity: state.complexity ?? null,
   path: state.path ?? null,
+  classification: state.classification
+    ? { policy: state.classification.policy, rationale: state.classification.rationale, facts: state.classification.facts }
+    : null,
   steps: state.steps.map((s) => ({
     id: s.id,
     skill: s.skill ?? null,

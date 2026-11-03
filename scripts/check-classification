@@ -1,0 +1,37 @@
+#!/usr/bin/env node
+// Usage: scripts/check-classification <file>
+// Checks a classification (skills/engineering-router/classification.md) against the current
+// policy before SKILL.md §1 offers direct work, a light path or a full workflow: every fact has
+// evidence, risk is at least the minimum its facts set, and a requested path or chosen `path` is
+// one the policy offers. Prints the policy revision, the minimum risk with the facts behind it,
+// the offer and any uncertainty; exits 1 with the errors to correct. Reads only.
+const fs = require('node:fs');
+const { evaluate } = require('./lib/classification');
+
+const file = process.argv[2];
+if (!file || !fs.existsSync(file)) {
+  console.error(`usage: scripts/check-classification <file>${file ? `\nnot found: ${file}` : ''}`);
+  process.exit(1);
+}
+let c;
+try {
+  c = JSON.parse(fs.readFileSync(file, 'utf8'));
+} catch (e) {
+  console.error(`${file}: invalid JSON: ${e.message}`);
+  process.exit(1);
+}
+const r = evaluate(c);
+console.log(`policy: ${r.revision}`);
+if (r.minimum) {
+  const facts = r.because.map((f) => `${f.fact}: ${f.where}`).join('; ');
+  console.log(`minimum risk: ${r.minimum} (${facts || 'no constraining facts'})`);
+}
+for (const e of r.errors) console.log(`error: ${e}`);
+if (r.errors.length) {
+  console.log(`${r.errors.length} error(s): correct the classification, or report the conflict with its evidence`);
+  process.exit(1);
+}
+console.log(`offer: ${r.offer.join(', ')}`);
+if (r.proposed) console.log(`propose: ${r.proposed}`);
+for (const u of r.uncertain) console.log(`uncertain: ${u}`);
+console.log('classification OK');

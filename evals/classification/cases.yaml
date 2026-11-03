@@ -1,0 +1,130 @@
+# Behavioral evaluation cases for the router's classification (SKILL.md §1, classification.md).
+# Proposal only: a run asks the router to classify a case and stops at the offer; it never composes
+# or executes a workflow. These cases measure model judgment (what facts it extracts from the task
+# and the target, and how it classifies); the policy's constraints over explicit facts are tested
+# deterministically in scripts/selftest. No case has been run yet (see `runs`).
+#
+# How to run one case
+#   1. Work in a scratch target repo (`git init`, one commit) shaped as `setup` says.
+#   2. Start a fresh session on `evaluation.model` at `evaluation.effort` with this checkout at the
+#      policy revision `evaluation.policy`, invoke the router with `task` on the target, and stop it
+#      at the §1 offer. Save the classification file it checked and its answer.
+#   3. Grade: `scripts/check-classification <file>` passes on it; each `expect` holds; the target's
+#      `git status --porcelain --ignored`, HEAD and branch list are unchanged and it has no
+#      `.router/`. Assert facts, classes and offers, never exact prose.
+#   4. Append a `runs` entry naming the model, effort and policy revision actually used.
+#
+# Case fields
+#   kind        what the case represents (selftest requires each kind at least once)
+#   task        what the user asks
+#   setup       target repo shape
+#   expect
+#     facts       facts the classification must record, each with evidence from the task or a file
+#     not_facts   facts it must not record (misleading words, unrelated documentation)
+#     risk        the risk class (absent on an ambiguous case)
+#     risk_at_least  a lower bound where judgment may legitimately go higher
+#     complexity  the complexity class, when the case settles it
+#     complexity_at_least  a lower bound on complexity
+#     offer       the paths check-classification must print, in order
+#     offered     paths that must be among the offer, whatever else is
+#     not_offered paths that must not be offered
+#   ambiguity   where more than one answer is acceptable, and what the answer must say about it
+
+evaluation:
+  model: claude-opus-5-5          # proposed; record the model actually used in each run
+  effort: medium
+  policy: 1                       # classification.md policy revision these expectations hold for
+  harness: Claude Code, fresh session per case, stopped at the §1 offer
+
+cases:
+
+  - id: docs-mentioning-auth
+    kind: harmless-docs
+    task: "Issue #12: fix typos in docs/authorization.md and docs/payments.md and update the screenshots of the login page."
+    setup: brownfield web app; docs/authorization.md and docs/payments.md describe the existing flows; no code change needed
+    expect:
+      not_facts: [authorization, payment]
+      risk: low
+      complexity: low
+      offer: [direct, light, full]
+
+  - id: off-by-one-pagination
+    kind: bounded-bug
+    task: "Issue #31: the reports list skips the last row of every page; fix the offset in src/reports/paginate.ts."
+    setup: brownfield app; src/reports/paginate.ts computes `offset = page * size + 1`; a unit test exists for page 0 only
+    expect:
+      not_facts: [authorization, payment, destructive]
+      risk_at_least: low
+      complexity: low
+      offered: [light]
+
+  - id: role-check-one-line
+    kind: simple-but-sensitive
+    task: "Issue #44: managers should also be able to approve refunds; add 'manager' to the allowed roles in src/auth/policies.ts."
+    setup: brownfield app; src/auth/policies.ts holds `canApproveRefund = ['admin']`
+    expect:
+      facts: [authorization]
+      risk: high
+      complexity: low
+      offer: [full]
+
+  - id: session-expiry
+    kind: authorization
+    task: "Issue #50: sessions should expire after 30 minutes of inactivity instead of 24 hours."
+    setup: brownfield app; src/auth/session.ts sets maxAge to 24 h
+    expect:
+      facts: [authorization]
+      risk: high
+      offer: [full]
+
+  - id: rounding-in-invoice-total
+    kind: payment
+    task: "Issue #58: invoice totals round each line before summing; round only the final total."
+    setup: brownfield app; src/billing/invoice.ts rounds per line and charges the sum through the payment provider
+    expect:
+      facts: [payment]
+      risk: high
+      offer: [full]
+
+  - id: drop-legacy-table
+    kind: destructive
+    task: "Issue #63: remove the legacy_orders table and its model; nothing reads it any more."
+    setup: brownfield app with migrations; legacy_orders holds rows; one admin report still queries it
+    expect:
+      facts: [destructive]
+      risk: high
+      offer: [full]
+      not_offered: [direct, light]
+
+  - id: restructure-docs-site
+    kind: complex-low-impact
+    task: "Split the 40-page docs/guide.md into a docs/ site with one page per topic, a sidebar and working cross-links."
+    setup: brownfield repo; docs/ is a static site generator config with no deploy step in CI
+    expect:
+      not_facts: [authorization, payment, destructive, public-contract]
+      risk: low
+      complexity_at_least: medium
+      offer: [direct, full]
+
+  - id: drop-shadow-and-kill-switch
+    kind: misleading-terms
+    task: "Issue #70: drop the shadow on the delete button and rename the 'kill' CSS class to 'dismiss'."
+    setup: brownfield web app; the change touches only a stylesheet and one class name in a template
+    expect:
+      not_facts: [destructive, authorization]
+      risk: low
+      offer: [direct, light, full]
+
+  - id: export-with-emails
+    kind: ambiguous
+    task: "Add a CSV export to the customers page."
+    setup: brownfield app; the customers table holds names, emails and phone numbers; no issue settles which columns
+    ambiguity: >
+      Whether the export exposes personal data depends on columns the task does not name. Acceptable:
+      record sensitive-data with evidence from the table schema and classify medium or higher, or
+      leave the fact unrecorded and list the open question under `uncertain`, classifying no lower
+      than medium. The answer must name the open question; light is never offered (not a ticket).
+    expect:
+      not_offered: [light]
+
+runs: []

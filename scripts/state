@@ -131,14 +131,33 @@ function compose() {
       else if (candidate.status !== 'ok') errors.push(`${where}: ${candidate.status}${hint}`);
     }
   }
+  const classified = classify(next, isNew ? null : previous);
+  errors.push(...classified.errors.map((e) => (e.startsWith('classification') ? e : `classification: ${e}`)));
   if (errors.length) die(errors.join('\nerror: '));
   const recovered = ops.recover({ ...next, status: 'selecting' }, invokesFor(target));
-  write(recovered.state, previous ? JSON.stringify(previous) : null, `compose${isNew ? ' --new' : ''}`, recovered.notes);
+  write(recovered.state, previous ? JSON.stringify(previous) : null, `compose${isNew ? ' --new' : ''}`,
+    [classified.line, ...recovered.notes.map((n) => `coverage: ${n}`)]);
+}
+
+// The classification (classification.md) a composed workflow carries. A recomposition that does not
+// revise it keeps the run's own, policy revision included; a new or revised one is checked against
+// the current policy. Fills `next` in place; returns { errors, line }.
+function classify(next, previous) {
+  // `path` full is always offered, so switching to it (light.md's `full`) revises nothing.
+  const KEYS = ['type', 'risk', 'complexity', 'properties', 'classification'];
+  const same = previous && KEYS.every((k) => next[k] === undefined || JSON.stringify(next[k]) === JSON.stringify(previous[k]))
+    && [undefined, previous.path, 'full'].includes(next.path);
+  if (same) {
+    for (const k of [...KEYS, 'path']) if (Object.hasOwn(previous, k) && next[k] === undefined) next[k] = previous[k];
+    return { errors: [], line: `classification: kept (policy ${previous.classification?.policy ?? 'none recorded'})` };
+  }
+  const { errors, revision } = require('./lib/classification').evaluate(next);
+  return { errors, line: `classification: ${previous ? 'revised under' : 'checked against'} policy ${revision}` };
 }
 
 // Writes `next` (primary and time filled in), validates it with check-state and restores
 // `before` (null: no file) when it is invalid.
-function write(next, before, label, notes = []) {
+function write(next, before, label, lines = []) {
   next.primary ??= models.preferredPrimary(prefs);
   next.updated_at = new Date().toISOString().replace(/\.\d{3}Z$/, 'Z');
   fs.mkdirSync(path.dirname(file), { recursive: true });
@@ -150,7 +169,7 @@ function write(next, before, label, notes = []) {
     die(`the change would make the state invalid; kept the previous state\n${check.stdout}${check.stderr}`);
   }
   console.log(`state: ${label} → workflow ${next.status}`);
-  for (const note of notes) console.log(`coverage: ${note}`);
+  for (const line of lines) console.log(line);
   process.exit(0);
 }
 
@@ -229,4 +248,4 @@ try {
 }
 
 // A state written without a primary family takes the preferences'; a stored one stays for the run.
-write(next, before, `${command} ${logged.join(' ')}`, notes);
+write(next, before, `${command} ${logged.join(' ')}`, notes.map((n) => `coverage: ${n}`));

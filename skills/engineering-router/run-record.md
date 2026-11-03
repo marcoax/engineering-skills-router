@@ -26,6 +26,11 @@ At the pull request (§6) the router appends one **run record** to the PR body: 
   "risk": "medium",
   "complexity": "medium",
   "path": "full",
+  "classification": {
+    "policy": 1,
+    "rationale": { "type": "a new capability on an existing page", "risk": "no fact applies; contained and reversible", "complexity": "three files" },
+    "facts": []
+  },
   "steps": [
     { "id": "specification", "skill": "mattpocock/to-spec", "model": "claude-opus-5-5", "effort": null, "status": "done", "tokens": null },
     { "id": "implementation", "skill": "mattpocock/implement", "model": "claude-sonnet-5-5", "effort": "high", "status": "done", "tokens": 182000 },
@@ -51,6 +56,7 @@ At the pull request (§6) the router appends one **run record** to the PR body: 
 | `version` | integer | Format version, `1`. |
 | `router` | `{commit}` | `commit`: short `git rev-parse HEAD` of the router checkout that ran, or `null`. Ties results to a version of this skill and the catalog. |
 | `task`, `type`, `risk`, `complexity`, `path` | string \| null | As in `.router/state.json`. `path` tells whether a light run's review found what a light path should not have missed. |
+| `classification` | `{policy, rationale, facts}` \| null | As in `.router/state.json`: the policy revision the run was classified under, the one-line rationale per class and the facts with their evidence. `null` when the state has none; absent in records written before it. |
 | `steps` | Step[] | Every step of the workflow, in order, as it ended. |
 | `session_model` | string \| null | The main session's model, as the harness names it. In a record from before the step model contract, a step that ran with `model` `null` ran on this; `scripts/stats` reads it so. |
 | `findings` | Finding[] | Every finding of the reviews that ran (review 1, review 2, framework-review, security, independent-review), merged: one entry per distinct problem. Empty when no review ran. |
