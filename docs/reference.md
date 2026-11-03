@@ -7,7 +7,9 @@ For working on the router itself or its catalog. Install and use: the [README](.
 | Path | What |
 |---|---|
 | `skills/engineering-router/SKILL.md` | the router skill: what every run needs; the files beside it (`light.md`, `review-2.md`, `after-implementation.md`, …) are read only when a run reaches them |
-| `skills/engineering-router/resolve-root.js` | finds the router checkout the skill works from |
+| `skills/skill-selector/SKILL.md` | the selector skill: a read-only proposal of which skill fits each phase of a task, consulting the vendor guides, with vendors on equal standing |
+| `skills/*/resolve-root.js` | finds the router checkout a skill works from; identical in both skills |
+| `evals/skill-selector/cases.yaml` | behavioral evaluation cases for the selector, with the model and effort to record per run |
 | `catalog/sources.yaml` | vendor repos and where their skills live |
 | `catalog/skills.yaml` | project-owned metadata per skill (phases, use_when, invokes); descriptions are read from each `SKILL.md` |
 | `catalog/guides.yaml` | vendor guides consulted for selection: source and path only, never phase candidates |
@@ -20,19 +22,22 @@ For working on the router itself or its catalog. Install and use: the [README](.
 | `adapters/claude-code/` | Claude Code plugin: workflow band and panes, review 2 on another family ([claude-code.md](claude-code.md)) |
 | `.claude-plugin/marketplace.json` | makes the repo a Claude Code marketplace for that plugin |
 | `skills/engineering-router/run-record.md` | the run record each PR carries, read by `scripts/stats` |
+| `.github/workflows/checks.yml` | CI: the repo's checks on every PR and push to `master` ([CI](#ci)) |
 
 ## Scripts
 
 | Script | Does |
 |---|---|
 | `scripts/list-skills [--target <repo>] [phase ...]` | ranked candidates per phase with availability; with phases, each candidate's source description (from its `SKILL.md` frontmatter) and catalog metadata; `--target` adds the repo's project skills |
+| `scripts/list-skills --neutral [--target <repo>] [phase ...]` | the same candidates on equal standing, for the selector: rankings unread, origin `preference`, `project`, `personal` or `vendor`, vendor skills by name |
 | `scripts/list-skills --guides` | the registered vendor guides with their source descriptions |
+| `scripts/check-selection [--target <repo>] <file>` | checks a selector proposal (JSON, or Markdown ending in a ```` ```json ```` block): every default and alternative is an `ok` candidate for its phase, at most two alternatives, every pick and phase has a reason; reads only |
 | `scripts/skill-index [--check]` | regenerates `docs/skill-index.md` from the guides, the catalog and the checked-out vendor revisions; `--check` only reports a stale index |
 | `scripts/validate-catalog [--target <repo>] [--verbose]` | checks sources, paths, ids, categories, rankings, preferences, personal skills, guides (source ownership, never also a skill); warns on unreadable descriptions; `--target` also checks the repo's `docs/agents/skills.yaml`; `--verbose` lists uncataloged upstream skills |
 | `scripts/config [migrate [--yes]]` | prints the user configuration in effect (source, directory, files, ignored clone-local files); `migrate` shows, and with `--yes` performs, a validated move of `config/` files out of the checkout ([configuration.md](configuration.md)) |
 | `scripts/update` | pulls vendor submodules, prints added/removed skills; never edits the catalog |
 | `scripts/check-state <target-repo>` | checks the target repo's `.router/state.json` against `skills/engineering-router/state.md` |
-| `scripts/selftest` | checks the scripts against a scratch catalog and scratch state files, then runs the Pi adapter tests |
+| `scripts/selftest` | checks the scripts against a scratch catalog and scratch state files, the installable skills and the selector eval references, then runs the Pi adapter tests |
 | `scripts/context-threshold` | read-only adapter bridge: prints the context threshold of the configuration in effect (150000 by default) |
 | `scripts/state <target-repo> step\|workflow\|handoff\|reply\|primary\|show\|model ...` | the router's only way to change `.router/state.json` after writing it: applies the change, validates it with `check-state`, keeps the old file when invalid; `primary` prints the primary question (the current family first; `--json` gives the options to a selector) and `primary <n\|family>` sets the run's `primary`, both only while the workflow is `selecting`; `model <step>` prints the model a step runs on, from the run's `primary` in the state |
 | `scripts/record <target-repo> [--findings f] [--checklist p,a[,ok,ko]] [--pr n] ...` | composes the run record from the state and the findings, and writes it into the PR body |
@@ -41,6 +46,20 @@ For working on the router itself or its catalog. Install and use: the [README](.
 Scripts need Node 22.18+; `scripts/setup` installs their only dependency (`yaml`).
 
 Adding a collection: [adding-a-source.md](adding-a-source.md).
+
+## CI
+
+The `checks` workflow (job **catalog, selftest, adapters** on the PR) runs on every pull request and every push to `master`, on a clean Ubuntu runner:
+
+1. checkout with vendor submodules at the revisions recorded by the commit; the job fails if a submodule is missing or at another revision. It never runs `scripts/update` or advances a vendor branch;
+2. Node 22 (latest 22.x, which satisfies the scripts' 22.18+) and `npm ci` from `package-lock.json`;
+3. `scripts/validate-catalog`: a missing skill path or any other catalog error fails the job;
+4. `scripts/selftest`: scratch catalogs, scratch target repos and state files, then the Pi adapter tests (they run there only, not a second time);
+5. `claude plugin test adapters/claude-code`: the Claude Code adapter tests, run by the Claude Code CLI version pinned in the workflow (`CLAUDE_CODE_VERSION`, installed from npm; bump it deliberately). The command exits non-zero when a test fails or when it finds no tests, so the step cannot pass without running them.
+
+The job reads no user configuration (`config/` or the external directory, [configuration.md](configuration.md)), user-level agent folder or provider credential, and calls no model: the adapter tests replace the session, tools and processes with the harness's fakes. A green run covers the scripts and both adapters' automated tests. It is not live acceptance: discovering the router in a real Pi or Claude Code session, drawing the band and pane, and running review 2 through Codex or opencode still need a check in an interactive session.
+
+The local pre-commit hook is unchanged; CI repeats the checks for contributors who have not installed it or bypassed it.
 
 ## Context preference
 

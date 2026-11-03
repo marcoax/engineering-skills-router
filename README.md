@@ -8,6 +8,8 @@ task → classify → phases → one skill per phase → dedupe → show workflo
 
 The router records the task's type, risk and size, then builds a workflow on the backbone **requirements → spec + GitHub issue → tickets → implement + test → review**, trimmed or extended by type and risk. A low-risk task gets no workflow: the router offers to do it directly. One review runs by default; a second review on the other model family, a comparison of both and, at high risk, an independent review are offered switched off, and you switch them on when you approve the workflow. Light path, run records, project and personal skills, specs without GitHub issues, starting from a spec you already wrote: [how it works](docs/how-it-works.md).
 
+To see which skills fit a task before any workflow exists, invoke `skill-selector` with the task: it reads each vendor's guide and the candidate skills, treats every vendor on equal terms and returns, per phase, a default, up to two alternatives and the reasons, without touching the target repo.
+
 Browse the [skill index](docs/skill-index.md) for all cataloged vendor skills, grouped into guides, orchestrators, principles and workflow skills by activity.
 
 Approve the workflow with `go` once: the router continues through implementation, tests, reviews, in-scope fixes, commits, push and the open PR. It reports progress and stops for unresolved decisions, scope changes, real blockers or checkpoints you request. Routine approval gates inside selected skills use that same authorization. Merge and deployment require separate authorization. Details: [execution policy](skills/engineering-router/autonomy.md).
@@ -74,6 +76,7 @@ The whole setup on one machine, from a clone you keep and update with `git pull`
    ```sh
    mkdir -p ~/.claude/skills
    ln -s ~/web/ai/engineering-skills-router/skills/engineering-router ~/.claude/skills/engineering-router
+   ln -s ~/web/ai/engineering-skills-router/skills/skill-selector ~/.claude/skills/skill-selector   # optional
    echo 'export ENGINEERING_ROUTER_HOME=~/web/ai/engineering-skills-router' >> ~/.zshrc && source ~/.zshrc
    ```
 
