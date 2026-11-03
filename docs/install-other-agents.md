@@ -10,7 +10,7 @@ For Claude Code, Codex, Cursor, OpenCode and the other agents the [skills CLI](h
 npx skills add marcoax/engineering-skills-router
 ```
 
-This installs one skill, `engineering-router`, without its catalog, scripts or vendor skills. On each run the router looks for a full checkout and uses the first it finds:
+This installs two skills, `engineering-router` and the read-only `skill-selector`, without their catalog, scripts or vendor skills; the vendor collections are never installed as skills. On each run either skill looks for a full checkout and uses the first it finds:
 
 1. the checkout the skill folder sits in (clone and link installs, below);
 2. `$ENGINEERING_ROUTER_HOME`, for a personal clone;
@@ -21,7 +21,7 @@ When none exists, the first run asks before cloning the repo with its submodules
 
 **Preferences** live in `config/preferences.yaml` of that checkout, so `~/.local/share/engineering-skills-router/config/preferences.yaml` after a first-run fetch. With the Pi checkout, package updates wipe them, so use a personal clone instead. To keep them in a clone you control, or to edit the catalog, clone and set up as in [From a clone](#from-a-clone), then `export ENGINEERING_ROUTER_HOME=/path/to/clone`.
 
-**Updating.** The installed skill folder is only a bootstrap: once it finds a checkout that contains `skills/engineering-router/SKILL.md`, it follows that file instead of its own, so the router's instructions match the checkout's catalog and scripts. `npx skills update` refreshes only that bootstrap. The checkout is updated by the router's own vendor update check, or by `git pull && scripts/setup` in it (for the Pi checkout, use the package update command in the README's [Install (Pi)](../README.md#install-pi)).
+**Updating.** The installed skill folder is only a bootstrap: once it finds a checkout that contains its own `skills/<name>/SKILL.md`, it follows that file instead of its own, so the router's instructions match the checkout's catalog and scripts. `npx skills update` refreshes only that bootstrap. The checkout is updated by the router's own vendor update check, or by `git pull && scripts/setup` in it (for the Pi checkout, use the package update command in the README's [Install (Pi)](../README.md#install-pi)).
 
 The workflow display comes from the agent adapters only: the Pi widget and the Claude Code mod. Other agents run the router without it.
 
@@ -35,6 +35,6 @@ scripts/setup
 cp config/preferences.example.yaml config/preferences.yaml   # optional
 ```
 
-Codex, Cursor, OpenCode: link or point the agent at `skills/engineering-router/SKILL.md` with whatever skill/rule mechanism it offers. Update with `git pull && scripts/setup` in the clone.
+Codex, Cursor, OpenCode: link or point the agent at `skills/engineering-router/SKILL.md`, and optionally `skills/skill-selector/SKILL.md`, with whatever skill/rule mechanism it offers. Update with `git pull && scripts/setup` in the clone.
 
 For Claude Code, follow the README's [quick start](../README.md#install-claude-code); for one project only, link into that project's `.claude/skills/` instead of `~/.claude/skills/`.

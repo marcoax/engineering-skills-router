@@ -15,4 +15,5 @@ run('git', 'config', 'core.hooksPath', '.githooks');
 run(path.join(ROOT, 'scripts/validate-catalog'));
 console.log();
 console.log(`Router skill: ${ROOT}/skills/engineering-router/SKILL.md`);
+console.log(`Selector skill: ${ROOT}/skills/skill-selector/SKILL.md`);
 console.log(`Pi: pi install "${ROOT}"`);
