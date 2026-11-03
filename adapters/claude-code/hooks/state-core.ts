@@ -263,7 +263,8 @@ export function detailLines(state: State, marked = -1, paint: Paint = plain, wid
 		if (s.summary) detail(s.summary);
 		if (s.reason) detail(`why: ${s.reason}`, "muted");
 		s.alternatives.forEach((a, j) => detail(`${LETTERS[j]}) ${a.skill}: ${a.reason}`, "dim"));
-		if (s.prerequisites.length) detail(`needs: ${s.prerequisites.join("; ")}`, "muted");
+		// A pane may still hold a state parsed before the field existed.
+		if (s.prerequisites?.length) detail(`needs: ${s.prerequisites.join("; ")}`, "muted");
 		if (s.cost) detail(`cost: ${s.cost}`, "muted");
 		if (s.tie) detail(`tie: ${s.tie}`, "muted");
 		if (s.confirm) detail("asks before starting", "muted");
