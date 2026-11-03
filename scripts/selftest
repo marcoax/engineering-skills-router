@@ -23,7 +23,9 @@ const run = (script, ...args) => {
   return { ok: r.status === 0, out: r.stdout + r.stderr };
 };
 
-// Layout: the skills CLI and Pi must both discover exactly one skill, under skills/.
+// Layout: the skills CLI and Pi must both discover exactly the router and the selector, under
+// skills/, never a vendor skill.
+const INSTALLED_SKILLS = ['engineering-router', 'skill-selector'];
 const skillFiles = [];
 const walk = (dir) => {
   for (const e of fs.readdirSync(dir, { withFileTypes: true })) {
@@ -34,8 +36,19 @@ const walk = (dir) => {
   }
 };
 walk(ROOT);
-if (skillFiles.length !== 1 || !skillFiles[0].startsWith(`skills${path.sep}`)) {
-  fail(`expected exactly one SKILL.md outside vendors/, under skills/; found: ${skillFiles.join(', ') || 'none'}`);
+{
+  const want = INSTALLED_SKILLS.map((name) => path.join('skills', name, 'SKILL.md'));
+  if (JSON.stringify(skillFiles.sort()) !== JSON.stringify(want)) {
+    fail(`expected exactly ${want.join(', ')} outside vendors/; found: ${skillFiles.join(', ') || 'none'}`);
+  }
+  for (const name of INSTALLED_SKILLS) {
+    const front = fs.readFileSync(path.join(ROOT, 'skills', name, 'SKILL.md'), 'utf8').match(/^---\n([\s\S]*?)\n---/)?.[1] ?? '';
+    if (!new RegExp(`^name: ${name}$`, 'm').test(front)) fail(`skills/${name}/SKILL.md should be named ${name}`);
+  }
+  // Each installable skill finds its checkout with the same resolver.
+  const resolver = fs.readFileSync(path.join(ROOT, 'skills/engineering-router/resolve-root.js'), 'utf8');
+  if (fs.readFileSync(path.join(ROOT, 'skills/skill-selector/resolve-root.js'), 'utf8') !== resolver)
+    fail('skills/skill-selector/resolve-root.js should be identical to the router\'s');
 }
 const piSkills = JSON.stringify(JSON.parse(fs.readFileSync(path.join(ROOT, 'package.json'), 'utf8')).pi?.skills);
 if (piSkills !== '["./skills"]') fail(`package.json pi.skills should be exactly ["./skills"]; found: ${piSkills}`);
@@ -420,11 +433,126 @@ ${['one', 'folded', 'plain', 'nodesc', 'broken', 'nofm'].map((n) => `  acme/${n}
   if (fs.readFileSync(indexFile, 'utf8') !== index) fail('--check should not write');
   acmeSkill('one', '---\nname: one\ndescription: Reviews a diff | flags <risky> changes & more.\n---\n# one\n');
 }
+// Selector preview: `list-skills --neutral` lists candidates on equal standing. Explicit choices
+// keep their origin; vendor entries never get a preferred or fallback tier, and neither catalog
+// order nor legacy rankings change the listing.
+{
+  const neutral = (...phases) => run('list-skills', '--neutral', ...phases).out;
+  const rankingsFile = path.join(tmp, 'catalog/rankings.yaml');
+  const rankingsText = fs.readFileSync(rankingsFile, 'utf8');
+  const before = neutral('review', 'implementation');
+  if (/\[(preferred|fallback|other),/.test(before)) fail(`--neutral should not show ranking tiers\n${before}`);
+  for (const id of ['mattpocock/code-review', 'addyosmani/code-review-and-quality', 'pstack/interrogate', 'pstack/arena', 'mattpocock/implement']) {
+    if (!new RegExp(`^\\d+\\. ${id} {2}\\[vendor, ok\\]$`, 'm').test(before)) fail(`--neutral should list ${id} as vendor, ok\n${before}`);
+  }
+  // Shuffled catalog order and changed legacy rankings leave the listing unchanged.
+  const current = fs.readFileSync(catalogSkillsFile, 'utf8');
+  const shuffled = current.split('\n\n');
+  const head = shuffled.indexOf('skills:') + 1;
+  fs.writeFileSync(catalogSkillsFile, [...shuffled.slice(0, head), ...shuffled.slice(head).reverse()].join('\n\n'));
+  fs.writeFileSync(rankingsFile, rankingsText
+    .replace(/(review:\n {4}preferred: )\[[^\]]*\]/, '$1[pstack/interrogate]')
+    .replace(/(implementation:\n {4}preferred: )\[[^\]]*\]/, '$1[addyosmani/incremental-implementation]'));
+  if (!run('validate-catalog').ok) fail('the shuffled scratch catalog should validate');
+  const after = neutral('review', 'implementation');
+  if (after !== before)
+    fail(`--neutral should not depend on catalog order or rankings\nbefore:\n${before}\nafter:\n${after}`);
+  fs.writeFileSync(catalogSkillsFile, current);
+  fs.writeFileSync(rankingsFile, rankingsText);
+  // Explicit choices stay effective: a suitable preference is labeled, an exclusion still bars.
+  fs.writeFileSync(prefsFile, 'preferences:\n  review:\n    prefer: [pstack/interrogate]\n  exclude: [mattpocock/code-review]\n');
+  out = neutral('review');
+  if (!/^1\. pstack\/interrogate {2}\[preference, ok\]$/m.test(out)) fail(`--neutral should keep an explicit preference\n${out}`);
+  if (!/^\d+\. mattpocock\/code-review {2}\[vendor, excluded\]$/m.test(out)) fail(`--neutral should keep an exclusion\n${out}`);
+
+  // check-selection: every reference in a selector proposal must be usable for its phase.
+  const repo = targetRepo(projectSkill());
+  const selectionFile = path.join(tmp, 'selection.md');
+  const pick = (skill, reason = 'fits this task') => ({ skill, reason });
+  const proposal = (phases, extra = {}) => ({ phases, missing: [], ...extra });
+  const check = (sel, ...args) => {
+    fs.writeFileSync(selectionFile, `# Proposal\n\nSome prose.\n\n\`\`\`json\n${JSON.stringify(sel, null, 2)}\n\`\`\`\n`);
+    return run('check-selection', '--target', repo, ...args, selectionFile);
+  };
+  const good = proposal([
+    { phase: 'review', reason: 'the change needs a review', default: pick('pstack/interrogate'), alternatives: [pick('addyosmani/code-review-and-quality')] },
+    { phase: 'framework-review', reason: 'the repo has its own practices', default: pick('project/fw'), alternatives: [] },
+    { phase: 'implementation', reason: 'code must change', default: pick('mattpocock/implement'),
+      alternatives: [pick('addyosmani/incremental-implementation'), pick('pstack/arena', 'High cost: competing designs')] },
+  ], { missing: [{ phase: 'release', reason: 'no shipping skill fits' }] });
+  let r = check(good);
+  if (!r.ok || !r.out.includes('selection OK')) fail(`a usable selection should pass check-selection\n${r.out}`);
+  const mutate = (fn) => { const s = JSON.parse(JSON.stringify(good)); fn(s); return s; };
+  for (const [sel, msg] of [
+    [mutate((s) => { s.phases[0].default.skill = 'nobody/nothing'; }), 'review: default nobody/nothing: unknown skill'],
+    [mutate((s) => { s.phases[0].default.skill = 'mattpocock/ask-matt'; }), 'review: default mattpocock/ask-matt: a guide, not an executable skill'],
+    [mutate((s) => { s.phases[0].default.skill = 'mattpocock/code-review'; }), 'review: default mattpocock/code-review: excluded'],
+    [mutate((s) => { s.phases[0].alternatives[0].skill = 'mattpocock/tdd'; }), 'review: alternative mattpocock/tdd: not a candidate for this phase'],
+    [mutate((s) => { s.phases[1].default.skill = 'addyosmani/code-review-and-quality'; }), 'framework-review: default addyosmani/code-review-and-quality: not a candidate for this phase'],
+    [mutate((s) => { s.phases[2].alternatives.push(pick('pstack/swarm')); }), 'implementation: at most two alternatives'],
+    [mutate((s) => { s.phases[2].alternatives[0].skill = 'mattpocock/implement'; }), 'implementation: alternative mattpocock/implement: repeats another pick'],
+    [mutate((s) => { s.phases[0].default.reason = ' '; }), 'review: default pstack/interrogate: needs a reason'],
+    [mutate((s) => { delete s.phases[0].reason; }), 'review: needs a reason'],
+    [mutate((s) => { s.phases[0].phase = 'nonsense'; }), "nonsense: unknown phase"],
+    [mutate((s) => { delete s.phases[0].default; }), 'review: needs a default (or list the phase under missing)'],
+    [mutate((s) => { s.missing.push({ phase: 'review', reason: 'x' }); }), 'review: both selected and missing'],
+    [mutate((s) => { s.missing[0].reason = ''; }), 'missing release: needs a reason'],
+  ]) {
+    r = check(sel);
+    if (r.ok || !r.out.includes(`error: ${msg}`)) fail(`check-selection, expected: ${msg}\ngot:\n${r.out}`);
+  }
+  // Without the target, its project skills are unknown.
+  fs.writeFileSync(selectionFile, JSON.stringify(good));
+  r = run('check-selection', selectionFile);
+  if (r.ok || !r.out.includes('error: framework-review: default project/fw: unknown skill')) fail(`check-selection without --target should not know project skills\n${r.out}`);
+  if (run('check-selection', path.join(tmp, 'none.json')).ok) fail('check-selection should fail on a missing file');
+  // The selector's commands leave the target repo untouched: no workflow state, no changes.
+  const targetGit = (...a) => spawnSync('git', ['-C', repo, '-c', 'user.name=t', '-c', 'user.email=t@t', ...a], { encoding: 'utf8', env: gitEnv });
+  targetGit('init', '-q'); targetGit('add', '.'); targetGit('commit', '-qm', 'target');
+  const targetHead = targetGit('rev-parse', 'HEAD').stdout;
+  check(good);
+  run('list-skills', '--neutral', '--target', repo, 'review', 'framework-review');
+  run('list-skills', '--guides');
+  if (targetGit('status', '--porcelain', '--ignored').stdout !== '' || targetGit('rev-parse', 'HEAD').stdout !== targetHead
+    || targetGit('branch', '--list').stdout.trim().split('\n').length !== 1 || fs.existsSync(path.join(repo, '.router')))
+    fail('the selector commands should leave the target repo unchanged');
+  fs.writeFileSync(selectionFile, 'no json here');
+  if (run('check-selection', selectionFile).ok) fail('check-selection should fail without a selection');
+  fs.rmSync(prefsFile);
+}
+
 // The committed index matches the catalog and the checked-out vendor revisions, also under a
 // git hook, whose GIT_DIR must not decide which revision is read.
 {
   const r = spawnSync(path.join(ROOT, 'scripts/skill-index'), ['--check'], { encoding: 'utf8', env: { ...process.env, GIT_DIR: path.join(tmp, 'no-repo') } });
   if (r.status !== 0) fail(`docs/skill-index.md should be current\n${r.stdout}${r.stderr}`);
+}
+
+// Selector evaluation cases (evals/skill-selector/cases.yaml) are judged by running a model; here
+// only their references are checked: every skill a case expects to see proposed is an `ok`
+// neutral candidate for its phase, and every vendor has a clear-fit case it should win.
+{
+  const YAML = require(path.join(ROOT, 'node_modules/yaml'));
+  const evals = YAML.parse(fs.readFileSync(path.join(ROOT, 'evals/skill-selector/cases.yaml'), 'utf8'));
+  for (const key of ['model', 'effort']) if (!evals.evaluation?.[key]) fail(`selector evals should record the evaluation ${key}`);
+  const okFor = {};
+  const usable = (phase, id) => {
+    okFor[phase] ??= run('list-skills', '--neutral', phase).out;
+    return new RegExp(`^\\d+\\. ${id.replace('/', '\\/')} {2}\\[vendor, ok\\]$`, 'm').test(okFor[phase]);
+  };
+  const clearFit = new Set();
+  for (const c of evals.cases ?? []) {
+    if (!c.id || !c.task || !Array.isArray(c.expect) || c.expect.length === 0) fail(`selector eval case needs id, task and expect: ${c.id}`);
+    for (const e of c.expect) {
+      for (const id of [...(e.default_any_of ?? []), ...(e.proposed_any_of ?? [])]) {
+        if (!usable(e.phase, id)) fail(`selector eval ${c.id}: ${id} is not an ok candidate for ${e.phase}`);
+      }
+      if (c.clear_fit && e.default_any_of) e.default_any_of.forEach((id) => clearFit.add(id.split('/')[0]));
+    }
+  }
+  const vendors = Object.keys(YAML.parse(fs.readFileSync(path.join(ROOT, 'catalog/sources.yaml'), 'utf8')).sources);
+  const uncovered = vendors.filter((v) => !clearFit.has(v));
+  if (uncovered.length > 0) fail(`selector evals need a clear-fit case for: ${uncovered.join(', ')}`);
 }
 
 fs.appendFileSync(path.join(tmp, 'catalog/skills.yaml'), `
@@ -549,6 +677,16 @@ const skillOf = (root) => path.join(root, SKILL_DIR, 'SKILL.md');
   expectResolve('lone copy, checkout with its skill', c.resolve(), resolvedOutput(repo, 'data-dir', checkoutSkill));
   expectResolve('checkout skill it delegates to', c.resolve({}, path.dirname(checkoutSkill)), resolvedOutput(repo, 'skill-dir'));
 }
+{
+  // The selector installed alone finds the same checkout and delegates to its own copy there.
+  const c = resolverCase();
+  const repo = c.checkout(path.join(c.home, DATA_DIR));
+  fs.cpSync(path.join(ROOT, 'skills'), path.join(repo, 'skills'), { recursive: true });
+  const lone = path.join(c.home, '.agents/skills/skill-selector');
+  fs.cpSync(path.join(ROOT, 'skills/skill-selector'), lone, { recursive: true });
+  const selectorSkill = path.join(repo, 'skills/skill-selector/SKILL.md');
+  expectResolve('lone selector copy', c.resolve({}, lone), resolvedOutput(repo, 'data-dir', selectorSkill));
+  expectResolve('selector in its checkout', c.resolve({}, path.dirname(selectorSkill)), resolvedOutput(repo, 'skill-dir'));}
 
 // check-state: the example in state.md must pass; each broken variant must name its error.
 const stateExample = () => JSON.parse(fs.readFileSync(path.join(tmp, STATE_MD), 'utf8').match(/```json\n([\s\S]*?)```/)[1]);

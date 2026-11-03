@@ -135,15 +135,39 @@ function candidates(category, allSkills = skills(), allRankings = rankings(), pr
     .filter(([id]) => !seen.has(id) && seen.add(id))
     .map(([id, origin]) => {
       const skill = allSkills[id];
-      const status = !skill ? 'unknown'
-        : excluded.includes(id) ? 'excluded'
-        : !available(skill) ? 'missing'
-        : 'ok';
-      return { id, origin, status, skill };
+      return { id, origin, status: status(skill, id, excluded), skill };
     });
+}
+
+const status = (skill, id, excluded) => (!skill ? 'unknown'
+  : excluded.includes(id) ? 'excluded'
+  : !available(skill) ? 'missing'
+  : 'ok');
+
+// Candidates for a phase on equal standing, for the selector: explicit user preferences first,
+// then the target's project skills, then every other tagged skill (personal or vendor) sorted by
+// skill name so neither vendor nor catalog order shows. Rankings are not read. Origins:
+// preference | project | personal | vendor. A project phase lists only project skills.
+function neutralCandidates(category, allSkills = skills(), prefs = preferences()) {
+  const tagged = Object.keys(allSkills).filter((id) => arr(allSkills[id].categories).includes(category));
+  const sourceOf = (id) => allSkills[id]?.source;
+  const byName = (a, b) => a.split('/')[1].localeCompare(b.split('/')[1]) || a.localeCompare(b);
+  const ordered = PROJECT_PHASES.includes(category)
+    ? tagged.filter((id) => sourceOf(id) === 'project').map((id) => [id, 'project'])
+    : [
+      ...arr((prefs[category] || {}).prefer).filter((id) => sourceOf(id) !== 'project').map((id) => [id, 'preference']),
+      ...tagged.filter((id) => sourceOf(id) === 'project').map((id) => [id, 'project']),
+      ...tagged.filter((id) => sourceOf(id) !== 'project').sort(byName)
+        .map((id) => [id, sourceOf(id) === 'personal' ? 'personal' : 'vendor']),
+    ];
+  const excluded = arr(prefs.exclude);
+  const seen = new Set();
+  return ordered
+    .filter(([id]) => !seen.has(id) && seen.add(id))
+    .map(([id, origin]) => ({ id, origin, status: status(allSkills[id], id, excluded), skill: allSkills[id] }));
 }
 
 module.exports = {
   ROOT, PROJECT_CATALOG, PERSONAL_CATALOG, PROJECT_PHASES, arr, sources, skills, vendorSkills, guides, ownedBy, projectSkills,
-  personalPath, personalSkills, namesake, categories, rankings, preferences, available, description, targetArg, upstreamPaths, candidates,
+  personalPath, personalSkills, namesake, categories, rankings, preferences, available, description, targetArg, upstreamPaths, candidates, neutralCandidates,
 };

@@ -7,7 +7,9 @@ For working on the router itself or its catalog. Install and use: the [README](.
 | Path | What |
 |---|---|
 | `skills/engineering-router/SKILL.md` | the router skill: what every run needs; the files beside it (`light.md`, `review-2.md`, `after-implementation.md`, …) are read only when a run reaches them |
-| `skills/engineering-router/resolve-root.js` | finds the router checkout the skill works from |
+| `skills/skill-selector/SKILL.md` | the selector skill: a read-only proposal of which skill fits each phase of a task, consulting the vendor guides, with vendors on equal standing |
+| `skills/*/resolve-root.js` | finds the router checkout a skill works from; identical in both skills |
+| `evals/skill-selector/cases.yaml` | behavioral evaluation cases for the selector, with the model and effort to record per run |
 | `catalog/sources.yaml` | vendor repos and where their skills live |
 | `catalog/skills.yaml` | project-owned metadata per skill (phases, use_when, invokes); descriptions are read from each `SKILL.md` |
 | `catalog/guides.yaml` | vendor guides consulted for selection: source and path only, never phase candidates |
@@ -26,12 +28,14 @@ For working on the router itself or its catalog. Install and use: the [README](.
 | Script | Does |
 |---|---|
 | `scripts/list-skills [--target <repo>] [phase ...]` | ranked candidates per phase with availability; with phases, each candidate's source description (from its `SKILL.md` frontmatter) and catalog metadata; `--target` adds the repo's project skills |
+| `scripts/list-skills --neutral [--target <repo>] [phase ...]` | the same candidates on equal standing, for the selector: rankings unread, origin `preference`, `project`, `personal` or `vendor`, vendor skills by name |
 | `scripts/list-skills --guides` | the registered vendor guides with their source descriptions |
+| `scripts/check-selection [--target <repo>] <file>` | checks a selector proposal (JSON, or Markdown ending in a ```` ```json ```` block): every default and alternative is an `ok` candidate for its phase, at most two alternatives, every pick and phase has a reason; reads only |
 | `scripts/skill-index [--check]` | regenerates `docs/skill-index.md` from the guides, the catalog and the checked-out vendor revisions; `--check` only reports a stale index |
 | `scripts/validate-catalog [--target <repo>] [--verbose]` | checks sources, paths, ids, categories, rankings, preferences, personal skills, guides (source ownership, never also a skill); warns on unreadable descriptions; `--target` also checks the repo's `docs/agents/skills.yaml`; `--verbose` lists uncataloged upstream skills |
 | `scripts/update` | pulls vendor submodules, prints added/removed skills; never edits the catalog |
 | `scripts/check-state <target-repo>` | checks the target repo's `.router/state.json` against `skills/engineering-router/state.md` |
-| `scripts/selftest` | checks the scripts against a scratch catalog and scratch state files, then runs the Pi adapter tests |
+| `scripts/selftest` | checks the scripts against a scratch catalog and scratch state files, the installable skills and the selector eval references, then runs the Pi adapter tests |
 | `scripts/context-threshold` | read-only adapter bridge: prints this router checkout’s context threshold (150000 by default) |
 | `scripts/state <target-repo> step\|workflow\|handoff\|reply\|primary\|show\|model ...` | the router's only way to change `.router/state.json` after writing it: applies the change, validates it with `check-state`, keeps the old file when invalid; `primary` prints the primary question (the current family first; `--json` gives the options to a selector) and `primary <n\|family>` sets the run's `primary`, both only while the workflow is `selecting`; `model <step>` prints the model a step runs on, from the run's `primary` in the state |
 | `scripts/record <target-repo> [--findings f] [--checklist p,a[,ok,ko]] [--pr n] ...` | composes the run record from the state and the findings, and writes it into the PR body |
