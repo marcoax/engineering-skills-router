@@ -719,6 +719,18 @@ ${primary ? `  primary: ${primary}\n` : ''}  effort: medium
   fs.writeFileSync(stateFile, JSON.stringify(variant((s) => { s.primary = 'openai'; s.status = 'selecting'; })));
   const question = 'Primary model family for this run:\n1. openai (openai-codex/gpt-6-sol)  current\n2. claude (claude-bridge/claude-opus-5-5)\n';
   if (st('primary').out !== question) fail(`primary should ask with the current family first\n${st('primary').out}`);
+  // A selector reads the same options as data, current family first.
+  const json = st('primary', '--json');
+  const options = [
+    { family: 'openai', label: 'openai (openai-codex/gpt-6-sol)', current: true },
+    { family: 'claude', label: 'claude (claude-bridge/claude-opus-5-5)', current: false },
+  ];
+  if (!json.ok || JSON.stringify(JSON.parse(json.out)) !== JSON.stringify(options)) fail(`primary --json should print the options\n${json.out}`);
+  // edit and full recompose the workflow: the run keeps its primary, and the router is told so.
+  const recompose = spawnSync(path.join(tmp, 'scripts', 'state'), [repo, 'reply', 'edit'], { encoding: 'utf8' });
+  if (recompose.status !== 2 || !recompose.stderr.includes('keep "primary": "openai"') || read().primary !== 'openai') {
+    fail(`reply edit should keep the run's primary and say so\n${recompose.stderr}`);
+  }
   fs.writeFileSync(stateFile, JSON.stringify(variant((s) => { withReview2(s); s.primary = 'claude'; s.status = 'selecting'; s.steps.forEach((x) => { x.status = 'pending'; x.outcome = null; x.model = null; x.effort = null; }); })));
   if (!st('primary', 'openai').ok || read().primary !== 'openai') fail(`primary openai should set the run's primary: ${read().primary}`);
   if (!st('show').out.split('\n').includes(models('openai'))) fail(`show should follow the chosen primary\n${st('show').out}`);
@@ -730,9 +742,12 @@ ${primary ? `  primary: ${primary}\n` : ''}  effort: medium
   if (!st('reply', 'go').ok) fail(`go should start the workflow\n${st('reply', 'go').out}`);
   if (st('primary', 'openai').ok || read().primary !== 'claude') fail('primary should be refused once the workflow has started');
   if (st('primary').ok) fail('the primary question should not be asked once the workflow has started');
+  if (st('primary', '--json').ok) fail('the primary options should not be offered once the workflow has started');
   fs.rmSync(prefsFile, { force: true });
 }
 
-const adapter = spawnSync(process.execPath, ['--test', path.join(ROOT, 'adapters/pi/state.test.ts')], { encoding: 'utf8' });
+const adapterDir = path.join(ROOT, 'adapters/pi');
+const adapterTests = fs.readdirSync(adapterDir).filter((f) => f.endsWith('.test.ts')).map((f) => path.join(adapterDir, f));
+const adapter = spawnSync(process.execPath, ['--test', ...adapterTests], { encoding: 'utf8' });
 if (adapter.status !== 0) fail(`Pi adapter tests\n${adapter.stdout}${adapter.stderr}`);
 console.log('selftest OK');

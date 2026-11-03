@@ -14,8 +14,9 @@
 //   reply <reply>            a selection reply: go, 2b, 5on, 5off, stop, pause, resume.
 //                            edit and full exit 2: recompose the workflow (SKILL.md §2-§4).
 //   primary [<family>|<n>]   without an answer, the primary question: the two families with
-//                            their models, the run's current one first (1 keeps it). With one,
-//                            sets the run's primary. Both only while the workflow is selecting.
+//                            their models, the run's current one first (1 keeps it); --json
+//                            prints the options as [{family, label, current}] for a selector.
+//                            With one, sets the run's primary. Only while the workflow is selecting.
 //   show                     the workflow, one line per step, with the step model when set,
 //                            then the run's Models line (primary from the state)
 //   model <n|id>             the model a step's subagent runs on: its first phase's `model` in
@@ -76,11 +77,11 @@ if (command === 'show') {
 
 if (command === 'primary' && !args.length) {
   try {
-    ops.setPrimary(state, models.runPrimary(state, prefs)); // asked only while the workflow is selecting
+    ops.checkPrimaryOpen(state);
   } catch (e) {
     die(e.message);
   }
-  console.log(models.primaryQuestion(state, prefs));
+  console.log('json' in flags ? JSON.stringify(models.primaryOptions(state, prefs)) : models.primaryQuestion(state, prefs));
   process.exit(0);
 }
 
@@ -96,6 +97,7 @@ if (command === 'model') {
 }
 
 let next;
+let logged = args;
 try {
   if (command === 'step') next = ops.setStep(state, args[0], args[1], flags);
   else if (command === 'workflow') next = ops.setWorkflow(state, args[0]);
@@ -103,7 +105,7 @@ try {
     const family = models.primaryAnswer(state, prefs, args[0]);
     if (!family) die(`primary must be ${models.FAMILIES.join(' | ')} or an option number from \`primary\`, got "${args[0]}"`);
     next = ops.setPrimary(state, family);
-    args[0] = family;
+    logged = [family];
   }
   else if (command === 'handoff') {
     let values = args.slice(1);
@@ -128,4 +130,4 @@ if (check.status !== 0) {
   fs.writeFileSync(file, before);
   die(`the change would make the state invalid; kept the previous state\n${check.stdout}${check.stderr}`);
 }
-console.log(`state: ${command} ${[...args].join(' ')} → workflow ${next.status}`);
+console.log(`state: ${command} ${logged.join(' ')} → workflow ${next.status}`);

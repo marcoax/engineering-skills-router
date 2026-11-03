@@ -4,9 +4,13 @@
 import { execFile } from "node:child_process";
 import * as path from "node:path";
 import { promisify } from "node:util";
-import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
+import type { ExtensionAPI, ExtensionToolContext } from "@earendil-works/pi-coding-agent";
+import type { Type as TypeBuilder } from "typebox";
 
 const TOOL = "router_primary";
+
+// One option of `scripts/state <target> primary --json`.
+type Option = { family: string; label: string; current: boolean };
 
 async function state(root: string, target: string, ...args: string[]): Promise<string> {
 	try {
@@ -17,26 +21,30 @@ async function state(root: string, target: string, ...args: string[]): Promise<s
 	}
 }
 
-// `parameters` is the TypeBox schema built by index.ts, which loads `typebox` from Pi.
-export default function registerPrimaryQuestion(pi: ExtensionAPI, parameters: any) {
+// `Type` is Pi's TypeBox builder, passed in by index.ts so this module loads without Pi installed.
+export default function registerPrimaryQuestion(pi: ExtensionAPI, Type: typeof TypeBuilder) {
 	pi.registerTool({
 		name: TOOL,
 		label: "Router primary family",
 		description:
 			"Engineering router: ask the user which model family is primary for a new run, before the workflow is shown, and store the answer in .router/state.json. Pi shows a select menu, the current family preselected; without a selector it returns the numbered question for the router to ask.",
 		promptGuidelines: [`Use ${TOOL} only when the engineering-router skill says to ask the primary question.`],
-		parameters,
-		async execute(_id: string, params: { root: string; target: string }, _signal: unknown, _update: unknown, ctx: { hasUI: boolean; ui: { select(title: string, options: string[]): Promise<string | undefined> } }) {
-			const question = await state(params.root, params.target);
+		parameters: Type.Object({
+			root: Type.String({ description: "The router checkout (repo root) the run works from" }),
+			target: Type.String({ description: "The target repo holding .router/state.json" }),
+		}),
+		async execute(_id, { root, target }, _signal, _update, ctx: Pick<ExtensionToolContext, "hasUI" | "ui">) {
 			const reply = (text: string) => ({ content: [{ type: "text" as const, text }], details: {} });
 			if (!ctx.hasUI) {
-				return reply(`${question}\nNo selector in this session: ask this numbered question, then run scripts/state ${params.target} primary <n>.`);
+				const question = await state(root, target);
+				return reply(`${question}\nNo selector in this session: ask this numbered question, then run scripts/state ${target} primary <n>.`);
 			}
-			const [title, ...lines] = question.split("\n");
-			const labels = lines.map((l) => l.replace(/^\d+\. /, "").replace(/  current$/, ""));
-			// Dismissing the menu keeps the preselected, current family.
-			const choice = (await ctx.ui.select(title, labels)) ?? labels[0];
-			return reply(await state(params.root, params.target, choice.split(" ")[0]));
+			const options: Option[] = JSON.parse(await state(root, target, "--json"));
+			const labels = options.map((o) => o.label);
+			const picked = await ctx.ui.select("Primary model family for this run", labels);
+			// Dismissing the menu keeps the preselected, current family (listed first).
+			const choice = options.find((o) => o.label === picked) ?? options[0];
+			return reply(await state(root, target, choice.family));
 		},
-	} as any);
+	});
 }
