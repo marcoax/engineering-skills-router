@@ -67,6 +67,28 @@ for (const [id, s] of Object.entries(vendor)) {
   checkSkill(id, id, s, vendor);
 }
 
+// Guides: owned by their source, readable, and never also an executable skill.
+const guides = Catalog.guides();
+for (const [id, g] of Object.entries(guides)) {
+  const where = `guides: ${id}`;
+  if (!has(sources, g.source)) { errors.push(`${where}: unknown source '${g.source}'`); continue; }
+  if (!id.startsWith(`${g.source}/`)) errors.push(`${where}: id must start with '${g.source}/'`);
+  if (has(vendor, id)) errors.push(`${where}: also cataloged as an executable skill`);
+  if (!Catalog.ownedBy(g.path, sources[g.source]))
+    errors.push(`${where}: path outside source ${g.source} (${sources[g.source].local_path}): ${g.path}`);
+  else if (!Catalog.available(g)) errors.push(`${where}: path not found ${g.path}`);
+  else {
+    const { error } = Catalog.description(g);
+    if (error) warnings.push(`${where}: description unavailable: ${error}`);
+  }
+}
+
+// A description that cannot be read is reported, never replaced: the selector reads the source.
+for (const [id, s] of Object.entries(vendor)) {
+  const { error } = Catalog.available(s) ? Catalog.description(s) : {};
+  if (error) warnings.push(`${id}: description unavailable: ${error}`);
+}
+
 // The router resolves "Call the Skill tool with \"<name>\"" to <same-source>/<name>.
 for (const [id, s] of Object.entries(vendor)) {
   if (!Catalog.available(s)) continue;
@@ -140,7 +162,7 @@ for (const [key, value] of Object.entries(prefs)) {
   });
 }
 
-const cataloged = Object.values(vendor).map((s) => s.path);
+const cataloged = [...Object.values(vendor), ...Object.values(guides)].map((s) => path.normalize(String(s.path)));
 const uncataloged = Object.values(sources).flatMap(Catalog.upstreamPaths).filter((p) => !cataloged.includes(p));
 
 warnings.forEach((w) => console.log(`warning: ${w}`));
@@ -152,5 +174,5 @@ if (uncataloged.length > 0) {
 const counts = [`${Object.keys(vendor).length} skills`];
 if (hasPersonalCatalog) counts.push(`${Object.keys(personal).filter((id) => has(skills, id)).length} personal`);
 if (target) counts.push(`${Object.keys(project).length} project`);
-console.log(errors.length === 0 ? `catalog OK (${counts.join(' + ')}, ${warnings.length} warning(s))` : `${errors.length} error(s)`);
+console.log(errors.length === 0 ? `catalog OK (${counts.join(' + ')}, ${Object.keys(guides).length} guides, ${warnings.length} warning(s))` : `${errors.length} error(s)`);
 process.exit(errors.length === 0 ? 0 : 1);

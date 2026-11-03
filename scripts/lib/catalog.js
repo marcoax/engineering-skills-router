@@ -28,6 +28,14 @@ const categories = () => read('catalog/categories.yaml').categories || {};
 const rankings = () => read('catalog/rankings.yaml').rankings || {};
 const preferences = () => read('config/preferences.yaml').preferences || {};
 const vendorSkills = () => read('catalog/skills.yaml').skills || {};
+// Vendor guides (catalog/guides.yaml): advisory entry points, kept apart from executable skills.
+const guides = () => read('catalog/guides.yaml').guides || {};
+
+// Whether a ROOT-relative path lies inside the vendor checkout of `source`.
+function ownedBy(filePath, source) {
+  const rel = path.relative(path.resolve(ROOT, String(source?.local_path ?? '')), path.resolve(ROOT, String(filePath ?? '')));
+  return !!source && rel !== '' && !path.isAbsolute(rel) && rel !== '..' && !rel.startsWith(`..${path.sep}`);
+}
 
 // Skills listed in `file` with paths relative to `root`, tagged with `source` and resolved.
 // A path that is absolute or leads outside the root is flagged `outside` and never available.
@@ -70,6 +78,22 @@ function skills(target) {
 
 // Catalog paths are relative to ROOT; personal and project paths are already absolute.
 const available = (skill) => !!skill && !skill.outside && isFile(path.resolve(ROOT, String(skill.path ?? '')));
+
+// The skill's own description, read from its SKILL.md frontmatter at the checked-out revision.
+// Only YAML parsing and whitespace normalization touch the text; there is no catalog copy.
+// Returns { text } or { error } naming why none could be read.
+function description(skill) {
+  if (!available(skill)) return { error: 'skill file not found' };
+  const source = fs.readFileSync(path.resolve(ROOT, String(skill.path)), 'utf8');
+  const match = source.match(/^---\r?\n([\s\S]*?)\r?\n---\s*(?:\r?\n|$)/);
+  if (!match) return { error: 'no frontmatter' };
+  let front;
+  try { front = YAML.parse(match[1]); } catch (e) { return { error: `malformed frontmatter: ${e.message.split('\n')[0]}` }; }
+  const text = front?.description;
+  if (text == null || (typeof text === 'string' && text.trim() === '')) return { error: 'missing description' };
+  if (typeof text !== 'string') return { error: 'description is not text' };
+  return { text: text.replace(/\s+/g, ' ').trim() };
+}
 
 // Takes `--target <path>` out of a script's argv. Exits when the path is not a directory.
 function targetArg(argv) {
@@ -120,6 +144,6 @@ function candidates(category, allSkills = skills(), allRankings = rankings(), pr
 }
 
 module.exports = {
-  ROOT, PROJECT_CATALOG, PERSONAL_CATALOG, PROJECT_PHASES, arr, sources, skills, vendorSkills, projectSkills,
-  personalPath, personalSkills, namesake, categories, rankings, preferences, available, targetArg, upstreamPaths, candidates,
+  ROOT, PROJECT_CATALOG, PERSONAL_CATALOG, PROJECT_PHASES, arr, sources, skills, vendorSkills, guides, ownedBy, projectSkills,
+  personalPath, personalSkills, namesake, categories, rankings, preferences, available, description, targetArg, upstreamPaths, candidates,
 };

@@ -1,7 +1,11 @@
 #!/usr/bin/env node
 // Usage: scripts/list-skills [--target <repo>] [phase ...]
+//        scripts/list-skills --guides
 //   no args  one line per phase with its ranked candidates
-//   phases   full detail (use_when, avoid_when, invokes, requires) for each candidate
+//   phases   full detail for each candidate: the source description, read from its SKILL.md
+//            frontmatter, then the catalog's use_when, avoid_when, complexity, invokes, requires
+//   --guides the vendor guides (catalog/guides.yaml), with their source descriptions; guides are
+//            consulted for selection and are never phase candidates
 //   --target adds the target repo's own skills (docs/agents/skills.yaml) as project/<name>,
 //            the only candidates for framework-review
 // Personal skills (config/personal-skills.yaml, under preferences.personal_path) are listed as
@@ -11,6 +15,18 @@
 const Catalog = require('./lib/catalog');
 
 const { target, args } = Catalog.targetArg(process.argv.slice(2));
+const describe = (skill) => {
+  const { text, error } = Catalog.description(skill);
+  return `   description: ${text ?? `(unavailable: ${error})`}`;
+};
+
+if (args.includes('--guides')) {
+  console.log('## guides');
+  Object.entries(Catalog.guides()).forEach(([id, guide], i) => {
+    console.log(`${i + 1}. ${id}\n   path: ${guide.path}\n${describe(guide)}`);
+  });
+  process.exit(0);
+}
 const categories = Catalog.categories();
 const skills = Catalog.skills(target);
 const known = Object.keys(categories);
@@ -32,6 +48,7 @@ for (const phase of phases) {
     console.log(`${i + 1}. ${c.id}  [${c.origin}, ${c.status}]`);
     if (!c.skill) return;
     console.log(`   path: ${c.skill.path}`);
+    console.log(describe(c.skill));
     for (const key of ['use_when', 'avoid_when', 'complexity', 'invokes', 'requires']) {
       const values = Catalog.arr(c.skill[key]);
       if (values.length > 0) console.log(`   ${key}: ${values.join('; ')}`);
