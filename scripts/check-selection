@@ -16,6 +16,7 @@ const fs = require('node:fs');
 const Catalog = require('./lib/catalog');
 
 const { target, args } = Catalog.targetArg(process.argv.slice(2));
+Catalog.requireConfig();
 const file = args[0];
 if (!file || !fs.existsSync(file)) {
   console.error(`usage: scripts/check-selection [--target <repo>] <file>${file ? `\nnot found: ${file}` : ''}`);

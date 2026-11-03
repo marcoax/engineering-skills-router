@@ -3,7 +3,7 @@
 // selection. It never writes the state file; choices go to the agent as prompts in the
 // router's own selection syntax (`go`, `2b`, `5on`, `pause`, ...).
 import { atom, read, update } from 'claude-code'
-import { completedStep, contextLine } from './context-boundary.ts'
+import { completedStep, configLine, contextLine } from './context-boundary.ts'
 import type { EngineInterface, Register, RouterReview } from 'claude-code'
 
 import {
@@ -90,11 +90,14 @@ export const register: Register = on => {
     if (!bridge) return outcome
     try {
       const pref = await $.process.run(['node', bridge], { timeoutMs: 5000 })
-      if (pref.exitCode !== 0) return outcome
-      const threshold = Number(pref.stdout.trim())
-      if (threshold === 0) return outcome
-      const usage = await $.session.usage()
-      const line = contextLine(usage.context.tokens, usage.context.window, threshold)
+      let line: string | undefined
+      if (pref.exitCode !== 0) line = configLine(pref.stderr)
+      else {
+        const threshold = Number(pref.stdout.trim())
+        if (threshold === 0) return outcome
+        const usage = await $.session.usage()
+        line = contextLine(usage.context.tokens, usage.context.window, threshold)
+      }
       if (line) return {
         result: { ...result, stdout: result.stdout + (result.stdout.endsWith('\n') ? '' : '\n') + line + '\n' },
         context: outcome.context,

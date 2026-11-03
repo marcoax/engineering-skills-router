@@ -18,6 +18,7 @@
 const Catalog = require('./lib/catalog');
 
 const { target, args } = Catalog.targetArg(process.argv.slice(2));
+Catalog.requireConfig();
 const describe = (skill) => {
   const { text, error } = Catalog.description(skill);
   return `   description: ${text ?? `(unavailable: ${error})`}`;

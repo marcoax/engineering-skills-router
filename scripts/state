@@ -37,21 +37,21 @@ const path = require('node:path');
 const { spawnSync } = require('node:child_process');
 const ops = require('./lib/state-ops');
 const models = require('./lib/models');
-// The user configuration in effect (scripts/config), never the target repo's. Unreadable ones keep the defaults;
-// scripts/validate-catalog reports them.
-const prefs = (() => {
-  try {
-    return require('./lib/catalog').preferences();
-  } catch {
-    return {};
-  }
-})();
+// The user configuration in effect (scripts/config), never the target repo's, read when a command
+// needs it; an unreadable one stops the command with its errors instead of passing for the defaults.
+let loaded;
+const prefs = () => {
+  const Catalog = require('./lib/catalog');
+  loaded ??= Catalog.preferences(Catalog.requireConfig());
+  return loaded;
+};
 
 // What a selected skill runs internally, for coverage (SKILL.md §4): the skills it `invokes` that
 // are tagged with one of the phases, from the catalog beside this script plus the target's
 // project skills.
 const invokesFor = (target) => {
   const Catalog = require('./lib/catalog');
+  Catalog.requireConfig();
   const skills = Catalog.skills(target);
   return (id, phases) => Catalog.arr(skills[id]?.invokes)
     .filter((inv) => Catalog.arr(skills[inv]?.categories).some((c) => phases.includes(c)));
@@ -110,6 +110,7 @@ function compose() {
     next.handoff = previous.handoff;
   }
   const Catalog = require('./lib/catalog');
+  Catalog.requireConfig();
   const skills = Catalog.skills(target);
   const categories = Catalog.categories();
   const done = new Set(isNew ? [] : previous.steps.filter((x) => next.steps.includes(x)).map((x) => x.id));
@@ -155,7 +156,7 @@ function classify(next, previous) {
 // Writes `next` (primary and time filled in), validates it with check-state and restores
 // `before` (null: no file) when it is invalid.
 function write(next, before, label, lines = []) {
-  next.primary ??= models.preferredPrimary(prefs);
+  if (next.primary == null) next.primary = models.preferredPrimary(prefs());
   next.updated_at = new Date().toISOString().replace(/\.\d{3}Z$/, 'Z');
   fs.mkdirSync(path.dirname(file), { recursive: true });
   fs.writeFileSync(file, `${JSON.stringify(next, null, 2)}\n`);
@@ -185,7 +186,7 @@ if (command === 'show') {
     const model = s.model ? `  on ${s.model}${s.effort ? ` · effort ${s.effort}` : ''}` : '';
     console.log(`${mark[s.status] ?? '?'} ${i + 1}. ${s.id}  ${s.skill ?? '(router)'}${inside}${model}${s.outcome ? ` → ${s.outcome}` : ''}`);
   });
-  console.log(models.modelsLine(state, prefs));
+  console.log(models.modelsLine(state, prefs()));
   process.exit(0);
 }
 
@@ -195,7 +196,7 @@ if (command === 'primary' && !args.length) {
   } catch (e) {
     die(e.message);
   }
-  console.log('json' in flags ? JSON.stringify(models.primaryOptions(state, prefs)) : models.primaryQuestion(state, prefs));
+  console.log('json' in flags ? JSON.stringify(models.primaryOptions(state, prefs())) : models.primaryQuestion(state, prefs()));
   process.exit(0);
 }
 
@@ -206,7 +207,7 @@ if (command === 'model') {
   } catch (e) {
     die(e.message);
   }
-  console.log(models.stepModel(state, state.steps[i], prefs));
+  console.log(models.stepModel(state, state.steps[i], prefs()));
   process.exit(0);
 }
 
@@ -217,7 +218,7 @@ try {
   if (command === 'step') next = ops.setStep(state, args[0], args[1], flags);
   else if (command === 'workflow') next = ops.setWorkflow(state, args[0]);
   else if (command === 'primary') {
-    const family = models.primaryAnswer(state, prefs, args[0]);
+    const family = models.primaryAnswer(state, prefs(), args[0]);
     if (!family) die(`primary must be ${models.FAMILIES.join(' | ')} or an option number from \`primary\`, got "${args[0]}"`);
     next = ops.setPrimary(state, family);
     logged = [family];

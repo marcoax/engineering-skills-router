@@ -84,6 +84,6 @@ The local pre-commit hook is unchanged; CI repeats the checks for contributors w
 
 ## Context preference
 
-In your `preferences.yaml` under `preferences`, `context_threshold` is an integer >= 0, default **150000** tokens; **0** disables context questions. Validation rejects negative, fractional, non-finite and non-numeric values. Missing, invalid or unreadable runtime settings fall back to the default.
+In your `preferences.yaml` under `preferences`, `context_threshold` is an integer >= 0, default **150000** tokens; **0** disables context questions. Validation rejects negative, fractional, non-finite and non-numeric values. A missing or invalid value falls back to the default; an unreadable configuration file makes `scripts/context-threshold` exit with its error, which the adapters show as a `config:` line after the step.
 
 Claude Code and Pi add `context: <tokens> of <window> window, threshold <threshold>` only after a successful, foreground `scripts/state <target repo> step <n|id> done` command, at or above the threshold with known tokens/window. Run that command separately: shell batches/chains are deliberately left unannotated. Quoted paths, a `node` prefix and state flags are supported. No adapter means no measurement. Warnings are informational, including above 80% of the window; a fresh-session handoff is reserved for capacity that prevents further execution after available recovery. See [context at a step boundary](how-it-works.md#context-at-a-step-boundary).

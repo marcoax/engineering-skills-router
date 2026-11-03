@@ -66,6 +66,34 @@ const label = (file) => {
   const rel = path.relative(ROOT, file);
   return rel.startsWith('..') || path.isAbsolute(rel) ? file : rel;
 };
+
+// What makes the configuration files in effect unreadable: malformed YAML, or no top-level
+// `preferences:` / `skills:` mapping. A missing file is the defaults; a broken one is never read as absent.
+function configErrors(cfg = config()) {
+  const errors = [];
+  const isMap = (v) => v != null && typeof v === 'object' && !Array.isArray(v);
+  for (const [file, key] of [[cfg.preferencesFile, 'preferences'], [cfg.personalFile, 'skills']]) {
+    if (!isFile(file)) continue;
+    let doc;
+    try { doc = readYaml(file); } catch (e) {
+      errors.push(`${label(file)}: malformed YAML: ${e.message.split('\n')[0]}`);
+      continue;
+    }
+    if (!isMap(doc) || (Object.hasOwn(doc, key) ? doc[key] != null && !isMap(doc[key]) : true))
+      errors.push(`${label(file)}: expected a top-level '${key}:' mapping`);
+  }
+  return errors;
+}
+
+// For the scripts that act on the configuration: exits 1 naming every problem with it, so a
+// broken configuration is never mistaken for an absent one.
+function requireConfig(cfg = config()) {
+  const errors = [...cfg.problems, ...configErrors(cfg)];
+  if (errors.length === 0) return cfg;
+  errors.forEach((e) => console.error(`error: ${e}`));
+  console.error('The user configuration in effect cannot be read: fix it (scripts/config shows where, scripts/validate-catalog checks it).');
+  process.exit(1);
+}
 // Phases only project skills fill.
 const PROJECT_PHASES = ['framework-review'];
 
@@ -200,6 +228,6 @@ function pickProblem(id, phases, allSkills = skills(), prefs = preferences()) {
 }
 
 module.exports = {
-  ROOT, PROJECT_CATALOG, PROJECT_PHASES, CONFIG_ENV, CONFIG_FILES, CLONE_CONFIG, config, label, readYaml, arr, sources, skills, vendorSkills, guides, ownedBy, projectSkills,
+  ROOT, PROJECT_CATALOG, PROJECT_PHASES, CONFIG_ENV, CONFIG_FILES, CLONE_CONFIG, config, configErrors, requireConfig, label, readYaml, arr, sources, skills, vendorSkills, guides, ownedBy, projectSkills,
   personalPath, personalSkills, namesake, categories, preferences, available, description, targetArg, upstreamPaths, candidates, pickProblem,
 };

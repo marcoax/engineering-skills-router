@@ -375,6 +375,13 @@ fs.rmSync(prefsFile);
     fs.writeFileSync(path.join(dir, file), text);
     const r = runIn('validate-catalog', [], { ENGINEERING_ROUTER_CONFIG: dir });
     if (r.ok || !r.out.includes(`error: ${path.join(dir, file)}: ${msg}`)) fail(`expected: ${file}: ${msg}\n${r.out}`);
+    // Every runtime reader says so too, without a stack trace and without falling back to defaults.
+    const env = { ENGINEERING_ROUTER_CONFIG: dir };
+    for (const [script, args] of [['list-skills', ['review']], ['context-threshold', []], ['config', []], ['state', [target, 'model', 'implementation']]]) {
+      const rr = runIn(script, args, env);
+      if (rr.ok || !rr.out.includes(`error: ${path.join(dir, file)}: ${msg}`) || /^\s+at /m.test(rr.out))
+        fail(`${script} should diagnose ${file}: ${msg}\n${rr.out}`);
+    }
   }
 
   // Clone-local configuration still works on its own; a relative personal_path keeps the checkout as its base.

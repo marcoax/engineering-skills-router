@@ -88,6 +88,24 @@ test("Pi boundary: threshold from an explicit configuration directory", async ()
  }
 });
 
+// A configuration the bridge cannot read is reported after the step, never taken for the default.
+test("Pi boundary: an unreadable configuration is reported", async () => {
+ const target = fixture();
+ const config = fs.mkdtempSync(path.join(os.tmpdir(), "router broken config-"));
+ const saved = process.env.ENGINEERING_ROUTER_CONFIG;
+ try {
+  fs.writeFileSync(path.join(config, "preferences.yaml"), "preferences: [unclosed\n");
+  process.env.ENGINEERING_ROUTER_CONFIG = config;
+  const command = `node "${ROOT}/scripts/state" "${target}" step 2 done`;
+  const content = [{type: "text", text: "state: step 2 done → workflow running\n"}];
+  const result = await hook()!({toolName: "bash", input: {command}, isError: false, content}, {cwd: target, getContextUsage: () => ({tokens: 190000, contextWindow: 200000})});
+  assert.ok((result?.content.at(-1).text ?? "").startsWith(`config: error: ${path.join(config, "preferences.yaml")}: malformed YAML`), JSON.stringify(result));
+ } finally {
+  if (saved === undefined) delete process.env.ENGINEERING_ROUTER_CONFIG; else process.env.ENGINEERING_ROUTER_CONFIG = saved;
+  for (const dir of [target, config]) fs.rmSync(dir, {recursive: true, force: true});
+ }
+});
+
 for (const [label, command, output, isError] of [
  ["quoted echo", `echo '${ROOT}/scripts/state /target step 2 done'`, 'state: step 2 done → workflow running\n', false],
  ["failed state call", `${ROOT}/scripts/state /target step 2 done`, 'error: invalid state\n', true],

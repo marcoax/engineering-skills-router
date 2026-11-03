@@ -19,7 +19,7 @@ Files are never merged across directories. When the effective directory is not `
 
 A relative `personal_path` resolves against the router checkout in a clone-local `preferences.yaml` (as before) and against the configuration directory elsewhere. Paths in `personal-skills.yaml` stay relative to `personal_path`.
 
-A missing file means the defaults. A malformed file (invalid YAML, or no top-level `preferences:` / `skills:` mapping) is an error in `scripts/validate-catalog`, never read as absent; the runtime scripts keep the defaults for what they cannot read.
+A missing file means the defaults. A malformed file (invalid YAML, or no top-level `preferences:` / `skills:` mapping) is an error, never read as absent: `scripts/validate-catalog` and `scripts/config` report it, and the scripts that act on the configuration (`list-skills`, `check-selection`, `context-threshold`, and `state` when a command needs the preferences) stop with the same error instead of running on the defaults. After a completed step the adapters show it as a `config: error: …` line.
 
 ## Package updates
 

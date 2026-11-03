@@ -80,7 +80,7 @@ After a step closes, the Claude Code and Pi adapters append a `context:` line to
 
 The handoff prints completed steps, next step, issue or spec, branch, PR, target directory and the exact router command for a fresh session. It uses the existing state and step notes; resuming reads them and starts at the first step not done or skipped. No step is interrupted, and a finished workflow goes straight to its final report.
 
-With `context_threshold: 0`, unknown context (including after compaction), or a harness without an adapter, there is no context line or question. Preferences belong to the router checkout, not the target repo; unreadable or invalid runtime preferences fall back to 150000, with invalid values reported by `scripts/validate-catalog`.
+With `context_threshold: 0`, unknown context (including after compaction), or a harness without an adapter, there is no context line or question. Preferences belong to the router checkout, not the target repo; an invalid value falls back to 150000 and is reported by `scripts/validate-catalog`; an unreadable configuration file is reported after the step as a `config:` line, never taken for the default.
 
 ## Review 2 on another model family
 
