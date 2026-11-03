@@ -585,6 +585,171 @@ ${['one', 'folded', 'plain', 'nodesc', 'broken', 'nofm'].map((n) => `  acme/${n}
   if (fs.readFileSync(indexFile, 'utf8') !== index) fail('--check should not write');
   acmeSkill('one', '---\nname: one\ndescription: Reviews a diff | flags <risky> changes & more.\n---\n# one\n');
 }
+
+// Vendor catalog sync: a scratch router checkout (a git repo) whose only source `acme` is a
+// submodule cloned from a local upstream repo, so `scripts/update` fetches without the network.
+// The report compares each source with its last reviewed revision; only `--approve` changes the
+// catalog or that record, after validation.
+{
+  const sync = path.join(tmp, 'sync checkout');
+  const upstream = path.join(tmp, 'acme upstream');
+  const fileProtocol = { GIT_CONFIG_COUNT: '1', GIT_CONFIG_KEY_0: 'protocol.file.allow', GIT_CONFIG_VALUE_0: 'always' };
+  const env = { ...gitEnv, ...fileProtocol, XDG_CONFIG_HOME: path.join(tmp, 'sync config') };
+  const gitIn = (dir, ...a) => {
+    const r = spawnSync('git', ['-C', dir, '-c', 'user.name=t', '-c', 'user.email=t@t', ...a], { encoding: 'utf8', env });
+    if (r.status !== 0) fail(`git ${a.join(' ')} in ${dir}\n${r.stderr}`);
+    return r.stdout.trim();
+  };
+  const skillText = (name, description, body = '') => `---\nname: ${name}\ndescription: ${description}\n---\n# ${name}\n${body}`;
+  const upstreamSkill = (name, text) => {
+    fs.mkdirSync(path.join(upstream, 'skills', name), { recursive: true });
+    fs.writeFileSync(path.join(upstream, 'skills', name, 'SKILL.md'), text);
+  };
+  const commitUpstream = (msg) => { gitIn(upstream, 'add', '-A'); gitIn(upstream, 'commit', '-qm', msg); return gitIn(upstream, 'rev-parse', 'HEAD'); };
+  const entry = (name, cats = 'review') => `  acme/${name}:\n    source: acme\n    path: vendors/acme/skills/${name}/SKILL.md\n    categories: [${cats}]\n    use_when:\n      - fixture\n`;
+  const skillsFile = path.join(sync, 'catalog/skills.yaml');
+  const reviewedFile = path.join(sync, 'catalog/reviewed.yaml');
+  const runSync = (...args) => {
+    const r = spawnSync(path.join(sync, 'scripts/update'), args, { encoding: 'utf8', env });
+    return { ok: r.status === 0, out: r.stdout + r.stderr };
+  };
+  const listSync = (phase) => spawnSync(path.join(sync, 'scripts/list-skills'), [phase], { encoding: 'utf8', env }).stdout;
+  const snapshot = () => ['catalog/skills.yaml', 'catalog/guides.yaml', 'catalog/reviewed.yaml', 'docs/skill-index.md']
+    .map((f) => `${f}:${fs.existsSync(path.join(sync, f)) ? fs.readFileSync(path.join(sync, f), 'utf8') : 'absent'}`).join('\n');
+  const short = (rev) => rev.slice(0, 7);
+
+  fs.mkdirSync(upstream);
+  gitIn(upstream, 'init', '-q');
+  upstreamSkill('alpha', skillText('alpha', 'Alpha reviews.'));
+  upstreamSkill('beta', skillText('beta', 'Beta reviews.'));
+  upstreamSkill('gamma', skillText('gamma', 'Gamma reviews.'));
+  const rev0 = commitUpstream('initial');
+
+  for (const dir of ['catalog', 'scripts', 'skills']) fs.cpSync(path.join(ROOT, dir), path.join(sync, dir), { recursive: true });
+  fs.rmSync(reviewedFile, { force: true });
+  fs.mkdirSync(path.join(sync, 'config'));
+  fs.mkdirSync(path.join(sync, 'docs'));
+  fs.symlinkSync(path.join(ROOT, 'node_modules'), path.join(sync, 'node_modules'));
+  fs.writeFileSync(path.join(sync, 'catalog/sources.yaml'), `sources:\n  acme:\n    repository: https://github.com/acme/skills\n    local_path: vendors/acme\n    skill_globs:\n      - skills/*/SKILL.md\n`);
+  fs.writeFileSync(path.join(sync, 'catalog/guides.yaml'), 'guides: {}\n');
+  fs.writeFileSync(skillsFile, `skills:\n${entry('alpha')}${entry('beta')}`);
+  gitIn(sync, 'init', '-q');
+  gitIn(sync, 'submodule', 'add', '-q', upstream, 'vendors/acme');
+  if (spawnSync(path.join(sync, 'scripts/skill-index'), [], { env }).status !== 0) fail('skill-index should build in the sync checkout');
+  gitIn(sync, 'add', '-A');
+  gitIn(sync, 'commit', '-qm', 'router');
+
+  // First use: no reviewed revision. The report is an explicit initialization proposal listing
+  // every upstream skill, cataloged or not, and records nothing.
+  {
+    const before = snapshot();
+    const r = runSync('--check');
+    if (!r.ok || !r.out.includes(`acme: no reviewed revision; initialization against ${short(rev0)}`)
+      || !r.out.includes('  = skills/alpha/SKILL.md  acme/alpha') || !r.out.includes('  ? skills/gamma/SKILL.md  uncataloged')
+      || !r.out.includes('Catalog review required')) fail(`first use should propose an initialization\n${r.out}`);
+    if (snapshot() !== before) fail('a report should change nothing');
+  }
+
+  // The agent's proposal, as a patch of the catalog against the committed one.
+  const patchFile = path.join(tmp, 'sync.patch');
+  const proposal = (skillsText) => {
+    const committed = fs.readFileSync(skillsFile, 'utf8');
+    fs.writeFileSync(skillsFile, skillsText);
+    fs.writeFileSync(patchFile, `${gitIn(sync, 'diff', '--', 'catalog/skills.yaml')}\n`);
+    fs.writeFileSync(skillsFile, committed);
+    return patchFile;
+  };
+  const reviewedRev = () => (fs.existsSync(reviewedFile) ? fs.readFileSync(reviewedFile, 'utf8').match(/acme: (\w+)/)?.[1] : undefined);
+
+  // Approval needs every upstream skill cataloged: acme/gamma is not, so nothing is recorded.
+  {
+    const before = snapshot();
+    const r = runSync('--approve');
+    if (r.ok || !r.out.includes('vendors/acme/skills/gamma/SKILL.md') || !r.out.includes('Nothing approved')) fail(`approval should require every new skill\n${r.out}`);
+    if (snapshot() !== before) fail('a refused approval should change nothing');
+  }
+  // Approved initialization: the patch is applied and validated, the index regenerated and the
+  // revision recorded; the router lists the new skill, and the same revision reports nothing.
+  {
+    const r = runSync('--approve', proposal(`skills:\n${entry('alpha')}${entry('beta')}${entry('gamma', 'debugging')}`));
+    if (!r.ok || reviewedRev() !== rev0) fail(`approval should record the reviewed revision\n${r.out}`);
+    if (!/^1\. acme\/gamma {2}\[vendor, ok\]$/m.test(listSync('debugging'))) fail(`the approved skill should be a candidate\n${listSync('debugging')}`);
+    if (!fs.readFileSync(path.join(sync, 'docs/skill-index.md'), 'utf8').includes('[acme/gamma]')) fail('approval should regenerate the skill index');
+    const again = runSync('--check');
+    if (!again.ok || !again.out.includes(`acme: reviewed at ${short(rev0)}, nothing to review`) || !again.out.includes('Nothing to review.')) fail(`an approved revision should not be proposed again\n${again.out}`);
+    gitIn(sync, 'add', '-A');
+    gitIn(sync, 'commit', '-qm', 'approved');
+  }
+
+  // Upstream changes alpha's content at the same path, adds delta, removes beta and moves gamma.
+  upstreamSkill('alpha', skillText('alpha', 'Alpha reviews.', 'Now also checks tests.\n'));
+  upstreamSkill('delta', skillText('delta', 'Delta debugs.'));
+  fs.rmSync(path.join(upstream, 'skills/beta'), { recursive: true });
+  fs.renameSync(path.join(upstream, 'skills/gamma'), path.join(upstream, 'skills/gamma-two'));
+  const rev1 = commitUpstream('changes');
+  const pendingLines = ['  ~ skills/alpha/SKILL.md  acme/alpha', '  + skills/delta/SKILL.md  uncataloged',
+    '  - skills/beta/SKILL.md  acme/beta', '  > skills/gamma/SKILL.md -> skills/gamma-two/SKILL.md  acme/gamma'];
+  const approved = snapshot();
+  {
+    const r = runSync();
+    if (!r.ok || !r.out.includes(`acme: reviewed ${short(rev0)} -> checked out ${short(rev1)}`) || pendingLines.some((l) => !r.out.includes(l))
+      || !r.out.includes('Catalog review required')) fail(`update should report the changes since the reviewed revision\n${r.out}`);
+    if (snapshot() !== approved) fail('update should not change the catalog or the reviewed revision');
+    if (!fs.existsSync(path.join(sync, 'config/.last-update-check'))) fail('update should record the check date');
+  }
+  // A second update before approval keeps every unreviewed difference visible.
+  upstreamSkill('epsilon', skillText('epsilon', 'Epsilon plans.'));
+  const rev2 = commitUpstream('more');
+  {
+    const r = runSync();
+    if (!r.ok || !r.out.includes(`acme: reviewed ${short(rev0)} -> checked out ${short(rev2)}`)
+      || [...pendingLines, '  + skills/epsilon/SKILL.md  uncataloged'].some((l) => !r.out.includes(l))) fail(`repeated updates should keep pending changes\n${r.out}`);
+    if (snapshot() !== approved) fail('a repeated update should not change the catalog or the reviewed revision');
+  }
+  // A failed pull records nothing and fails.
+  {
+    const vendor = path.join(sync, 'vendors/acme');
+    gitIn(vendor, 'remote', 'set-url', 'origin', path.join(tmp, 'no such upstream'));
+    const r = runSync();
+    gitIn(vendor, 'remote', 'set-url', 'origin', upstream);
+    if (r.ok || !r.out.includes('git submodule update failed') || snapshot() !== approved) fail(`a failed update should fail and change nothing\n${r.out}`);
+  }
+  // Approval failures leave the catalog, the index and the reviewed revision as they were.
+  const fixed = `skills:\n${entry('alpha')}  acme/gamma:\n    source: acme\n    path: vendors/acme/skills/gamma-two/SKILL.md\n    categories: [debugging]\n    use_when:\n      - fixture\n${entry('delta', 'debugging')}${entry('epsilon', 'planning')}`;
+  for (const [args, msg] of [
+    [() => [], 'scripts/validate-catalog failed'],
+    [() => [proposal(`${fixed}    invokes: [acme/beta]\n`)], 'invokes unknown skill acme/beta'],
+    [() => [proposal(`skills:\n${entry('alpha')}${entry('beta')}`)], 'scripts/validate-catalog failed'],
+  ]) {
+    const r = runSync('--approve', ...args());
+    if (r.ok || !r.out.includes(msg) || !r.out.includes('Nothing approved') || snapshot() !== approved) fail(`a failed approval should change nothing (${msg})\n${r.out}`);
+  }
+  {
+    fs.writeFileSync(patchFile, 'diff --git a/scripts/list-skills b/scripts/list-skills\n--- a/scripts/list-skills\n+++ b/scripts/list-skills\n@@ -1 +1 @@\n-#!/usr/bin/env node\n+#!/bin/sh\n');
+    const r = runSync('--approve', patchFile);
+    if (r.ok || !r.out.includes('may change only catalog/skills.yaml') || snapshot() !== approved) fail(`a patch outside the catalog should be refused\n${r.out}`);
+  }
+  // The approved proposal resolves the removal and the move: candidates follow the new catalog.
+  {
+    const r = runSync('--approve', proposal(fixed));
+    if (!r.ok || reviewedRev() !== rev2) fail(`approval should record the new revision\n${r.out}`);
+    const debugging = listSync('debugging');
+    if (!/^\d\. acme\/delta {2}\[vendor, ok\]$/m.test(debugging) || !/^ {3}path: vendors\/acme\/skills\/gamma-two\/SKILL\.md$/m.test(debugging)) fail(`candidates should follow the approved catalog\n${debugging}`);
+    if (listSync('review').includes('acme/beta')) fail('a removed skill should no longer be a candidate');
+    if (!runSync('--check').out.includes('Nothing to review.')) fail('an approved sync should not be proposed again');
+  }
+  // An upstream change outside the skills still needs review; it is approved without a catalog change.
+  fs.writeFileSync(path.join(upstream, 'README.md'), 'readme\n');
+  const rev3 = commitUpstream('docs');
+  {
+    const r = runSync();
+    if (!r.ok || !r.out.includes('no skill changes; approving needs no catalog change') || !r.out.includes('Catalog review required')) fail(`a revision without skill changes should be reviewable\n${r.out}`);
+    const skillsBefore = fs.readFileSync(skillsFile, 'utf8');
+    const ok = runSync('--approve');
+    if (!ok.ok || reviewedRev() !== rev3 || fs.readFileSync(skillsFile, 'utf8') !== skillsBefore) fail(`an empty approval should only record the revision\n${ok.out}`);
+    if (!runSync('--check').out.includes('Nothing to review.')) fail('an acknowledged revision should not be proposed again');
+  }
+}
 // `list-skills` lists candidates on equal standing (`--neutral` is the same listing). Explicit
 // choices keep their origin; vendor entries never get a preferred or fallback tier, and neither
 // catalog order nor a legacy rankings file changes the listing.

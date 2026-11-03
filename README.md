@@ -119,6 +119,6 @@ Codex, Cursor, OpenCode, or any agent through `npx skills add`: [install for oth
 |---|---|
 | `scripts/stats [--repo <owner/name>] [--limit <n>] [--json]` | adds up the run records in a repo's PRs (via `gh`): per review and model, per skill, per severity, checklists, tokens |
 | `scripts/validate-catalog [--target <repo>]` | checks the catalog, your preferences and personal skills; `--target` also checks a repo's project skills (`docs/agents/skills.yaml`) |
-| `scripts/update` | pulls vendor submodules, prints added/removed skills; never edits the catalog |
+| `scripts/update [--check \| --approve [patch]]` | pulls vendor submodules and reports skills added, modified, removed or moved since the last reviewed revision, plus uncataloged ones; after you confirm the proposed catalog change, `--approve` applies it, validates and records the reviewed revisions ([vendor updates](docs/reference.md#vendor-updates)) |
 
 Repo layout, every script, adding a collection: [reference](docs/reference.md).
