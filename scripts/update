@@ -1,34 +1,173 @@
 #!/usr/bin/env node
-// Pulls upstream vendor repos and reports added/removed skills. Never edits the catalog.
-// Records the check date (YYYY-MM-DD) in config/.last-update-check for the router's update prompt.
+// Usage: scripts/update [--check | --approve [catalog.patch]]
+// Vendor catalog sync (docs/reference.md). Compares every source's checked-out revision with the
+// last revision a human reviewed the catalog against (catalog/reviewed.yaml) and reports the
+// SKILL.md files added, modified (same path, new content), removed or moved since then, plus
+// upstream skills not cataloged yet. A report never edits the catalog or the reviewed record.
+//   (none)     pull the vendor submodules from upstream, record the check date in
+//              config/.last-update-check, then report
+//   --check    report only, without pulling
+//   --approve  after the user confirmed the proposal: apply catalog.patch (catalog/skills.yaml
+//              and catalog/guides.yaml only), validate, regenerate docs/skill-index.md and record
+//              the checked-out revisions as reviewed. Any failure restores the catalog and
+//              records nothing. Without a patch it acknowledges a report needing no catalog change.
 const fs = require('node:fs');
 const path = require('node:path');
 const { spawnSync } = require('node:child_process');
+const YAML = require('yaml');
 const Catalog = require('./lib/catalog');
 
+const REVIEWED = 'catalog/reviewed.yaml';
+const PATCHABLE = ['catalog/skills.yaml', 'catalog/guides.yaml'];
+const INDEX = 'docs/skill-index.md';
+const at = (rel) => path.join(Catalog.ROOT, rel);
+const die = (msg) => { console.error(msg); process.exit(1); };
+// A git hook exports GIT_DIR and GIT_INDEX_FILE; they would point git at the router repo.
+const localEnv = Object.fromEntries(Object.entries(process.env)
+  .filter(([k]) => !['GIT_DIR', 'GIT_INDEX_FILE', 'GIT_WORK_TREE', 'GIT_PREFIX', 'GIT_OBJECT_DIRECTORY'].includes(k)));
+const gitIn = (dir, ...args) => spawnSync('git', ['-C', dir, ...args], { encoding: 'utf8', env: localEnv });
+
 const sources = Catalog.sources();
-const before = Object.fromEntries(Object.entries(sources).map(([key, src]) => [key, Catalog.upstreamPaths(src)]));
+const reviewed = () => Catalog.readYaml(at(REVIEWED)).reviewed || {};
 
-const git = spawnSync('git', ['submodule', 'update', '--init', '--remote', '--merge'], { cwd: Catalog.ROOT, stdio: 'inherit' });
-if (git.status !== 0) {
-  console.error('git submodule update failed');
-  process.exit(1);
-}
-fs.writeFileSync(path.join(Catalog.ROOT, 'config/.last-update-check'), `${new Date().toISOString().slice(0, 10)}\n`);
+// skill_globs use `*` within a path segment and `**` across segments.
+const globRegex = (glob) => new RegExp(`^${String(glob).split(/(\*\*\/?|\*)/).map((part) => (part.startsWith('**') ? '(?:.*/)?'
+  : part === '*' ? '[^/]*' : part.replace(/[.+?^${}()|[\]\\]/g, '\\$&'))).join('')}$`);
 
-const cataloged = Object.values(Catalog.skills()).map((s) => s.path);
-const minus = (a, b) => a.filter((x) => !b.includes(x));
-let changed = false;
-for (const [key, src] of Object.entries(sources)) {
-  const after = Catalog.upstreamPaths(src);
-  const added = minus(after, before[key]);
-  const removed = minus(before[key], after);
-  const gone = minus(cataloged.filter((p) => p.startsWith(`${src.local_path}/`)), after);
-  console.log(key);
-  if (added.length + removed.length + gone.length === 0) console.log('  no changes');
-  added.forEach((p) => console.log(`  + ${p}`));
-  removed.forEach((p) => console.log(`  - ${p}`));
-  minus(gone, removed).forEach((p) => console.log(`  ! cataloged but missing: ${p}`));
-  changed ||= added.length + removed.length + gone.length > 0;
+// The checked-out revision of a source, or undefined when its checkout is not a git repo.
+function headOf(src) {
+  const r = gitIn(at(String(src.local_path)), 'rev-parse', 'HEAD');
+  return r.status === 0 ? r.stdout.trim() : undefined;
 }
-console.log(changed ? '\nCatalog review required. Run scripts/validate-catalog.' : '\nCatalog up to date.');
+
+// SKILL.md path (relative to the source checkout) -> blob id, at a revision.
+function skillBlobs(src, rev) {
+  const r = gitIn(at(String(src.local_path)), 'ls-tree', '-r', rev);
+  if (r.status !== 0) return undefined;
+  const globs = Catalog.arr(src.skill_globs).map(globRegex);
+  return Object.fromEntries(r.stdout.split('\n').filter(Boolean)
+    .map((line) => { const [meta, file] = line.split('\t'); return [file, meta.split(' ')[2]]; })
+    .filter(([file]) => globs.some((g) => g.test(file))));
+}
+
+// Repo-relative catalog path -> id, for skills and guides.
+function catalogedIds() {
+  const ids = {};
+  for (const [id, s] of [...Object.entries(Catalog.vendorSkills()), ...Object.entries(Catalog.guides())]) {
+    ids[path.normalize(String(s?.path ?? ''))] = id;
+  }
+  return ids;
+}
+
+// The review for one source: what changed since its reviewed revision, and what is uncataloged.
+function review(key, src, cataloged) {
+  const head = headOf(src);
+  if (!head) return { key, error: `cannot read the checked-out revision of ${src.local_path} (run scripts/setup)` };
+  const base = reviewed()[key];
+  const now = skillBlobs(src, head);
+  const then = base ? skillBlobs(src, base) : {};
+  if (base && !then) return { key, error: `reviewed revision ${base} not found in ${src.local_path}` };
+  const full = (file) => path.join(String(src.local_path), file);
+  const idOf = (file) => cataloged[path.normalize(full(file))];
+  const lines = [];
+  let pending = !base || base !== head;
+  if (!base) {
+    for (const file of Object.keys(now).sort()) lines.push(idOf(file) ? `  = ${file}  ${idOf(file)}` : `  ? ${file}  uncataloged`);
+  } else {
+    const added = Object.keys(now).filter((f) => !(f in then));
+    const removed = Object.keys(then).filter((f) => !(f in now));
+    const moved = removed.map((f) => [f, added.find((a) => now[a] === then[f])]).filter(([, to]) => to);
+    const movedFrom = moved.map(([f]) => f);
+    const movedTo = moved.map(([, to]) => to);
+    for (const file of Object.keys(now).sort()) {
+      const id = idOf(file) ?? 'uncataloged';
+      if (movedTo.includes(file)) lines.push(`  > ${moved.find(([, to]) => to === file)[0]} -> ${file}  ${idOf(moved.find(([, to]) => to === file)[0]) ?? id}`);
+      else if (added.includes(file)) lines.push(`  + ${file}  ${id}`);
+      else if (then[file] !== now[file]) lines.push(`  ~ ${file}  ${id}`);
+      else if (!idOf(file)) lines.push(`  ? ${file}  uncataloged`);
+    }
+    for (const file of removed.filter((f) => !movedFrom.includes(f)).sort()) lines.push(`  - ${file}  ${idOf(file) ?? 'uncataloged'}`);
+  }
+  // Cataloged paths of this source absent at both revisions (those removed since are listed above).
+  for (const [p, id] of Object.entries(cataloged)) {
+    const rel = path.relative(String(src.local_path), p).split(path.sep).join('/');
+    if (Catalog.ownedBy(p, src) && !(rel in now) && !(rel in then)) lines.push(`  ! ${p}  ${id} cataloged but missing`);
+  }
+  const uncataloged = Object.keys(now).filter((f) => !idOf(f));
+  pending ||= lines.length > 0;
+  return { key, base, head, lines, pending, uncataloged };
+}
+
+function report() {
+  const cataloged = catalogedIds();
+  const results = Object.entries(sources).map(([key, src]) => review(key, src, cataloged));
+  for (const r of results) {
+    if (r.error) { console.log(`${r.key}: error: ${r.error}`); continue; }
+    const src = sources[r.key];
+    if (!r.base) console.log(`${r.key}: no reviewed revision; initialization against ${r.head.slice(0, 7)}`);
+    else if (!r.pending) console.log(`${r.key}: reviewed at ${r.head.slice(0, 7)}, nothing to review`);
+    else {
+      console.log(`${r.key}: reviewed ${r.base.slice(0, 7)} -> checked out ${r.head.slice(0, 7)}`);
+      if (r.base !== r.head) console.log(`  diff: git -C ${src.local_path} diff ${r.base.slice(0, 12)} ${r.head.slice(0, 12)}`);
+    }
+    r.lines.forEach((l) => console.log(l));
+    if (r.base && r.pending && r.lines.length === 0) console.log('  no skill changes; approving needs no catalog change');
+  }
+  console.log('  (+ added, ~ modified, - removed, > moved, ? uncataloged, ! cataloged but missing, = cataloged)');
+  const pending = results.some((r) => r.error || r.pending);
+  console.log(pending
+    ? '\nCatalog review required. Read the skills listed, propose the catalog change, then after the user confirms run scripts/update --approve [catalog.patch].'
+    : '\nNothing to review.');
+  return results;
+}
+
+function approve(patch) {
+  const results = Object.entries(sources).map(([key, src]) => review(key, src, catalogedIds()));
+  const broken = results.filter((r) => r.error);
+  if (broken.length) die(broken.map((r) => `${r.key}: error: ${r.error}`).join('\n'));
+  const originals = Object.fromEntries([...PATCHABLE, INDEX].map((f) => [f, fs.existsSync(at(f)) ? fs.readFileSync(at(f), 'utf8') : undefined]));
+  const restore = (msg) => {
+    for (const [f, text] of Object.entries(originals)) {
+      if (text === undefined) fs.rmSync(at(f), { force: true }); else fs.writeFileSync(at(f), text);
+    }
+    die(`${msg}\nNothing approved: the catalog is unchanged and no revision was recorded.`);
+  };
+  if (patch) {
+    const file = path.resolve(patch);
+    if (!fs.existsSync(file)) die(`patch not found: ${patch}`);
+    const touched = gitIn(Catalog.ROOT, 'apply', '--numstat', file);
+    if (touched.status !== 0) die(`patch does not parse: ${patch}\n${touched.stderr}`);
+    const outside = touched.stdout.split('\n').filter(Boolean).map((l) => l.split('\t')[2]).filter((f) => !PATCHABLE.includes(f));
+    if (outside.length) die(`the patch may change only ${PATCHABLE.join(' and ')}; it touches ${outside.join(', ')}`);
+    const applied = gitIn(Catalog.ROOT, 'apply', file);
+    if (applied.status !== 0) restore(`patch does not apply: ${patch}\n${applied.stderr}`);
+  }
+  const script = (name, ...args) => spawnSync(at(`scripts/${name}`), args, { encoding: 'utf8', env: localEnv });
+  const valid = script('validate-catalog');
+  if (valid.status !== 0) restore(`scripts/validate-catalog failed:\n${valid.stdout}${valid.stderr}`);
+  const after = Object.entries(sources).map(([key, src]) => review(key, src, catalogedIds()));
+  const uncataloged = after.flatMap((r) => r.uncataloged.map((f) => path.join(String(sources[r.key].local_path), f)));
+  if (uncataloged.length) restore(`upstream skills still uncataloged:\n${uncataloged.map((f) => `  ${f}`).join('\n')}`);
+  const index = script('skill-index');
+  if (index.status !== 0) restore(`scripts/skill-index failed:\n${index.stdout}${index.stderr}`);
+  const record = Object.fromEntries(after.map((r) => [r.key, r.head]));
+  fs.writeFileSync(at(REVIEWED), '# Written by scripts/update --approve: the vendor revision each source\'s catalog entries were\n'
+    + '# last reviewed against. The submodule gitlinks pin what is checked out; this records what was reviewed.\n'
+    + YAML.stringify({ reviewed: record }));
+  for (const [key, rev] of Object.entries(record)) console.log(`${key}: reviewed at ${rev.slice(0, 7)}`);
+  console.log(`Approved. Review and commit ${[...PATCHABLE, REVIEWED, INDEX].join(', ')} with the vendor pins.`);
+}
+
+const args = process.argv.slice(2);
+if (args[0] === '--approve') {
+  approve(args[1]);
+} else if (args[0] === '--check' || args.length === 0) {
+  if (args.length === 0) {
+    const git = spawnSync('git', ['submodule', 'update', '--init', '--remote', '--merge'], { cwd: Catalog.ROOT, stdio: 'inherit', env: localEnv });
+    if (git.status !== 0) die('git submodule update failed; nothing recorded');
+    fs.writeFileSync(at('config/.last-update-check'), `${new Date().toISOString().slice(0, 10)}\n`);
+  }
+  if (report().some((r) => r.error)) process.exit(1);
+} else {
+  die('usage: scripts/update [--check | --approve [catalog.patch]]');
+}

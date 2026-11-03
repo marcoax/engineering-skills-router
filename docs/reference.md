@@ -14,6 +14,7 @@ For working on the router itself or its catalog. Install and use: the [README](.
 | `catalog/skills.yaml` | project-owned metadata per skill (phases, use_when, invokes); descriptions are read from each `SKILL.md` |
 | `catalog/guides.yaml` | vendor guides consulted for selection: source and path only, never phase candidates |
 | `catalog/categories.yaml` | the phases |
+| `catalog/reviewed.yaml` | per source, the vendor revision the catalog was last reviewed against; written only by `scripts/update --approve` ([vendor updates](#vendor-updates)) |
 | `config/preferences.example.yaml` | template for personal overrides (`preferences.yaml` in the configuration directory, [configuration.md](configuration.md)) |
 | `config/personal-skills.example.yaml` | template for your own skills (`personal-skills.yaml` beside it) |
 | `adapters/pi/` | Pi extension: workflow widget and panel from `.router/state.json`, and the `router_primary` select menu for the primary question |
@@ -33,7 +34,7 @@ For working on the router itself or its catalog. Install and use: the [README](.
 | `scripts/skill-index [--check]` | regenerates `docs/skill-index.md` from the guides, the catalog and the checked-out vendor revisions; `--check` only reports a stale index |
 | `scripts/validate-catalog [--target <repo>] [--verbose]` | checks sources, paths, ids, categories, preferences, personal skills, guides (source ownership, never also a skill); warns on unreadable descriptions and a leftover `catalog/rankings.yaml` (no longer read); `--target` also checks the repo's `docs/agents/skills.yaml`; `--verbose` lists uncataloged upstream skills |
 | `scripts/config [migrate [--yes]]` | prints the user configuration in effect (source, directory, files, ignored clone-local files); `migrate` shows, and with `--yes` performs, a validated move of `config/` files out of the checkout ([configuration.md](configuration.md)) |
-| `scripts/update` | pulls vendor submodules, prints added/removed skills; never edits the catalog |
+| `scripts/update [--check \| --approve [patch]]` | pulls vendor submodules (`--check`: no pull) and reports what needs catalog review; never edits the catalog. `--approve [patch]` applies a confirmed catalog patch, validates and records the reviewed revisions ([vendor updates](#vendor-updates)) |
 | `scripts/check-state <target-repo>` | checks the target repo's `.router/state.json` against `skills/engineering-router/state.md` |
 | `scripts/selftest` | checks the scripts against a scratch catalog and scratch state files, the installable skills and the selector eval references, then runs the Pi adapter tests |
 | `scripts/context-threshold` | read-only adapter bridge: prints the context threshold of the configuration in effect (150000 by default) |
@@ -44,6 +45,16 @@ For working on the router itself or its catalog. Install and use: the [README](.
 Scripts need Node 22.18+; `scripts/setup` installs their only dependency (`yaml`).
 
 Adding a collection: [adding-a-source.md](adding-a-source.md).
+
+## Vendor updates
+
+The submodule gitlinks pin the vendor revisions that are checked out. `catalog/reviewed.yaml` records, per source, the revision the catalog was last reviewed against; only `scripts/update --approve` writes it. The router offers this flow when its update check is due ([checkout.md](../skills/engineering-router/checkout.md)):
+
+1. `scripts/update` pulls the submodules from upstream (`--check` skips the pull) and reports, per source, the reviewed and checked-out revisions with a `git diff` command between them, then every `SKILL.md` added (`+`), modified at the same path (`~`), removed (`-`) or moved (`>`), upstream skills not cataloged (`?`) and cataloged paths gone (`!`). It compares with the reviewed revision, not the previous pull, so repeated updates keep unapproved changes listed. A source without a reviewed revision gets an initialization report listing all its skills (`=` cataloged); nothing is recorded as reviewed until approved. A failed pull exits non-zero.
+2. The agent reads the reported skills and proposes a diff of `catalog/skills.yaml` and `catalog/guides.yaml`: new skills registered, changed entries updated, removed or moved ones resolved, including `invokes`. No vendor ranking or default order is added. Nothing changes before the user confirms.
+3. **Confirmation point.** `scripts/update --approve [patch]` applies the patch (it may touch only those two files), runs `scripts/validate-catalog`, requires every upstream skill cataloged, regenerates `docs/skill-index.md`, then records the checked-out revisions. Any failure restores the catalog and the index and records nothing. Without a patch it acknowledges a report that needs no catalog change. Afterwards `scripts/update --check` on the same revisions reports nothing to review.
+
+Commit the catalog, `catalog/reviewed.yaml`, the index and the vendor pins together.
 
 ## CI
 
