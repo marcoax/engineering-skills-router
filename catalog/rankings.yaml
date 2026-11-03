@@ -100,3 +100,28 @@ rankings:
   setup:
     preferred: [mattpocock/setup-matt-pocock-skills]
     fallback: []
+
+  # Supporting tasks have no universal default. Choose by use_when / avoid_when.
+  communication:
+    preferred: []
+    fallback: []
+
+  learning:
+    preferred: []
+    fallback: []
+
+  retrospective:
+    preferred: []
+    fallback: []
+
+  context-management:
+    preferred: []
+    fallback: []
+
+  workflow-selection:
+    preferred: []
+    fallback: []
+
+  skill-authoring:
+    preferred: []
+    fallback: []
