@@ -8,6 +8,8 @@ task → classify → phases → one skill per phase → dedupe → show workflo
 
 The router records the task's type, risk and size, then builds a workflow on the backbone **requirements → spec + GitHub issue → tickets → implement + test → review**, trimmed or extended by type and risk. A low-risk task gets no workflow: the router offers to do it directly. One review runs by default; a second review on the other model family, a comparison of both and, at high risk, an independent review are offered switched off, and you switch them on when you approve the workflow. Light path, run records, project and personal skills, specs without GitHub issues, starting from a spec you already wrote: [how it works](docs/how-it-works.md).
 
+Browse the [skill index](docs/skill-index.md) for all cataloged vendor skills, grouped into guides, orchestrators, principles and workflow skills by activity.
+
 ## Install (Pi)
 
 The repo is a Pi package: the router skill plus the workflow widget. Needs Node 22.18+ and git; `gh`, logged in, publishes the spec issue and the tickets and lets the widget see merged PRs.
