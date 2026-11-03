@@ -185,6 +185,10 @@ if (command === 'show') {
     const inside = s.covered_by ? ` inside ${s.covered_by}` : '';
     const model = s.model ? `  on ${s.model}${s.effort ? ` · effort ${s.effort}` : ''}` : '';
     console.log(`${mark[s.status] ?? '?'} ${i + 1}. ${s.id}  ${s.skill ?? '(router)'}${inside}${model}${s.outcome ? ` → ${s.outcome}` : ''}`);
+    // The selector's notes for the step, as SKILL.md §5 shows them.
+    if (s.prerequisites?.length) console.log(`   needs: ${s.prerequisites.join('; ')}`);
+    if (s.cost) console.log(`   cost: ${s.cost}`);
+    if (s.tie) console.log(`   tie: ${s.tie}`);
   });
   console.log(models.modelsLine(state, prefs()));
   process.exit(0);

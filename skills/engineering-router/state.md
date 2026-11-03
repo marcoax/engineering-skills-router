@@ -43,6 +43,9 @@ The router writes this file in the **target repo** during a workflow so that ada
       "alternatives": [
         { "skill": "addyosmani/spec-driven-development", "reason": "spec as a repo document instead of an issue" }
       ],
+      "prerequisites": ["gh logged in, to publish the issue"],
+      "cost": null,
+      "tie": "to-spec and spec-driven-development fit equally; publishing an issue separates them",
       "confirm": false,
       "covered_by": null,
       "model": "claude-opus-5-5",
@@ -168,6 +171,9 @@ Checked by `scripts/check-classification` and by `scripts/state … compose`. A 
 | `reason` | string | One line: why this skill (or step) was chosen. |
 | `summary` | string | One line: what the step does for this task. |
 | `alternatives` | `{skill, reason}[]` | At most two other `ok` candidates, each with a one-line reason. After a swap, the previous skill takes the swapped alternative's place. |
+| `prerequisites` (optional) | string[] | The selector's hard prerequisites for the step's skill (tools, files, harness capabilities), one line each; may be empty. |
+| `cost` (optional) | string \| null | The selector's cost note for the step (arena's **High cost** included); `null` when it gave none. |
+| `tie` (optional) | string \| null | The selector's tie: the skills it judged equivalent for the step and what separates them; `null` when there is none. |
 | `confirm` | boolean | Whether the router pauses before this step. Defaults to `false`; use `true` for an explicit user checkpoint and record the request in its reason or step note ([autonomy.md](autonomy.md)). |
 | `optional` (optional) | boolean | `true` when the user may switch the step on and off during selection (review 2, comparison, independent-review, verification). An optional step that is off is `skipped` with outcome `off (optional)`; switching it on sets `pending`. |
 | `covered_by` | string \| null | `id` of the step whose skill runs this one internally (e.g. review 1 inside implementation). |

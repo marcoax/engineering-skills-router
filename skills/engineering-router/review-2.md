@@ -2,7 +2,7 @@
 
 Read from SKILL.md when the workflow has a review 2 step: before showing it (§5), and again when review 2 runs (§6).
 
-Review 2 takes the selector's first `review` alternative other than review 1's skill (SKILL.md §3) and runs on the model family opposite to review 1's ([models.md](models.md)). A different model and different axes are not a duplicate. It is optional and starts off, and switches on and off together with the comparison.
+Review 2 takes the selector's own `review-2` selection, a default other than review 1's with its alternatives (SKILL.md §3), and runs on the model family opposite to review 1's ([models.md](models.md)). A different model and different axes are not a duplicate. It is optional and starts off, and switches on and off together with the comparison.
 
 ## Before showing the workflow
 

@@ -803,7 +803,12 @@ ${['one', 'folded', 'plain', 'nodesc', 'broken', 'nofm'].map((n) => `  acme/${n}
     { phase: 'review', reason: 'the change needs a review', default: pick('pstack/interrogate'), alternatives: [pick('addyosmani/code-review-and-quality')] },
     { phase: 'framework-review', reason: 'the repo has its own practices', default: pick('project/fw'), alternatives: [] },
     { phase: 'implementation', reason: 'code must change', default: pick('mattpocock/implement'),
-      alternatives: [pick('addyosmani/incremental-implementation'), pick('pstack/arena', 'High cost: competing designs')] },
+      alternatives: [pick('addyosmani/incremental-implementation'), pick('pstack/arena', 'High cost: competing designs')],
+      prerequisites: ['subagents with isolated outputs for arena'], cost: 'arena: High cost, runners repeat the task',
+      tie: 'implement and incremental-implementation fit equally; one spec in one session separates them' },
+    // Review 2 is its own selection, so it keeps a default and alternatives of its own.
+    { phase: 'review', step: 'review-2', reason: 'a second review on the other family', default: pick('addyosmani/code-review-and-quality'),
+      alternatives: [pick('pstack/interrogate')] },
   ], { missing: [{ phase: 'release', reason: 'no shipping skill fits' }],
     omitted: ['requirements', 'specification', 'planning', 'security', 'independent-review', 'pull-request']
       .map((phase) => ({ phase, reason: 'not needed for this task' })) });
@@ -824,9 +829,17 @@ ${['one', 'folded', 'plain', 'nodesc', 'broken', 'nofm'].map((n) => `  acme/${n}
     [mutate((s) => { delete s.phases[0].default; }), 'review: needs a default (or list the phase under missing)'],
     [mutate((s) => { s.missing.push({ phase: 'review', reason: 'x' }); }), 'review: both selected and missing'],
     [mutate((s) => { s.missing[0].reason = ''; }), 'missing release: needs a reason'],
+    // Cost notes, prerequisites and ties are kept as the selector wrote them, in their shapes.
+    [mutate((s) => { s.phases[2].prerequisites = 'subagents'; }), 'implementation: prerequisites must be a list of strings'],
+    [mutate((s) => { s.phases[2].cost = 3; }), 'implementation: cost must be a string or null'],
+    [mutate((s) => { s.phases[2].tie = ['a', 'b']; }), 'implementation: tie must be a string or null'],
+    // A phase is selected once, except review's own review-2 entry, whose default differs from review 1's.
+    [mutate((s) => { delete s.phases[3].step; }), 'review: selected twice (a second review is its own entry with "step": "review-2")'],
+    [mutate((s) => { s.phases[3].default.skill = 'pstack/interrogate'; s.phases[3].alternatives = []; }), 'review-2: default pstack/interrogate: same as review 1\'s'],
+    [mutate((s) => { s.phases[2].step = 'review-2'; }), 'implementation: step review-2 belongs to the review phase'],
     // Every default-flow phase is accounted for: selected, omitted with a reason, or missing.
     [mutate((s) => { s.omitted.splice(1, 1); }), 'specification: a default-flow phase must be selected, omitted with a reason, or missing'],
-    [mutate((s) => { s.omitted = []; s.phases.splice(0, 1); }), 'review: a default-flow phase must be selected, omitted with a reason, or missing'],
+    [mutate((s) => { s.phases = s.phases.filter((x) => x.phase !== 'review'); }), 'review: a default-flow phase must be selected, omitted with a reason, or missing'],
     [mutate((s) => { s.omitted[0].reason = ' '; }), 'omitted requirements: needs a reason'],
     [mutate((s) => { s.omitted.push({ phase: 'review', reason: 'x' }); }), 'review: both selected and omitted'],
   ]) {
@@ -1120,6 +1133,10 @@ expectState('covered_by', variant((s) => { s.steps[0].covered_by = 'specificatio
   if (r.ok || !r.out.includes('error: steps[2]: must be Step') || /covered_by/.test(r.out))
     fail(`check-state, null step: expected only the type error\ngot:\n${r.out}`);
 }
+// prerequisites, cost and tie were added within version 1: absent passes, a wrong shape fails.
+expectStateOk('steps without selector notes', variant((s) => s.steps.forEach((x) => { delete x.prerequisites; delete x.cost; delete x.tie; })));
+expectState('prerequisites not a list', variant((s) => { s.steps[0].prerequisites = 'gh'; }), 'steps[0].prerequisites: must be string[]');
+expectState('cost not text', variant((s) => { s.steps[0].cost = 3; }), 'steps[0].cost: must be string | null');
 // optional was added within version 1: absent passes (the example), a non-boolean fails.
 expectStateOk('optional steps that are off', variant((s) => {
   s.steps[3] = { ...s.steps[3], covered_by: null, optional: true, status: 'skipped', outcome: 'off (optional)' };
@@ -1237,6 +1254,11 @@ expectStateOk('unknown fields', variant((s) => { s.extra = 1; s.steps[0].extra =
   if (!shown.includes('✓ 3. implementation  mattpocock/implement  on claude-sonnet-5-5 · effort high → Built')) fail(`show should print the step model and effort\n${shown.join('\n')}`);
   if (!shown.includes('✓ 4. review-1  mattpocock/code-review inside implementation  on claude-sonnet-5-5 · effort high → ran inside implementation')) fail(`show should print a covered step's model\n${shown.join('\n')}`);
   if (!shown.includes('– 5. review-2  (router) → off (optional)')) fail(`show should print nothing extra for a step without a model\n${shown.join('\n')}`);
+  // The selector's prerequisites, cost note and tie stay visible with their step.
+  const notes = shown.slice(shown.findIndex((l) => l.includes(' 1. specification')) + 1, shown.findIndex((l) => l.includes(' 2. branch')));
+  if (JSON.stringify(notes) !== JSON.stringify(['   needs: gh logged in, to publish the issue',
+    '   tie: to-spec and spec-driven-development fit equally; publishing an issue separates them']))
+    fail(`show should print a step's prerequisites and tie\n${shown.join('\n')}`);
   expectOk('step pending', st('step', 'review-2', 'pending'));
   if (read().steps[4].outcome !== null) fail('an open step keeps no outcome');
   const kept = fs.readFileSync(stateFile, 'utf8');

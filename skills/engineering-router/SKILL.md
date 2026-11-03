@@ -90,10 +90,10 @@ Task correctness decides the phases; a preference only chooses among skills that
 
 Selection policy lives in the skill selector alone: which phases the task needs, which skill fits each, which alternatives to offer, user preferences, project skills, `complexity`, arena and its cost. Read `skills/skill-selector/SKILL.md` under the repo root in full and follow its §2–§6, skipping its §1: the root is the one found above. Give it what §1 settled (task, target repo, classification, path, the inspection) instead of settling those again, plus the harness capabilities. On a light path it chooses skills for [light.md](light.md)'s phases only.
 
-Its proposal gives each phase a default, at most two alternatives and their reasons, cost notes (arena's **High cost** included) and missing capabilities; `scripts/check-selection --target <target repo>` has passed on it. Carry each default into its step's `skill` and the alternatives with their reasons into `alternatives`, unchanged, so the user sees them in §5.
+Its proposal gives each phase a default, at most two alternatives and their reasons, cost notes (arena's **High cost** included) and missing capabilities; `scripts/check-selection --target <target repo>` has passed on it. Carry each default into its step's `skill`, the alternatives with their reasons into `alternatives`, and its `prerequisites`, `cost` and `tie` into the step's fields of the same name, unchanged, so the user sees them in §5.
 
 - **review 1** is the `review` phase.
-- **review 2** takes the review phase's first alternative other than review 1's skill ([review-2.md](review-2.md)).
+- **review 2** takes the selector's `review-2` entry: its default and alternatives ([review-2.md](review-2.md)).
 - **framework-review** reviews the same diff as the reviews (from the base commit to HEAD) against the project skill's practices.
 - **branch**, **comparison** and opening the PR are router steps with no skill; the `pull-request` skill writes the PR body.
 
@@ -125,6 +125,7 @@ Workflow:
    <what this step does for this task, one line>
    a) <source>/<skill>: <why it could fit instead>
    b) <source>/<skill>: <why it could fit instead>
+   needs: <prerequisites> · cost: <cost> · tie: <tie>   (only the ones the selector gave)
 2. branch   <issue-number>-<slug>   (issue-free: <slug>)
 3. ...
 4. <source>/<skill>   <phase(s)>   inside <step>
