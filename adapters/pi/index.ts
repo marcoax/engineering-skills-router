@@ -157,13 +157,7 @@ class RouterOverlay implements Component {
 
 export default function (pi: ExtensionAPI) {
 	registerContextBoundary(pi);
-	registerPrimaryQuestion(
-		pi,
-		Type.Object({
-			root: Type.String({ description: "The router checkout (repo root) the run works from" }),
-			target: Type.String({ description: "The target repo holding .router/state.json" }),
-		}),
-	);
+	registerPrimaryQuestion(pi, Type);
 	let file: string | undefined;
 	let root = "";
 	let state: State | undefined;

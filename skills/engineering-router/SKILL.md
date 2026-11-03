@@ -108,7 +108,7 @@ Done when no two steps share a purpose.
 
 Read [models.md](models.md), and [review-2.md](review-2.md) when the workflow has a review 2 step, to settle each step's model and whether review 2 can run on the other family.
 
-Write the workflow to `.router/state.json` in the target repo, as in [state-brief.md](state-brief.md) with status `selecting`, and run `scripts/check-state <target repo>` until it passes. This is the only time you write the file by hand: every later change goes through `scripts/state` (§6). Add `.router/` to the target repo's `.git/info/exclude` if missing. Then, on a harness whose subagents can run both families, ask the primary question ([models.md](models.md#the-primary-question)); on Claude Code skip it. Then show the workflow and stop for the user's answer:
+Write the workflow to `.router/state.json` in the target repo, as in [state-brief.md](state-brief.md) with status `selecting`, and run `scripts/check-state <target repo>` until it passes. This is the only time you write the file by hand: every later change goes through `scripts/state` (§6). Add `.router/` to the target repo's `.git/info/exclude` if missing. Then, on a harness whose subagents can run both families, ask the primary question ([models.md](models.md#the-primary-question)). Then show the workflow and stop for the user's answer:
 
 ```text
 Task: <one line>
@@ -134,7 +134,7 @@ Reply: go | <step><letter> to swap (e.g. 2b) | <step>on / <step>off (e.g. 5on) |
 
 The numbered list is `steps` from the state file, in the same order: one line per step, router and covered steps included, so `<step>` is the position in `steps`. `primary` in the `Models:` line is the run's, from the state file ([models.md](models.md)).
 
-Apply every reply with `scripts/state <target repo> reply <reply>`: it swaps (the old skill becomes the alternative), switches optional steps (review 2 and the comparison together; an optional step that is off shows `(off)`; `<step>on` also works later, until the step starts), and starts or stops the workflow. After a swap or switch, show the workflow again. It exits 2 on `edit`, and on `full` for a light path: recompose §2–§4 (set `path` to `full` for `full`) and write the state again as above. Done on `go` or `stop`.
+Apply every reply with `scripts/state <target repo> reply <reply>`: it swaps (the old skill becomes the alternative), switches optional steps (review 2 and the comparison together; an optional step that is off shows `(off)`; `<step>on` also works later, until the step starts), and starts or stops the workflow. After a swap or switch, show the workflow again. It exits 2 on `edit`, and on `full` for a light path: recompose §2–§4 (set `path` to `full` for `full`) and write the state again as above, keeping the run's `primary` as the script's message names it: the primary question belongs to the run's first write only. Done on `go` or `stop`.
 
 ## 6. Execute
 

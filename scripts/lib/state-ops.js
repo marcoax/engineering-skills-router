@@ -76,8 +76,12 @@ function setWorkflow(state, status) {
 }
 
 // The run's primary family is chosen before the workflow starts; a started run keeps its own.
-function setPrimary(state, family) {
+function checkPrimaryOpen(state) {
   if (state.status !== 'selecting') fail(`primary is chosen before the workflow starts; this run is ${state.status} and keeps ${state.primary ?? 'its family'}`);
+}
+
+function setPrimary(state, family) {
+  checkPrimaryOpen(state);
   return { ...clone(state), primary: family };
 }
 
@@ -147,7 +151,8 @@ function toggle(state, i, on) {
 function applyReply(state, reply) {
   const r = String(reply).trim().toLowerCase();
   if (r === 'edit' || r === 'full') {
-    const e = new Error(`${r} reopens SKILL.md §2-§4: recompose the workflow and write it again`);
+    const keep = state.primary ? `, and keep "primary": "${state.primary}"` : '';
+    const e = new Error(`${r} reopens SKILL.md §2-§4: recompose the workflow and write it again${keep}`);
     e.code = 'RECOMPOSE';
     throw e;
   }
@@ -169,4 +174,4 @@ function applyReply(state, reply) {
   return swap(state, i, m[2]);
 }
 
-module.exports = { setStep, setWorkflow, setPrimary, setHandoff, applyReply, stepIndex, STEP_STATUSES, WORKFLOW_STATUSES };
+module.exports = { setStep, setWorkflow, checkPrimaryOpen, setPrimary, setHandoff, applyReply, stepIndex, STEP_STATUSES, WORKFLOW_STATUSES };

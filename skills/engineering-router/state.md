@@ -104,7 +104,7 @@ The router writes this file in the **target repo** during a workflow so that ada
 | `complexity` (optional) | `"low"` \| `"medium"` \| `"high"` | Task size from the classification, matched against each skill's catalog `complexity`. |
 | `path` (optional) | `"light"` \| `"full"` | Light: a ticket of low risk (or medium risk and low complexity) run as branch → implementation → independent review 1 → [security] → [framework-review] → pull request; full: every other workflow. |
 | `properties` | string[] | Task properties from the classification; may be empty. |
-| `primary` (optional) | `"claude"` \| `"openai"` | The run's primary model family: steps run on it unless their phase sets a `model` in `config/preferences.yaml`, and review 2 runs on the family opposite to review 1's ([models.md](models.md)). Set when the state is first written, from `primary` in `config/preferences.yaml` (default `claude`) unless the user chose another for this run; kept for the whole run, resume included. `config/preferences.yaml` is never changed. A state without it is given the preferences' `primary` on its next write by `scripts/state`. |
+| `primary` (optional) | `"claude"` \| `"openai"` | The run's primary model family ([models.md](models.md)). A state without it gets the preferences' `primary` on its next write by `scripts/state`. |
 | `status` | string | Workflow status, see below. |
 | `updated_at` | string | ISO-8601 UTC time of the last write. |
 | `steps` | Step[] | All steps in execution order, including router steps and covered steps. |

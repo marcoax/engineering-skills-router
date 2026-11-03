@@ -30,12 +30,25 @@ const fixture = (status = "selecting") => {
 	return { router, target, primary, cleanup };
 };
 
+// Pi lends the extension its TypeBox builder; this stand-in records the schema it is given.
+const Type = {
+	Object: (properties: object) => ({ type: "object", properties }),
+	String: (options: object) => ({ type: "string", ...options }),
+};
+
 const tool = () => {
 	const tools: any[] = [];
-	registerPrimaryQuestion({ registerTool: (t: any) => tools.push(t) } as any, {});
+	registerPrimaryQuestion({ registerTool: (t: any) => tools.push(t) } as any, Type as any);
 	assert.equal(tools.length, 1);
 	return tools[0];
 };
+
+test("the tool takes the router checkout and the target repo, both strings", () => {
+	const { parameters } = tool();
+	assert.equal(parameters.type, "object");
+	assert.deepEqual(Object.keys(parameters.properties), ["root", "target"]);
+	for (const p of Object.values(parameters.properties) as any[]) assert.equal(p.type, "string");
+});
 
 const run = async (f: ReturnType<typeof fixture>, ctx: object) => {
 	const result = await tool().execute("call-1", { root: f.router, target: f.target }, undefined, undefined, ctx);
