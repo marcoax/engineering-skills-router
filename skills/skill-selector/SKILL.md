@@ -21,7 +21,7 @@ Take each input from the request when given; otherwise settle it here and say so
 
 - **task**: the request; read the issue (`gh issue view`) or spec file it names.
 - **target repo**: the one the task is about, the current repo by default. Inspect it read-only: brownfield or greenfield, the code the task touches, and whether `docs/agents/skills.yaml`, `docs/agents/issue-tracker.md`, `GLOSSARY.md` or `docs/adr/` exist.
-- **classification**: type, risk, complexity (low | medium | high) and properties, each with a one-line reason, using the engineering router's vocabulary (its SKILL.md §1, beside this folder in the checkout).
+- **classification**: type, risk, complexity and properties, each with a one-line reason, by the criteria, facts and minimum risks in `skills/engineering-router/classification.md` under the repo root; when the router passes its checked classification, take it as given.
 - **explicit choices**: `prefer` and `exclude` in the user's `preferences.yaml` (where `scripts/config` says), plus any skill or phase the user named.
 - **harness capabilities**: subagents, isolated output locations for parallel candidates, `gh` logged in, network.
 

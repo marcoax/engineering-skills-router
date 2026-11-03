@@ -750,18 +750,17 @@ ${['one', 'folded', 'plain', 'nodesc', 'broken', 'nofm'].map((n) => `  acme/${n}
     if (!runSync('--check').out.includes('Nothing to review.')) fail('an acknowledged revision should not be proposed again');
   }
 }
-// `list-skills` lists candidates on equal standing (`--neutral` is the same listing). Explicit
+// `list-skills` lists candidates on equal standing. Explicit
 // choices keep their origin; vendor entries never get a preferred or fallback tier, and neither
 // catalog order nor a legacy rankings file changes the listing.
 {
-  const neutral = (...phases) => run('list-skills', '--neutral', ...phases).out;
+  const listing = (...phases) => run('list-skills', ...phases).out;
   const rankingsFile = path.join(tmp, 'catalog/rankings.yaml');
   if (fs.existsSync(rankingsFile)) fail('catalog/rankings.yaml is retired and should not ship');
-  if (neutral('review') !== run('list-skills', 'review').out) fail('list-skills and list-skills --neutral should print the same listing');
-  const before = neutral('review', 'implementation');
-  if (/\[(preferred|fallback|other),/.test(before)) fail(`--neutral should not show ranking tiers\n${before}`);
+  const before = listing('review', 'implementation');
+  if (/\[(preferred|fallback|other),/.test(before)) fail(`the listing should not show ranking tiers\n${before}`);
   for (const id of ['mattpocock/code-review', 'addyosmani/code-review-and-quality', 'pstack/interrogate', 'pstack/arena', 'mattpocock/implement']) {
-    if (!new RegExp(`^\\d+\\. ${id} {2}\\[vendor, ok\\]$`, 'm').test(before)) fail(`--neutral should list ${id} as vendor, ok\n${before}`);
+    if (!new RegExp(`^\\d+\\. ${id} {2}\\[vendor, ok\\]$`, 'm').test(before)) fail(`the listing should list ${id} as vendor, ok\n${before}`);
   }
   // Shuffled catalog order and changed legacy rankings leave the listing unchanged.
   const current = fs.readFileSync(catalogSkillsFile, 'utf8');
@@ -773,16 +772,16 @@ ${['one', 'folded', 'plain', 'nodesc', 'broken', 'nofm'].map((n) => `  acme/${n}
   const legacy = run('validate-catalog');
   if (!legacy.ok || !legacy.out.includes('warning: catalog/rankings.yaml: no longer read; candidates stand on equal terms'))
     fail(`validate-catalog should only warn about a legacy rankings file\n${legacy.out}`);
-  const after = neutral('review', 'implementation');
+  const after = listing('review', 'implementation');
   if (after !== before)
-    fail(`--neutral should not depend on catalog order or rankings\nbefore:\n${before}\nafter:\n${after}`);
+    fail(`the listing should not depend on catalog order or rankings\nbefore:\n${before}\nafter:\n${after}`);
   fs.writeFileSync(catalogSkillsFile, current);
   fs.rmSync(rankingsFile);
   // Explicit choices stay effective: a suitable preference is labeled, an exclusion still bars.
   fs.writeFileSync(prefsFile, 'preferences:\n  review:\n    prefer: [pstack/interrogate]\n  exclude: [mattpocock/code-review]\n');
-  out = neutral('review');
-  if (!/^1\. pstack\/interrogate {2}\[preference, ok\]$/m.test(out)) fail(`--neutral should keep an explicit preference\n${out}`);
-  if (!/^\d+\. mattpocock\/code-review {2}\[vendor, excluded\]$/m.test(out)) fail(`--neutral should keep an exclusion\n${out}`);
+  out = listing('review');
+  if (!/^1\. pstack\/interrogate {2}\[preference, ok\]$/m.test(out)) fail(`the listing should keep an explicit preference\n${out}`);
+  if (!/^\d+\. mattpocock\/code-review {2}\[vendor, excluded\]$/m.test(out)) fail(`the listing should keep an exclusion\n${out}`);
 
   // check-selection: every reference in a selector proposal must be usable for its phase.
   const repo = targetRepo(projectSkill());
@@ -830,7 +829,7 @@ ${['one', 'folded', 'plain', 'nodesc', 'broken', 'nofm'].map((n) => `  acme/${n}
   targetGit('init', '-q'); targetGit('add', '.'); targetGit('commit', '-qm', 'target');
   const targetHead = targetGit('rev-parse', 'HEAD').stdout;
   check(good);
-  run('list-skills', '--neutral', '--target', repo, 'review', 'framework-review');
+  run('list-skills', '--target', repo, 'review', 'framework-review');
   run('list-skills', '--guides');
   if (targetGit('status', '--porcelain', '--ignored').stdout !== '' || targetGit('rev-parse', 'HEAD').stdout !== targetHead
     || targetGit('branch', '--list').stdout.trim().split('\n').length !== 1 || fs.existsSync(path.join(repo, '.router')))
@@ -856,7 +855,7 @@ ${['one', 'folded', 'plain', 'nodesc', 'broken', 'nofm'].map((n) => `  acme/${n}
   for (const key of ['model', 'effort']) if (!evals.evaluation?.[key]) fail(`selector evals should record the evaluation ${key}`);
   const okFor = {};
   const usable = (phase, id) => {
-    okFor[phase] ??= run('list-skills', '--neutral', phase).out;
+    okFor[phase] ??= run('list-skills', phase).out;
     return new RegExp(`^\\d+\\. ${id.replace('/', '\\/')} {2}\\[vendor, ok\\]$`, 'm').test(okFor[phase]);
   };
   const clearFit = new Set();
@@ -1600,6 +1599,18 @@ ${primary ? `  primary: ${primary}\n` : ''}  effort: medium
   if (a !== b) fail(`check-classification should depend on the facts only\n${a}\n${b}`);
   const uncertain = classify(of({ risk: 'medium', complexity: 'low' }, [], { uncertain: ['the issue does not say whether exports include emails'] }));
   if (!uncertain.out.includes('uncertain: the issue does not say whether exports include emails')) fail(`check-classification should print uncertainty\n${uncertain.out}`);
+  // classification.md is the one source of the policy: its types and Offers table decide, so a
+  // policy change cannot leave the check behind.
+  {
+    const mdFile = path.join(tmp, CLASSIFICATION_MD);
+    const policyText = fs.readFileSync(mdFile, 'utf8');
+    fs.writeFileSync(mdFile, policyText.replace('| low | any | yes | direct, light or full |', '| low | any | yes | direct or full |')
+      .replace('`review`, `maintenance`', '`review`, `maintenance`, `migration`'));
+    expectOffer('an Offers row changed in classification.md', of({ risk: 'low' }), 'offer: direct, full');
+    expectOffer('a type added in classification.md', of({ type: 'migration', risk: 'low' }, [], { ticket: false }), 'offer: direct, full');
+    fs.writeFileSync(mdFile, policyText);
+    expectRefusedClass('a type the policy does not name', of({ type: 'migration' }), 'type: must be one of bug |');
+  }
 
   // Classification evaluation cases (evals/classification/cases.yaml) are judged by running a
   // model; here only their contract is checked: they name the model, effort and current policy

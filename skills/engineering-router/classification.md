@@ -6,9 +6,11 @@ Read from SKILL.md §1. These are the criteria the router classifies a task by, 
 
 Three independent judgments, each with a one-line reason that cites what was read (the task, the spec, an inspected file):
 
-- **type**: what kind of work it is (bug, feature, refactor, architecture, performance, security, documentation, investigation, prototype, review, maintenance). It names the work, not its danger.
+- **type**: what kind of work it is: `bug`, `feature`, `refactor`, `architecture`, `performance`, `security`, `documentation`, `investigation`, `prototype`, `review`, `maintenance`. It names the work, not its danger.
 - **risk**: what a mistake would cost once merged. `low`: a mistake is harmless or obvious and cheap to undo (wording, docs, an isolated dev script); `medium`: a mistake reaches users or other code but stays contained and reversible; `high`: a mistake can lose data or money, open access, or break something others depend on, or is hard to undo.
 - **complexity**: how much work it is: files and components touched, unknowns, sessions needed. `low`: one bounded change; `medium`: several coordinated changes; `high`: a design is needed first or the route is foggy.
+
+Record the **properties** that apply, without a reason of their own: greenfield, brownfield, production-critical, user-facing, security-sensitive, data-sensitive, multi-session.
 
 Complexity never stands in for risk: a one-line permission check is simple and high risk; a large docs restructure is complex and low risk. How many reviews or steps a workflow would get is an outcome of the classification, never evidence for it.
 
@@ -28,7 +30,7 @@ Risk is at least the highest minimum among the facts; judgment may raise it furt
 
 ## Offers
 
-What §1 may offer, from the checked classification. `ticket` means the task is an issue or spec that already settles what to build.
+What §1 may offer, from the checked classification: the first row that matches applies. `ticket` means the task is an issue or spec that already settles what to build.
 
 | Risk | Complexity | Ticket | Offer |
 |---|---|---|---|
@@ -41,7 +43,7 @@ Full is always available: the user may ask for it at any risk. A user's explicit
 
 ## Uncertainty
 
-When the evidence does not settle a fact or a class (the task is vague, the code was not found, two readings are plausible), list it under `uncertain` and say it with the offer, in one line each. Do not ask for approval of a routine classification.
+When the evidence does not settle a fact or a class (the task is vague, the code was not found, two readings are plausible), list it under `uncertain` and say it with the offer, in one line each.
 
 ## Classification file
 

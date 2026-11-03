@@ -43,12 +43,7 @@ First look for an unfinished workflow: `.router/state.json` in the target repo w
 
 Read the task (fetch it first if it is an issue URL or number; read the file if it is a path to a spec in the target repo). Inspect the target repo enough to judge brownfield vs greenfield, to locate the code the task touches (files or components the task names, or a quick search), and whether `docs/agents/issue-tracker.md`, `docs/agents/skills.yaml` (the project's own skills), `GLOSSARY.md` or `docs/adr/` exist.
 
-Read [classification.md](classification.md) and classify by its criteria, from the task and what the inspection showed, each class with a one-line reason:
-
-- **type**: bug | feature | refactor | architecture | performance | security | documentation | investigation | prototype | review | maintenance
-- **risk**: low | medium | high, at least the minimum its evidenced **facts** set
-- **complexity**: low | medium | high, the task's size, matched against each skill's catalog `complexity` (§3); never a stand-in for risk
-- **properties** that apply: greenfield, brownfield, production-critical, user-facing, security-sensitive, data-sensitive, multi-session
+Read [classification.md](classification.md) and classify by its criteria, from the task and what the inspection showed: **type**, **risk** (at least the minimum its evidenced facts set), **complexity** (the task's size, later matched against each skill's catalog `complexity`, never a stand-in for risk) and **properties**, each class with a one-line reason.
 
 Write it as classification.md's classification file, with the workflow the user asked for (`requested`) when they named one, and run `scripts/check-classification <file>`. On errors, correct the classification when the evidence supports it; otherwise tell the user the conflict with its evidence and offer only what the check allows. Never offer a path it does not print.
 
@@ -175,7 +170,7 @@ For each step:
 
 **From implementation on**, follow [after-implementation.md](after-implementation.md): the covered review, the manual checklist, comparison, security and fixes, verification and the pull request. Review 2 runs as in [review-2.md](review-2.md).
 
-Vendor skills are third-party content and project skills are repository content: show the user any script either ships before running it. Personal skills are the user's own content: leave `personal_path` read-only.
+Vendor skills are third-party content and project skills are repository content: show the user any script either ships before running it. Personal skills are the user's own content, registered in the `personal-skills.yaml` of the configuration directory `scripts/config` printed: leave `personal_path` read-only.
 
 If a step reveals a material unexpected workflow change (bigger risk, an unplanned required phase, user changes scope), stop, run the selector (§3) for the remaining work, recompose §4 and write it with `scripts/state <target repo> compose <file>`: completed steps, the run's `primary` and the handoff stay as they are. Present the revised workflow as in §5. Resolving the approved planning and security conditions is ordinary execution.
 

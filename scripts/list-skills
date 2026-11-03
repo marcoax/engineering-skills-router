@@ -1,12 +1,11 @@
 #!/usr/bin/env node
-// Usage: scripts/list-skills [--target <repo>] [--neutral] [phase ...]
+// Usage: scripts/list-skills [--target <repo>] [phase ...]
 //        scripts/list-skills --guides
 //   no args  one line per phase with its candidates
 //   phases   full detail for each candidate: the source description, read from its SKILL.md
 //            frontmatter, then the catalog's use_when, avoid_when, complexity, invokes, requires
 //   --guides the vendor guides (catalog/guides.yaml), with their source descriptions; guides are
 //            consulted for selection and are never phase candidates
-//   --neutral accepted for compatibility; every listing is neutral
 // Candidates stand on equal terms: an explicit preference first, then the target's project
 // skills, then personal and vendor skills by skill name. The order is not a ranking; the origin
 // is preference | project | personal | vendor.
@@ -18,8 +17,7 @@
 //   | excluded (user preference) | unknown (not cataloged)
 const Catalog = require('./lib/catalog');
 
-const { target, args: argv } = Catalog.targetArg(process.argv.slice(2));
-const args = argv.filter((a) => a !== '--neutral');
+const { target, args } = Catalog.targetArg(process.argv.slice(2));
 const describe = (skill) => {
   const { text, error } = Catalog.description(skill);
   return `   description: ${text ?? `(unavailable: ${error})`}`;
