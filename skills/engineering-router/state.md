@@ -19,6 +19,17 @@ The router writes this file in the **target repo** during a workflow so that ada
   "complexity": "medium",
   "path": "full",
   "properties": ["brownfield", "user-facing"],
+  "classification": {
+    "policy": 1,
+    "ticket": false,
+    "facts": [],
+    "rationale": {
+      "type": "a new capability on an existing page",
+      "risk": "no fact applies; a wrong export is visible to users but contained and reversible",
+      "complexity": "a query, a CSV writer and a button across three files"
+    },
+    "uncertain": []
+  },
   "primary": "claude",
   "status": "running",
   "updated_at": "2026-10-17T09:42:00Z",
@@ -104,6 +115,7 @@ The router writes this file in the **target repo** during a workflow so that ada
 | `complexity` (optional) | `"low"` \| `"medium"` \| `"high"` | Task size from the classification, matched against each skill's catalog `complexity`. |
 | `path` (optional) | `"light"` \| `"full"` | Light: a ticket of low risk (or medium risk and low complexity) run as branch → implementation → independent review 1 → [security] → [framework-review] → pull request; full: every other workflow. |
 | `properties` | string[] | Task properties from the classification; may be empty. |
+| `classification` (optional) | Classification \| null | How `type`, `risk` and `complexity` were assigned, under which policy ([classification.md](classification.md)); `null` in a state written before it. |
 | `primary` (optional) | `"claude"` \| `"openai"` | The run's primary model family ([models.md](models.md)). A state without it gets the preferences' `primary` on its next write by `scripts/state`. |
 | `status` | string | Workflow status, see below. |
 | `updated_at` | string | ISO-8601 UTC time of the last write. |
@@ -120,6 +132,26 @@ Workflow `status`:
 | `done` | Stopped at the open pull request, or the last step finished. |
 | `paused` | The user paused the workflow to resume it later (`resume`). |
 | `stopped` | The user stopped the workflow. |
+
+## Classification
+
+Checked by `scripts/check-classification` and by `scripts/state … compose`. A recomposition keeps the run's classification, policy revision included, unless the composed file revises it; a revision is checked against the current policy.
+
+| Field | Type | Meaning |
+|---|---|---|
+| `policy` | integer | The classification policy revision the run was classified under. |
+| `ticket` | boolean | The task is an issue or spec that already settles what to build. |
+| `facts` | Fact[] | The policy facts that hold, each with its evidence; empty when none does. |
+| `rationale` | {type, risk, complexity} | One line each: why that class, citing what was read. |
+| `uncertain` | string[] | What the evidence left unsettled, one line each; may be empty. |
+
+## Fact
+
+| Field | Type | Meaning |
+|---|---|---|
+| `fact` | string | A fact named in the policy's Fact table (`authorization`, `payment`, …). |
+| `where` | string | `task`, or the path of the inspected file that shows it. |
+| `evidence` | string | One line: what was seen. |
 
 ## Step
 

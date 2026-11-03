@@ -8,6 +8,9 @@ Read from SKILL.md §5. Write the composed workflow like this example to a file 
   "task": "Add CSV export to the reports page",
   "type": "feature", "risk": "medium", "complexity": "medium", "path": "full",
   "properties": ["brownfield", "user-facing"],
+  "classification": { "policy": 1, "ticket": false, "facts": [],
+    "rationale": { "type": "new capability on an existing page", "risk": "no fact applies; contained and reversible", "complexity": "three files" },
+    "uncertain": [] },
   "primary": "claude",
   "status": "selecting",
   "updated_at": "2026-10-17T09:42:00Z",
@@ -29,6 +32,7 @@ Read from SKILL.md §5. Write the composed workflow like this example to a file 
 }
 ```
 
+- **type**, **risk**, **complexity**, **path**, **properties** and **classification** as §1 checked them with `scripts/check-classification` ([classification.md](classification.md)). `compose --new` checks them again; a recomposition keeps the run's own unless the file revises them.
 - **Every step** of §5's list, in order, router and covered steps included; `id` unique (the phase name, or `branch`, `review-1`, `review-2`, `comparison`, `verification`, `pull-request`).
 - **skill** the selector's default (`source/name`), or `null` for a router step (then no alternatives). At most two **alternatives**, the selector's, none equal to the skill. `compose` refuses any that is not a usable candidate for the step's `phases`.
 - **confirm** `false` by default; `true` for a user-requested checkpoint, recorded as in [autonomy.md](autonomy.md).

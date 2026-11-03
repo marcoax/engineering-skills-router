@@ -1062,6 +1062,11 @@ expectStateOk('a low-risk workflow', variant((s) => { s.risk = 'low'; }));
 expectStateOk('a state without complexity', variant((s) => { delete s.complexity; }));
 expectState('complexity', variant((s) => { s.complexity = 'tiny'; }),
   'complexity: must be "low" | "medium" | "high", got "tiny"');
+// classification was added within version 1: a state written before it still passes.
+expectStateOk('a state without classification', variant((s) => { delete s.classification; }));
+expectState('classification', variant((s) => { s.classification.facts = [{ fact: 'payment' }]; s.classification.ticket = 'yes'; delete s.classification.rationale.risk; }),
+  'classification.facts[0].where: missing', 'classification.facts[0].evidence: missing',
+  'classification.ticket: must be boolean, got "yes"', 'classification.rationale.risk: missing');
 // primary was added within version 1: a run keeps its own family; absent, it is the preferences'.
 expectStateOk('a run with primary claude', variant((s) => { s.primary = 'claude'; }));
 expectStateOk('a run with primary openai', variant((s) => { s.primary = 'openai'; }));
@@ -1269,6 +1274,9 @@ expectStateOk('unknown fields', variant((s) => { s.extra = 1; s.steps[0].extra =
   if (!rec.ok || back.kind !== 'ok' || back.record.findings.length !== 1 || back.record.steps.length !== 7 || back.record.checklist.passed !== null) {
     fail(`scripts/record\n${rec.out}`);
   }
+  // The record carries the classification's provenance: its policy revision, rationale and facts.
+  const cls = back.record.classification;
+  if (cls?.policy !== 1 || !cls.rationale?.risk || !Array.isArray(cls.facts)) fail(`scripts/record should carry the classification\n${rec.out}`);
   fs.writeFileSync(findingsFile, JSON.stringify([{ title: 'x', severity: 'high', found_by: ['review-9'], decision: 'fixed' }]));
   if (run('record', repo, '--findings', findingsFile).ok) fail('scripts/record should refuse a finding from a step not in the workflow');
 }
@@ -1420,6 +1428,34 @@ expectStateOk('unknown fields', variant((s) => { s.extra = 1; s.steps[0].extra =
   if (s.status !== 'selecting' || s.steps[2].skill !== 'addyosmani/incremental-implementation' || s.steps[3].covered_by !== null)
     fail(`recomposition should take the new remaining work: ${JSON.stringify(s.steps.slice(2))}`);
   expectRefused('dropping a completed step', fresh((s) => { s.steps.shift(); }), [], 'specification: a recomposition keeps completed steps');
+
+  // The classification is checked at the same boundary (classification.md): a new run needs one,
+  // and an evidenced sensitive change cannot be written as a low-risk light path.
+  const authz = { fact: 'authorization', where: 'src/auth/guard.ts', evidence: 'changes which roles pass canEditInvoice' };
+  fs.rmSync(stateFile);
+  expectRefused('a new run without classification', fresh((s) => { delete s.classification; }), ['--new'], 'classification: missing');
+  expectRefused('a sensitive change as a low-risk light path', fresh((s) => {
+    Object.assign(s, { risk: 'low', complexity: 'low', path: 'light' });
+    Object.assign(s.classification, { ticket: true, facts: [authz] });
+  }), ['--new'], 'classification: risk low is below the minimum high set by authorization (src/auth/guard.ts: changes which roles pass canEditInvoice)');
+  // A run approved under an earlier policy keeps its classification when recomposed without
+  // revising it: no silent reclassification. A revision is checked against the current policy.
+  fs.mkdirSync(path.dirname(stateFile), { recursive: true });
+  fs.writeFileSync(stateFile, JSON.stringify(variant((s) => { s.classification.policy = 0; s.steps[2].status = 'pending'; })));
+  r = compose(fresh((s) => { delete s.classification; delete s.type; delete s.risk; delete s.complexity; delete s.path; delete s.properties; }));
+  s = read();
+  if (!r.ok || !r.out.includes('classification: kept (policy 0)') || s.classification.policy !== 0 || s.risk !== 'medium' || s.type !== 'feature')
+    fail(`a recomposition should keep the run's classification\n${r.out}\n${JSON.stringify(s.classification)}`);
+  // `full` from a light path keeps the classification: full is always offered.
+  fs.writeFileSync(stateFile, JSON.stringify(variant((s) => { s.classification.policy = 0; s.path = 'light'; s.steps[2].status = 'pending'; })));
+  r = compose(fresh((s) => { s.classification.policy = 0; s.path = 'full'; }));
+  if (!r.ok || !r.out.includes('classification: kept (policy 0)') || read().path !== 'full') fail(`full should keep the run's classification\n${r.out}`);
+  expectRefused('a revision under an old policy', fresh((s) => { s.classification.policy = 0; s.risk = 'high'; }), [],
+    'classification.policy: must be 1 (the current policy), got 0');
+  r = compose(fresh((s) => { s.risk = 'high'; s.classification.facts = [authz]; s.classification.rationale.risk = 'the export now checks roles'; }));
+  s = read();
+  if (!r.ok || !r.out.includes('classification: revised under policy 1') || s.risk !== 'high' || s.classification.facts.length !== 1)
+    fail(`an explicit recomposition may revise the classification under the current policy\n${r.out}`);
 }
 
 // The run's primary family lives in the state: written from the preferences when the state has
@@ -1497,6 +1533,96 @@ ${primary ? `  primary: ${primary}\n` : ''}  effort: medium
   if (st('primary').ok) fail('the primary question should not be asked once the workflow has started');
   if (st('primary', '--json').ok) fail('the primary options should not be offered once the workflow has started');
   fs.rmSync(prefsFile, { force: true });
+}
+
+// check-classification: the classification policy's constraints over explicit facts
+// (skills/engineering-router/classification.md). Deterministic: the same facts under the same
+// policy give the same minimum risk and offer; the task's wording is never read.
+{
+  const CLASSIFICATION_MD = 'skills/engineering-router/classification.md';
+  const example = () => JSON.parse(fs.readFileSync(path.join(tmp, CLASSIFICATION_MD), 'utf8').match(/```json\n([\s\S]*?)```/)[1]);
+  const file = path.join(tmp, 'classification.json');
+  const classify = (c) => { fs.writeFileSync(file, JSON.stringify(c)); return run('check-classification', file); };
+  const fact = (name, where = 'task') => ({ fact: name, where, evidence: `the change alters ${name}` });
+  const of = (fields, facts = [], extra = {}) => {
+    const c = example();
+    Object.assign(c, fields);
+    Object.assign(c.classification, { facts, ...extra });
+    return c;
+  };
+  const expectOffer = (label, c, ...lines) => {
+    const r = classify(c);
+    const missing = lines.filter((l) => !r.out.split('\n').includes(l));
+    if (!r.ok || missing.length) fail(`check-classification, ${label}: expected\n  ${missing.join('\n  ')}\ngot:\n${r.out}`);
+  };
+  const expectRefusedClass = (label, c, ...msgs) => {
+    const r = classify(c);
+    const missing = msgs.filter((m) => !r.out.includes(`error: ${m}`));
+    if (r.ok || missing.length) fail(`check-classification, ${label}: expected\n  error: ${missing.join('\n  error: ')}\ngot:\n${r.out}`);
+  };
+
+  // The documented example: a simple-but-sensitive bug fix gets no shortcut.
+  expectOffer('the classification.md example', example(),
+    'policy: 1', 'minimum risk: high (authorization: src/auth/guard.ts)', 'offer: full');
+  // An evidenced sensitive change classified low is a conflict, never a low-risk shortcut.
+  for (const name of ['authorization', 'payment', 'destructive']) {
+    expectRefusedClass(`${name} at low risk`, of({ risk: 'low', complexity: 'low' }, [fact(name)]),
+      `risk low is below the minimum high set by ${name} (task: the change alters ${name})`);
+  }
+  expectRefusedClass('sensitive data at low risk', of({ risk: 'low' }, [fact('sensitive-data', 'src/log.ts')]),
+    'risk low is below the minimum medium set by sensitive-data (src/log.ts: the change alters sensitive-data)');
+  // Harmless work is not forced into a workflow by its words: docs that mention authorization,
+  // with no fact, get the low-risk offer. Complex-but-low-impact work stays low risk.
+  const docs = of({ type: 'documentation', risk: 'low', complexity: 'low',
+    task: 'Document the authorization and payment pages; drop the outdated screenshots' });
+  expectOffer('harmless docs with misleading words', docs, 'minimum risk: low (no constraining facts)', 'offer: direct, light, full');
+  expectOffer('complex but low impact', of({ type: 'documentation', risk: 'low', complexity: 'high' }), 'offer: direct, light, full');
+  expectOffer('low risk, not a ticket', of({ risk: 'low' }, [], { ticket: false }), 'offer: direct, full');
+  // A bounded medium-risk ticket of low complexity: light proposed, full available; never light without a ticket.
+  expectOffer('bounded bug fix', of({ risk: 'medium', complexity: 'low' }, [fact('public-contract', 'src/api.ts')]), 'offer: light, full', 'propose: light');
+  expectOffer('medium, not a ticket', of({ risk: 'medium', complexity: 'low' }, [], { ticket: false }), 'offer: full');
+  expectOffer('medium, medium complexity', of({ risk: 'medium', complexity: 'medium' }), 'offer: full');
+  // Explicit user choice: full is always honored; a smaller path than the policy offers is reported.
+  expectOffer('full requested at low risk', of({ risk: 'low', requested: 'full', path: 'full' }), 'offer: direct, light, full');
+  expectRefusedClass('direct requested on a sensitive change', of({ requested: 'direct' }, [fact('payment')]),
+    'requested direct is not offered (risk high, complexity low, a ticket): offer full');
+  expectRefusedClass('light path on a sensitive change', of({ path: 'light' }, [fact('destructive')]), 'path light is not offered');
+  // Facts need evidence of where they hold, and belong to the policy.
+  expectRefusedClass('a fact without evidence', of({}, [{ fact: 'authorization', where: 'task' }]),
+    'classification.facts[0]: authorization needs where (task or an inspected file) and evidence');
+  expectRefusedClass('an unknown fact', of({}, [fact('scary')]), 'classification.facts[0]: unknown fact "scary"');
+  expectRefusedClass('another policy revision', of({}, [], { policy: 0 }), 'classification.policy: must be 1 (the current policy), got 0');
+  expectRefusedClass('no rationale', of({}, [], { rationale: { type: 'x' } }),
+    'classification.rationale.risk: needs a reason', 'classification.rationale.complexity: needs a reason');
+  // Identical facts under the same policy give the same result, whatever the task says.
+  const a = classify(of({ task: 'A' }, [fact('payment')])).out;
+  const b = classify(of({ task: 'Something else entirely' }, [fact('payment')])).out;
+  if (a !== b) fail(`check-classification should depend on the facts only\n${a}\n${b}`);
+  const uncertain = classify(of({ risk: 'medium', complexity: 'low' }, [], { uncertain: ['the issue does not say whether exports include emails'] }));
+  if (!uncertain.out.includes('uncertain: the issue does not say whether exports include emails')) fail(`check-classification should print uncertainty\n${uncertain.out}`);
+
+  // Classification evaluation cases (evals/classification/cases.yaml) are judged by running a
+  // model; here only their contract is checked: they name the model, effort and current policy
+  // revision, cover the required kinds, use the policy's facts, and an ambiguous case describes
+  // its ambiguity instead of asserting one answer.
+  const YAML = require(path.join(ROOT, 'node_modules/yaml'));
+  const evals = YAML.parse(fs.readFileSync(path.join(ROOT, 'evals/classification/cases.yaml'), 'utf8'));
+  const { policy } = require(path.join(ROOT, 'scripts/lib/classification'));
+  const current = policy();
+  for (const key of ['model', 'effort']) if (!evals.evaluation?.[key]) fail(`classification evals should record the evaluation ${key}`);
+  if (evals.evaluation?.policy !== current.revision) fail(`classification evals should name policy ${current.revision}, got ${evals.evaluation?.policy}`);
+  const kinds = new Set();
+  for (const c of evals.cases ?? []) {
+    if (!c.id || !c.task || !c.kind || !c.expect) fail(`classification eval case needs id, task, kind and expect: ${c.id}`);
+    kinds.add(c.kind);
+    for (const f of [...(c.expect.facts ?? []), ...(c.expect.not_facts ?? [])])
+      if (!Object.hasOwn(current.facts, f)) fail(`classification eval ${c.id}: unknown fact ${f}`);
+    if (c.kind === 'ambiguous' && (!c.ambiguity || c.expect.risk)) fail(`classification eval ${c.id}: an ambiguous case describes its ambiguity and asserts no single risk`);
+  }
+  const KINDS = ['harmless-docs', 'bounded-bug', 'authorization', 'payment', 'destructive', 'ambiguous',
+    'simple-but-sensitive', 'complex-low-impact', 'misleading-terms'];
+  const absent = KINDS.filter((k) => !kinds.has(k));
+  if (absent.length) fail(`classification evals need cases of kind: ${absent.join(', ')}`);
 }
 
 const adapterDir = path.join(ROOT, 'adapters/pi');

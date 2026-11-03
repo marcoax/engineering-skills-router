@@ -15,6 +15,7 @@ This file holds what every run needs. The rest is in files beside it; read each 
 | [autonomy.md](autonomy.md) | before presenting the workflow (§5), throughout execution (§6), and on resume |
 | [context.md](context.md) | a step-close command prints a `context:` line (§6), before starting the next step |
 | [resume.md](resume.md) | the target repo holds an unfinished workflow (§1), or on `pause` / `resume` |
+| [classification.md](classification.md) | classifying the task (§1) |
 | [light.md](light.md) | §1 offers or sets the light path |
 | [issue-free.md](issue-free.md) | the task is a spec file (§2), or §4 finds the workflow issue-free |
 | [models.md](models.md) | before showing the workflow (§5): the primary question, which model each step runs on, and how §6 records it |
@@ -40,19 +41,26 @@ Read `update_check_days` from the `preferences:` file `scripts/config` printed (
 
 First look for an unfinished workflow: `.router/state.json` in the target repo with status `running`, `waiting`, `paused` or `stopped`. If there is one, follow [resume.md](resume.md) before anything else: a resumed workflow keeps its skills, and the selector runs again only when the user asks to recompose.
 
-Read the task (fetch it first if it is an issue URL or number; read the file if it is a path to a spec in the target repo). Record, each with a one-line reason:
+Read the task (fetch it first if it is an issue URL or number; read the file if it is a path to a spec in the target repo). Inspect the target repo enough to judge brownfield vs greenfield, to locate the code the task touches (files or components the task names, or a quick search), and whether `docs/agents/issue-tracker.md`, `docs/agents/skills.yaml` (the project's own skills), `GLOSSARY.md` or `docs/adr/` exist.
+
+Read [classification.md](classification.md) and classify by its criteria, from the task and what the inspection showed, each class with a one-line reason:
 
 - **type**: bug | feature | refactor | architecture | performance | security | documentation | investigation | prototype | review | maintenance
-- **risk**: low | medium | high
-- **complexity**: low | medium | high, the task's size, matched against each skill's catalog `complexity` (§3)
+- **risk**: low | medium | high, at least the minimum its evidenced **facts** set
+- **complexity**: low | medium | high, the task's size, matched against each skill's catalog `complexity` (§3); never a stand-in for risk
 - **properties** that apply: greenfield, brownfield, production-critical, user-facing, security-sensitive, data-sensitive, multi-session
-- **path**: `light` or `full`. **light** fits a task given as an issue or spec that already settles what to build, at risk `low`, or `medium` with complexity `low`: one implementer and an independent review ([light.md](light.md)). **full** is everything else, and any task the user asks to run in full.
 
-Inspect the target repo enough to judge brownfield vs greenfield, to locate the code the task touches (files or components the task names, or a quick search), and whether `docs/agents/issue-tracker.md`, `docs/agents/skills.yaml` (the project's own skills), `GLOSSARY.md` or `docs/adr/` exist.
+Write it as classification.md's classification file, with the workflow the user asked for (`requested`) when they named one, and run `scripts/check-classification <file>`. On errors, correct the classification when the evidence supports it; otherwise tell the user the conflict with its evidence and offer only what the check allows. Never offer a path it does not print.
 
-**Low risk**: stop here. Say the task is low risk and offer: do it directly, without a workflow (no vendor skills, no issue); the **light** path, when the task is a ticket; or the full workflow, which runs as at medium risk with risk kept `low`. For a medium-risk ticket of low complexity, propose **light** and say how to ask for `full`. On a light path, follow [light.md](light.md) for §2.
+Tell the user the classes with their reasons and any `uncertain:` lines, then follow the `offer:` it prints; a routine classification needs no approval of its own:
 
-Done when type, risk, complexity, properties and path are set, each with its reason.
+- `direct` in the offer (**low risk**): stop here. Say the task is low risk and offer: do it directly, without a workflow (no vendor skills, no issue); the **light** path, when offered; or the full workflow, which runs as at medium risk with risk kept `low`.
+- `propose: light` (a medium-risk ticket of low complexity): take **light** and say how to ask for `full`.
+- `full` alone: take **full**.
+
+A path the user already named and the check accepted is taken without asking. Set **path** to the chosen `light` or `full` and keep it in the classification file. On a light path, follow [light.md](light.md) for §2.
+
+Done when the check passes with the chosen path, and type, risk, complexity, properties and path are set, each with its reason.
 
 ## 2. Workflow contract
 
