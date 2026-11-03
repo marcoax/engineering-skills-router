@@ -12,7 +12,7 @@
 // is preference | project | personal | vendor.
 //   --target adds the target repo's own skills (docs/agents/skills.yaml) as project/<name>,
 //            the only candidates for framework-review
-// Personal skills (config/personal-skills.yaml, under preferences.personal_path) are listed as
+// Personal skills (personal-skills.yaml, see scripts/config; under preferences.personal_path) are listed as
 // personal/<name> with their absolute path; one named like a vendor skill is skipped.
 // Status: ok | missing (file not found, or a personal or project path outside its folder)
 //   | excluded (user preference) | unknown (not cataloged)

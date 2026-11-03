@@ -14,8 +14,8 @@ For working on the router itself or its catalog. Install and use: the [README](.
 | `catalog/skills.yaml` | project-owned metadata per skill (phases, use_when, invokes); descriptions are read from each `SKILL.md` |
 | `catalog/guides.yaml` | vendor guides consulted for selection: source and path only, never phase candidates |
 | `catalog/categories.yaml` | the phases |
-| `config/preferences.example.yaml` | template for personal overrides (`config/preferences.yaml`, git-ignored) |
-| `config/personal-skills.example.yaml` | template for your own skills (`config/personal-skills.yaml`, git-ignored) |
+| `config/preferences.example.yaml` | template for personal overrides (`preferences.yaml` in the configuration directory, [configuration.md](configuration.md)) |
+| `config/personal-skills.example.yaml` | template for your own skills (`personal-skills.yaml` beside it) |
 | `adapters/pi/` | Pi extension: workflow widget and panel from `.router/state.json`, and the `router_primary` select menu for the primary question |
 | `vendors/` | git submodules, never edited |
 | `adapters/claude-code/` | Claude Code plugin: workflow band and panes, review 2 on another family ([claude-code.md](claude-code.md)) |
@@ -32,10 +32,11 @@ For working on the router itself or its catalog. Install and use: the [README](.
 | `scripts/check-selection [--target <repo>] <file>` | checks a selector proposal (JSON, or Markdown ending in a ```` ```json ```` block): every default and alternative is an `ok` candidate for its phase, at most two alternatives, every pick and phase has a reason; reads only |
 | `scripts/skill-index [--check]` | regenerates `docs/skill-index.md` from the guides, the catalog and the checked-out vendor revisions; `--check` only reports a stale index |
 | `scripts/validate-catalog [--target <repo>] [--verbose]` | checks sources, paths, ids, categories, preferences, personal skills, guides (source ownership, never also a skill); warns on unreadable descriptions and a leftover `catalog/rankings.yaml` (no longer read); `--target` also checks the repo's `docs/agents/skills.yaml`; `--verbose` lists uncataloged upstream skills |
+| `scripts/config [migrate [--yes]]` | prints the user configuration in effect (source, directory, files, ignored clone-local files); `migrate` shows, and with `--yes` performs, a validated move of `config/` files out of the checkout ([configuration.md](configuration.md)) |
 | `scripts/update` | pulls vendor submodules, prints added/removed skills; never edits the catalog |
 | `scripts/check-state <target-repo>` | checks the target repo's `.router/state.json` against `skills/engineering-router/state.md` |
 | `scripts/selftest` | checks the scripts against a scratch catalog and scratch state files, the installable skills and the selector eval references, then runs the Pi adapter tests |
-| `scripts/context-threshold` | read-only adapter bridge: prints this router checkout’s context threshold (150000 by default) |
+| `scripts/context-threshold` | read-only adapter bridge: prints the context threshold of the configuration in effect (150000 by default) |
 | `scripts/state <target-repo> compose\|step\|workflow\|handoff\|reply\|primary\|show\|model ...` | the router's only way to write `.router/state.json`: `compose [--new] <file>` writes a composed workflow after checking every skill and alternative is a usable candidate for its step's phases and recalculating coverage (`--new` never replaces an unfinished run; without it, completed steps, `primary` and handoff stay); a swap reply recalculates coverage from the new skill; every change is validated with `check-state`, keeping the old file when invalid; `primary` prints the primary question (the current family first; `--json` gives the options to a selector) and `primary <n\|family>` sets the run's `primary`, both only while the workflow is `selecting`; `model <step>` prints the model a step runs on, from the run's `primary` in the state |
 | `scripts/record <target-repo> [--findings f] [--checklist p,a[,ok,ko]] [--pr n] ...` | composes the run record from the state and the findings, and writes it into the PR body |
 | `scripts/stats [--repo <owner/name>] [--limit <n>] [--json]` | adds up the run records in a repo's PRs (via `gh`): per review and model, per skill, per severity, checklists, tokens |
@@ -54,12 +55,12 @@ The `checks` workflow (job **catalog, selftest, adapters** on the PR) runs on ev
 4. `scripts/selftest`: scratch catalogs, scratch target repos and state files, then the Pi adapter tests (they run there only, not a second time);
 5. `claude plugin test adapters/claude-code`: the Claude Code adapter tests, run by the Claude Code CLI version pinned in the workflow (`CLAUDE_CODE_VERSION`, installed from npm; bump it deliberately). The command exits non-zero when a test fails or when it finds no tests, so the step cannot pass without running them.
 
-The job reads no `config/preferences.yaml`, `config/personal-skills.yaml`, user-level agent folder or provider credential, and calls no model: the adapter tests replace the session, tools and processes with the harness's fakes. A green run covers the scripts and both adapters' automated tests. It is not live acceptance: discovering the router in a real Pi or Claude Code session, drawing the band and pane, and running review 2 through Codex or opencode still need a check in an interactive session.
+The job reads no user configuration (`config/` or the external directory, [configuration.md](configuration.md)), user-level agent folder or provider credential, and calls no model: the adapter tests replace the session, tools and processes with the harness's fakes. A green run covers the scripts and both adapters' automated tests. It is not live acceptance: discovering the router in a real Pi or Claude Code session, drawing the band and pane, and running review 2 through Codex or opencode still need a check in an interactive session.
 
 The local pre-commit hook is unchanged; CI repeats the checks for contributors who have not installed it or bypassed it.
 
 ## Context preference
 
-In `config/preferences.yaml` under `preferences`, `context_threshold` is an integer >= 0, default **150000** tokens; **0** disables context questions. Validation rejects negative, fractional, non-finite and non-numeric values. Missing, invalid or unreadable runtime settings fall back to the default.
+In your `preferences.yaml` under `preferences`, `context_threshold` is an integer >= 0, default **150000** tokens; **0** disables context questions. Validation rejects negative, fractional, non-finite and non-numeric values. Missing, invalid or unreadable runtime settings fall back to the default.
 
 Claude Code and Pi add `context: <tokens> of <window> window, threshold <threshold>` only after a successful, foreground `scripts/state <target repo> step <n|id> done` command, at or above the threshold with known tokens/window. Run that command separately: shell batches/chains are deliberately left unannotated. Quoted paths, a `node` prefix and state flags are supported. No adapter means no measurement. Warnings are informational, including above 80% of the window; a fresh-session handoff is reserved for capacity that prevents further execution after available recovery. See [context at a step boundary](how-it-works.md#context-at-a-step-boundary).

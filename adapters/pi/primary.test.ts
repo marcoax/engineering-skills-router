@@ -7,6 +7,9 @@ import * as path from "node:path";
 import registerPrimaryQuestion from "./primary.ts";
 
 const ROOT = path.resolve(import.meta.dirname, "../..");
+// Never the maintainer's configuration: no explicit location, an empty XDG config root.
+delete process.env.ENGINEERING_ROUTER_CONFIG;
+process.env.XDG_CONFIG_HOME = path.join(os.tmpdir(), `router-no-user-config-${process.pid}`);
 const CLAUDE = "claude (claude-bridge/claude-opus-5-5)";
 const OPENAI = "openai (openai-codex/gpt-6-sol)";
 

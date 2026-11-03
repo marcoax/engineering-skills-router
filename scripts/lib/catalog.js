@@ -1,5 +1,5 @@
-// Shared loader for catalog/*.yaml, config/preferences.yaml, config/personal-skills.yaml and a
-// target repo's docs/agents/skills.yaml. Node stdlib + yaml.
+// Shared loader for catalog/*.yaml, the user configuration (preferences.yaml, personal-skills.yaml)
+// and a target repo's docs/agents/skills.yaml. Node stdlib + yaml.
 const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
@@ -18,14 +18,59 @@ const isFile = (p) => {
 const readYaml = (file) => (isFile(file) ? (YAML.parse(fs.readFileSync(file, 'utf8'), { uniqueKeys: false }) || {}) : {});
 const read = (rel) => readYaml(path.join(ROOT, rel));
 
+const isDir = (p) => !!fs.statSync(p, { throwIfNoEntry: false })?.isDirectory();
+const expandHome = (p) => p.replace(/^~(?=$|\/)/, os.homedir());
+
 const sources = () => read('catalog/sources.yaml').sources || {};
 const PROJECT_CATALOG = 'docs/agents/skills.yaml';
-const PERSONAL_CATALOG = 'config/personal-skills.yaml';
+
+// User configuration (docs/configuration.md). One directory holds both files; the first that applies:
+//   explicit     $ENGINEERING_ROUTER_CONFIG, whatever it holds (empty = defaults)
+//   external     $XDG_CONFIG_HOME/engineering-skills-router (~/.config/...) when it holds either file
+//   clone-local  config/ in this checkout when it holds either file (a package update may clean it)
+//   defaults     none of these; new configuration belongs in the external directory
+// Files are never merged across directories: clone-local files a higher source hides are `shadowed`.
+const CONFIG_ENV = 'ENGINEERING_ROUTER_CONFIG';
+const CONFIG_FILES = ['preferences.yaml', 'personal-skills.yaml'];
+const CLONE_CONFIG = path.join(ROOT, 'config');
+const externalConfigDir = (env = process.env) =>
+  path.join(env.XDG_CONFIG_HOME || path.join(os.homedir(), '.config'), 'engineering-skills-router');
+const configFilesIn = (dir) => CONFIG_FILES.map((f) => path.join(dir, f)).filter(isFile);
+
+function config(env = process.env) {
+  const external = externalConfigDir(env);
+  const explicit = env[CONFIG_ENV];
+  const problems = [];
+  let source;
+  let dir;
+  if (explicit) {
+    source = 'explicit';
+    dir = path.resolve(expandHome(explicit));
+    if (!isDir(dir)) problems.push(`${CONFIG_ENV}: not a directory: ${explicit}`);
+  } else if (configFilesIn(external).length > 0) [source, dir] = ['external', external];
+  else if (configFilesIn(CLONE_CONFIG).length > 0) [source, dir] = ['clone-local', CLONE_CONFIG];
+  else [source, dir] = ['defaults', external];
+  const isClone = path.resolve(dir) === CLONE_CONFIG;
+  return {
+    source, dir, external, problems,
+    preferencesFile: path.join(dir, CONFIG_FILES[0]),
+    personalFile: path.join(dir, CONFIG_FILES[1]),
+    // A relative personal_path keeps its meaning: the checkout for clone-local files, else their directory.
+    base: isClone ? ROOT : dir,
+    shadowed: isClone ? [] : configFilesIn(CLONE_CONFIG),
+  };
+}
+
+// How messages name a file: relative inside the checkout, absolute elsewhere.
+const label = (file) => {
+  const rel = path.relative(ROOT, file);
+  return rel.startsWith('..') || path.isAbsolute(rel) ? file : rel;
+};
 // Phases only project skills fill.
 const PROJECT_PHASES = ['framework-review'];
 
 const categories = () => read('catalog/categories.yaml').categories || {};
-const preferences = () => read('config/preferences.yaml').preferences || {};
+const preferences = (cfg = config()) => readYaml(cfg.preferencesFile).preferences || {};
 const vendorSkills = () => read('catalog/skills.yaml').skills || {};
 // Vendor guides (catalog/guides.yaml): advisory entry points, kept apart from executable skills.
 const guides = () => read('catalog/guides.yaml').guides || {};
@@ -50,15 +95,16 @@ const rootedSkills = (file, root, source) => Object.fromEntries(Object.entries(r
 // The target repo's own skills, with source 'project' and paths resolved against the target.
 const projectSkills = (target) => (target ? rootedSkills(path.join(target, PROJECT_CATALOG), target, 'project') : {});
 
-// preferences.personal_path with a leading ~ expanded; relative paths resolve against ROOT.
-function personalPath(prefs = preferences()) {
+// preferences.personal_path with a leading ~ expanded; a relative path resolves against the
+// configuration's base (config().base).
+function personalPath(prefs = preferences(), base = config().base) {
   const p = prefs.personal_path;
-  return typeof p === 'string' && p !== '' ? path.resolve(ROOT, p.replace(/^~(?=$|\/)/, os.homedir())) : undefined;
+  return typeof p === 'string' && p !== '' ? path.resolve(base, expandHome(p)) : undefined;
 }
 
 // The user's own skills, with source 'personal' and paths resolved against `root`, personal_path
 // by default. Needs personal_path; the scripts only read from it.
-const personalSkills = (root = personalPath()) => (root ? rootedSkills(path.join(ROOT, PERSONAL_CATALOG), root, 'personal') : {});
+const personalSkills = (root = personalPath(), file = config().personalFile) => (root ? rootedSkills(file, root, 'personal') : {});
 
 // The cataloged vendor skill sharing a personal id's name (personal/tdd -> mattpocock/tdd), if any.
 const namesake = (id, vendor = vendorSkills()) => Object.keys(vendor).find((v) => v.split('/')[1] === id.split('/')[1]);
@@ -143,6 +189,6 @@ function candidates(category, allSkills = skills(), prefs = preferences()) {
 }
 
 module.exports = {
-  ROOT, PROJECT_CATALOG, PERSONAL_CATALOG, PROJECT_PHASES, arr, sources, skills, vendorSkills, guides, ownedBy, projectSkills,
+  ROOT, PROJECT_CATALOG, PROJECT_PHASES, CONFIG_ENV, CONFIG_FILES, CLONE_CONFIG, config, label, readYaml, arr, sources, skills, vendorSkills, guides, ownedBy, projectSkills,
   personalPath, personalSkills, namesake, categories, preferences, available, description, targetArg, upstreamPaths, candidates,
 };

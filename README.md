@@ -32,12 +32,18 @@ Plain `pi update` updates Pi itself, not the router.
 
 Then, in Pi, `/reload` and `/skill:engineering-router <task>`. Run it with no task, or with the same issue (or spec file, without an issue), to resume an unfinished workflow. To try it for one session without installing: `pi -e git:github.com/marcoax/engineering-skills-router`.
 
-**Personal preferences.** Updating the Pi package resets the installed clone (`git clean -fdx`), so a `config/preferences.yaml` there is lost. To keep preferences, or to edit the catalog, install from your own clone instead (Pi loads a local path without copying or cleaning it):
+**Personal preferences.** Updating the Pi package resets the installed clone (`git clean -fdx`), so keep your preferences and personal-skill list outside it, in `~/.config/engineering-skills-router/` (`$XDG_CONFIG_HOME/engineering-skills-router`, or any directory named by `ENGINEERING_ROUTER_CONFIG`). Updates leave that directory and its effect unchanged:
+
+```sh
+mkdir -p ~/.config/engineering-skills-router
+cp ~/.pi/agent/git/github.com/marcoax/engineering-skills-router/config/preferences.example.yaml ~/.config/engineering-skills-router/preferences.yaml
+```
+
+`scripts/config` in the checkout prints which configuration is in effect; `scripts/config migrate` moves an existing `config/preferences.yaml` and `config/personal-skills.yaml` out of the checkout ([configuration.md](docs/configuration.md)). To edit the catalog, install from your own clone instead (Pi loads a local path without copying or cleaning it):
 
 ```sh
 git clone --recurse-submodules https://github.com/marcoax/engineering-skills-router && cd engineering-skills-router
 scripts/setup
-cp config/preferences.example.yaml config/preferences.yaml   # optional
 pi install "$PWD"
 ```
 
@@ -59,10 +65,11 @@ The whole setup on one machine, from a clone you keep and update with `git pull`
    git clone --recurse-submodules https://github.com/marcoax/engineering-skills-router ~/web/ai/engineering-skills-router
    cd ~/web/ai/engineering-skills-router
    scripts/setup
-   [ -f config/preferences.yaml ] || cp config/preferences.example.yaml config/preferences.yaml
+   mkdir -p ~/.config/engineering-skills-router
+   [ -f ~/.config/engineering-skills-router/preferences.yaml ] || cp config/preferences.example.yaml ~/.config/engineering-skills-router/preferences.yaml
    ```
 
-   The last line creates your preferences only when you have none. In them, `models.openai` picks review 2's backend: `openai-codex/<model>` (Codex) or `opencode/<provider>/<model>`.
+   The last line creates your preferences only when you have none, outside the clone ([configuration.md](docs/configuration.md); a clone-local `config/preferences.yaml` keeps working, and `scripts/config` says which one is in effect). In them, `models.openai` picks review 2's backend: `openai-codex/<model>` (Codex) or `opencode/<provider>/<model>`.
 
 2. **Link the skill and point the router at the clone**:
 

@@ -28,7 +28,7 @@ The PR ends with a manual checklist of at most 15 points built from what the dif
 
 ## Without GitHub issues
 
-To keep the spec as a file in the target repo instead, prefer a specification skill that writes one, in `config/preferences.yaml`:
+To keep the spec as a file in the target repo instead, prefer a specification skill that writes one, in your `preferences.yaml` ([configuration.md](configuration.md)):
 
 ```yaml
 preferences:
@@ -61,14 +61,14 @@ When one fits the task, the workflow gets a `framework-review` step after the re
 
 ## Personal skills
 
-Your own skills can be candidates too. Set `personal_path` in `config/preferences.yaml` to the folder that holds them (a leading `~` is your home dir; a relative path resolves against the router checkout), then copy `config/personal-skills.example.yaml` to `config/personal-skills.yaml` (git-ignored) and list them there, in the format of `catalog/skills.yaml` with ids `personal/<name>` and paths relative to `personal_path`, inside it:
+Your own skills can be candidates too. Set `personal_path` in your `preferences.yaml` to the folder that holds them (a leading `~` is your home dir; a relative path resolves against the configuration directory, or the router checkout for a clone-local `config/`), then copy `config/personal-skills.example.yaml` to `personal-skills.yaml` beside it and list them there, in the format of `catalog/skills.yaml` with ids `personal/<name>` and paths relative to `personal_path`, inside it:
 
 ```yaml
 preferences:
   personal_path: ~/my-skills
 ```
 
-They fill any phase but `framework-review`, on equal terms with the vendor skills; name one in `prefer` to have it chosen when it fits. The router reads them in place and never writes there. They are not pinned: editing one changes the next workflow. One named like a cataloged vendor skill (`personal/tdd` next to `mattpocock/tdd`) is skipped with a warning, never used in its place. `scripts/validate-catalog` checks the file. A Pi package update wipes `config/`, so keep them in a personal clone, as for preferences.
+They fill any phase but `framework-review`, on equal terms with the vendor skills; name one in `prefer` to have it chosen when it fits. The router reads them in place and never writes there. They are not pinned: editing one changes the next workflow. One named like a cataloged vendor skill (`personal/tdd` next to `mattpocock/tdd`) is skipped with a warning, never used in its place. `scripts/validate-catalog` checks the file. A Pi package update wipes `config/`, so keep both files in the external configuration directory ([configuration.md](configuration.md)).
 
 ## State and subagents
 
@@ -84,4 +84,4 @@ With `context_threshold: 0`, unknown context (including after compaction), or a 
 
 ## Review 2 on another model family
 
-Steps run on the run's primary family, kept in its `.router/state.json`: a new run starts from `primary` in `config/preferences.yaml`, and where subagents can run both families the router first asks whether to keep it or switch for this run. Review 2 runs on the family opposite to review 1's (`models` in `config/preferences.yaml` names each family's model), which works only where the agent can actually reach both: subagents that take an explicit model, and a provider configured for each family under the ID the preferences name. Pi with a subagent extension and both providers set up is one such environment; it is an example, not a requirement, and Pi without them cannot do it either. An agent whose subagents run only its own vendor's models cannot (a run from Codex, for instance, could not reach the Claude family; Claude Code reaches the other family through its mod, see [claude-code.md](claude-code.md)). Before the workflow starts, the router says whether review 2 on the other family is available, unverified (the provider ID is checked only when its subagent starts) or unavailable, and why. When it is unavailable, or its subagent fails to start, you choose: skip review 2, or run it on the current model. On the current model it is a second review, not an independent one, and the workflow and comparison say so.
+Steps run on the run's primary family, kept in its `.router/state.json`: a new run starts from `primary` in your `preferences.yaml` ([configuration.md](configuration.md)), and where subagents can run both families the router first asks whether to keep it or switch for this run. Review 2 runs on the family opposite to review 1's (`models` in your `preferences.yaml` ([configuration.md](configuration.md)) names each family's model), which works only where the agent can actually reach both: subagents that take an explicit model, and a provider configured for each family under the ID the preferences name. Pi with a subagent extension and both providers set up is one such environment; it is an example, not a requirement, and Pi without them cannot do it either. An agent whose subagents run only its own vendor's models cannot (a run from Codex, for instance, could not reach the Claude family; Claude Code reaches the other family through its mod, see [claude-code.md](claude-code.md)). Before the workflow starts, the router says whether review 2 on the other family is available, unverified (the provider ID is checked only when its subagent starts) or unavailable, and why. When it is unavailable, or its subagent fails to start, you choose: skip review 2, or run it on the current model. On the current model it is a second review, not an independent one, and the workflow and comparison say so.

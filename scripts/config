@@ -1,0 +1,118 @@
+#!/usr/bin/env node
+// Usage: scripts/config                 which user configuration is in effect, and where
+//        scripts/config migrate         show how clone-local config/ would move outside the checkout
+//        scripts/config migrate --yes   move it: validate first, never overwrite, originals kept on failure
+// Policy (docs/configuration.md): $ENGINEERING_ROUTER_CONFIG, else $XDG_CONFIG_HOME/engineering-skills-router
+// (~/.config/...) when it holds a file, else config/ in this checkout, else the defaults. Reads only,
+// except `migrate --yes`.
+const fs = require('node:fs');
+const os = require('node:os');
+const path = require('node:path');
+const { spawnSync } = require('node:child_process');
+const YAML = require('yaml');
+const Catalog = require('./lib/catalog');
+
+const args = process.argv.slice(2);
+const cfg = Catalog.config();
+const SOURCES = {
+  explicit: `${Catalog.CONFIG_ENV}, chosen explicitly`,
+  external: 'outside the checkout; package updates leave it alone',
+  'clone-local': 'config/ in this checkout; a package update that cleans the checkout removes it (scripts/config migrate)',
+  defaults: 'no configuration file found; the documented defaults apply',
+};
+const present = (file) => (fs.existsSync(file) ? file : `${file} (none)`);
+
+if (args.length === 0) {
+  console.log(`source: ${cfg.source} (${SOURCES[cfg.source]})`);
+  console.log(`directory: ${cfg.dir}`);
+  console.log(`preferences: ${present(cfg.preferencesFile)}`);
+  console.log(`personal-skills: ${present(cfg.personalFile)}`);
+  console.log(`relative personal_path base: ${cfg.base}`);
+  cfg.shadowed.forEach((f) => console.log(`ignored: ${f} (the ${cfg.source} configuration is used instead)`));
+  cfg.problems.forEach((p) => console.log(`error: ${p}`));
+  process.exit(cfg.problems.length === 0 ? 0 : 1);
+}
+if (args[0] !== 'migrate' || args.slice(1).some((a) => a !== '--yes')) {
+  console.error('usage: scripts/config [migrate [--yes]]');
+  process.exit(1);
+}
+
+// Destination: the explicit location when set, else the external default.
+const dest = process.env[Catalog.CONFIG_ENV] ? cfg.dir : cfg.external;
+const files = Catalog.CONFIG_FILES.map((f) => path.join(Catalog.CLONE_CONFIG, f)).filter((f) => fs.existsSync(f));
+const die = (msg) => { console.log(msg); process.exit(1); };
+if (files.length === 0) { console.log('Nothing to migrate: no preferences.yaml or personal-skills.yaml in config/.'); process.exit(0); }
+if (path.resolve(dest) === Catalog.CLONE_CONFIG) die(`${Catalog.CONFIG_ENV} names this checkout's config/: choose a directory outside it.`);
+const taken = files.map((f) => path.join(dest, path.basename(f))).filter((f) => fs.existsSync(f));
+if (taken.length > 0) {
+  die(`Not migrated: ${taken.join(', ')} already exist(s) and will not be overwritten.\n`
+    + 'Compare them with config/, keep one copy and remove the other, then run scripts/config again.');
+}
+
+// A relative personal_path resolves against the checkout today: make it absolute so it keeps its meaning.
+const contents = Object.fromEntries(files.map((f) => [path.basename(f), fs.readFileSync(f, 'utf8')]));
+const notes = [];
+if (contents['preferences.yaml'] !== undefined) {
+  let doc;
+  try { doc = YAML.parseDocument(contents['preferences.yaml']); } catch { doc = null; }
+  if (!doc || doc.errors.length > 0) die('Not migrated: config/preferences.yaml is malformed; run scripts/validate-catalog.');
+  const node = doc.getIn(['preferences', 'personal_path'], true);
+  const p = node?.value;
+  if (typeof p === 'string' && p !== '' && !p.startsWith('~') && !path.isAbsolute(p)) {
+    const abs = path.resolve(Catalog.ROOT, p);
+    // Replace only that scalar's text, so the rest of the file (comments, layout) stays as written.
+    const text = contents['preferences.yaml'];
+    contents['preferences.yaml'] = text.slice(0, node.range[0]) + JSON.stringify(abs) + text.slice(node.range[1]);
+    notes.push(`personal_path ${p} becomes ${abs} (it was relative to this checkout)`);
+  }
+}
+
+console.log(`Migrate user configuration out of this checkout:`);
+files.forEach((f) => console.log(`  ${f}\n    -> ${path.join(dest, path.basename(f))}`));
+notes.forEach((n) => console.log(`  ${n}`));
+console.log('Personal skills stay where they are; only their registration moves.');
+if (!args.includes('--yes')) {
+  console.log('\nNothing changed. Run scripts/config migrate --yes to apply.');
+  process.exit(0);
+}
+
+// The scripts' observable output under a configuration directory.
+const observe = (env) => ['list-skills', 'context-threshold'].map((s) => {
+  const r = spawnSync(path.join(__dirname, s), [], { encoding: 'utf8', env: { ...process.env, ...env } });
+  return r.stdout + r.stderr;
+}).join('\n');
+
+// Stage, validate and compare before touching anything the user relies on.
+const staging = fs.mkdtempSync(path.join(os.tmpdir(), 'router-config-'));
+let created = [];
+// Thrown, not exited, so the cleanup below always runs.
+const fail = (msg) => { throw Object.assign(new Error(msg), { migration: true }); };
+try {
+  for (const [name, text] of Object.entries(contents)) fs.writeFileSync(path.join(staging, name), text);
+  const staged = { [Catalog.CONFIG_ENV]: staging };
+  const check = spawnSync(path.join(__dirname, 'validate-catalog'), [], { encoding: 'utf8', env: { ...process.env, ...staged } });
+  if (check.status !== 0) fail(`Not migrated: the configuration does not validate at its new location.\n${check.stdout}${check.stderr}`);
+  const now = observe({ [Catalog.CONFIG_ENV]: Catalog.CLONE_CONFIG });
+  if (observe(staged) !== now) fail('Not migrated: the moved configuration would change the candidates or settings.');
+
+  fs.mkdirSync(dest, { recursive: true });
+  for (const name of Object.keys(contents)) {
+    const to = path.join(dest, name);
+    fs.copyFileSync(path.join(staging, name), to, fs.constants.COPYFILE_EXCL);
+    created.push(to);
+  }
+  // The destination must now be what discovery finds, with the same behavior.
+  if (path.resolve(Catalog.config().dir) !== path.resolve(dest) || observe({}) !== now) {
+    fail('Not migrated: the new location is not the one in effect; config/ is unchanged.');
+  }
+  created = [];
+  files.forEach((f) => fs.rmSync(f));
+  console.log(`\nMigrated. In effect now: ${dest}`);
+} catch (e) {
+  console.log(e.migration ? e.message : `Not migrated: ${e.message}`);
+  process.exitCode = 1;
+} finally {
+  // On any failure, remove only what this run created; config/ is untouched until the end.
+  created.forEach((f) => fs.rmSync(f, { force: true }));
+  fs.rmSync(staging, { recursive: true, force: true });
+}

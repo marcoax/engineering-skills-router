@@ -1,5 +1,5 @@
-# Copy to config/personal-skills.yaml (git-ignored) to offer your own skills as candidates.
-# Needs preferences.personal_path in config/preferences.yaml: the folder that holds them.
+# Copy to personal-skills.yaml beside your preferences.yaml (docs/configuration.md) to offer
+# your own skills as candidates. Needs preferences.personal_path: the folder that holds them.
 # The scripts only read from that folder.
 #
 # Same fields as catalog/skills.yaml (source is implied). Ids are personal/<name>; path is

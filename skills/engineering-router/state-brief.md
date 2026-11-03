@@ -34,6 +34,6 @@ Read from SKILL.md §5. Write the composed workflow like this example to a file 
 - **confirm** `false` by default; `true` for a user-requested checkpoint, recorded as in [autonomy.md](autonomy.md).
 - **optional** `true` for review 2, comparison, independent-review, verification; while off: `status` `skipped`, `outcome` `off (optional)`.
 - **covered_by**: the id of the step whose skill runs this one (review 1 inside implementation); never review 1 on a light path. `compose` recalculates it from the catalog's `invokes`.
-- **primary**: the answer to the primary question; leave it out to take `primary` from `config/preferences.yaml` (default `claude`). A recomposition keeps the run's own ([models.md](models.md)).
+- **primary**: the answer to the primary question; leave it out to take `primary` from the user's `preferences.yaml` (default `claude`). A recomposition keeps the run's own ([models.md](models.md)).
 - **model** and **effort** `null`: no step has run yet. From §6 on, `scripts/state` sets each step's step model ([models.md](models.md)), recorded as its source names it, when it starts and when it closes; `model` stays `null` only for a step that did not run.
 - **handoff.issue** is `{number, url}` when the task is an issue; everything else starts empty and is set later with `scripts/state … handoff`.
