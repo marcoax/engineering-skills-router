@@ -1,12 +1,21 @@
 # Models
 
-Read from SKILL.md before showing the workflow (§5). It holds which model each step runs on, and how §6 records it.
+Read from SKILL.md before showing the workflow (§5). It holds the primary question, which model each step runs on, and how §6 records it.
 
 ## Which model a step runs on
 
 `config/preferences.yaml` maps two families to models: `models.claude` (default `claude-bridge/claude-opus-5-5`) and `models.openai` (default `openai-codex/gpt-6-sol`). The provider prefix must match the harness's provider IDs: when the harness names them differently, tell the user to adjust it.
 
 **The run's primary family** is `primary` in `.router/state.json`: written there from `primary` in `config/preferences.yaml` (default `claude`) when the state is first written, unless the user chose another for this run, and kept for the whole run, resume included. Read it from the state, never from the preferences, once the state exists; never write `config/preferences.yaml`.
+
+## The primary question
+
+On a new run, once the state is written with status `selecting` and before the workflow is shown, ask which family is primary. Ask it only where step subagents can run both families (a subagent tool that takes an explicit model, and a provider for each family); never on Claude Code, whose subagents run only Claude. Ask it once per run: never on resume, and `scripts/state` refuses it once the workflow has started.
+
+- **Pi**: call the `router_primary` tool with the repo root and the target repo. It shows a select menu of the two families with their model IDs, the current one preselected, and stores the answer. When it returns a numbered question instead (no selector in this session), ask it as below.
+- **Without a selector**: run `scripts/state <target repo> primary` and ask the numbered question it prints, one option per family with its model ID, the current one first. Set the answer with `scripts/state <target repo> primary <n|family>`; an empty answer is `1`.
+
+Option 1 keeps the current family: the run continues exactly as without the question. The answer is the run's `primary` in the state; the workflow shown next, step models and review 2 included, follows it. `config/preferences.yaml` is not changed.
 
 A step subagent runs on the family set as `model` for its first phase in `config/preferences.yaml`, else on the run's `primary`; `scripts/state <target repo> model <n|id>` prints that model for a step (for review 2, the family opposite to review 1's). Pass the model explicitly every time, since subagent defaults may point elsewhere: as `provider/model-id` where the subagent tool takes one, else as the tool's name for that model (Claude Code's Agent tool takes only an alias, such as `opus` for a `claude-opus-*` ID). `effort` (`low` | `medium` | `high`, unset = the harness default) is the thinking level of every step subagent, passed the way the subagent tool takes it (Pi: `provider/model-id:<effort>`). Main-session steps keep the session's model.
 

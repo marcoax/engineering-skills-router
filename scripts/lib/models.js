@@ -28,4 +28,19 @@ const stepModel = (state, step, prefs) => familyModel(stepFamily(state, step, pr
 const modelsLine = (state, prefs) => `Models: ${FAMILIES.map((f) => `${f} ${familyModel(f, prefs)}`).join(' · ')}`
   + ` · primary ${runPrimary(state, prefs)} · effort ${prefs.effort ?? 'harness default'}`;
 
-module.exports = { FAMILIES, preferredPrimary, runPrimary, stepFamily, stepModel, modelsLine };
+// The primary question's options: the run's family first, so the preselected option keeps it.
+function primaryOptions(state, prefs) {
+  const current = runPrimary(state, prefs);
+  return [current, other(current)].map((family) => ({ family, label: `${family} (${familyModel(family, prefs)})`, current: family === current }));
+}
+
+const primaryQuestion = (state, prefs) => `Primary model family for this run:\n${primaryOptions(state, prefs)
+  .map((o, i) => `${i + 1}. ${o.label}${o.current ? '  current' : ''}`).join('\n')}`;
+
+// The primary question's answer, as a family name or its option number; null when it is neither.
+function primaryAnswer(state, prefs, answer) {
+  const options = primaryOptions(state, prefs);
+  return (options.find((o) => o.family === answer) ?? options[Number(answer) - 1])?.family ?? null;
+}
+
+module.exports = { FAMILIES, preferredPrimary, runPrimary, stepFamily, stepModel, modelsLine, primaryOptions, primaryQuestion, primaryAnswer };
