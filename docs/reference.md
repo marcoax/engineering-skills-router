@@ -9,7 +9,8 @@ For working on the router itself or its catalog. Install and use: the [README](.
 | `skills/engineering-router/SKILL.md` | the router skill: what every run needs; the files beside it (`light.md`, `review-2.md`, `after-implementation.md`, …) are read only when a run reaches them |
 | `skills/engineering-router/resolve-root.js` | finds the router checkout the skill works from |
 | `catalog/sources.yaml` | vendor repos and where their skills live |
-| `catalog/skills.yaml` | project-owned metadata per skill (phases, use_when, invokes) |
+| `catalog/skills.yaml` | project-owned metadata per skill (phases, use_when, invokes); descriptions are read from each `SKILL.md` |
+| `catalog/guides.yaml` | vendor guides consulted for selection: source and path only, never phase candidates |
 | `catalog/rankings.yaml` | default + fallback skill per phase |
 | `catalog/categories.yaml` | the phases |
 | `config/preferences.example.yaml` | template for personal overrides (`config/preferences.yaml`, git-ignored) |
@@ -25,8 +26,10 @@ For working on the router itself or its catalog. Install and use: the [README](.
 
 | Script | Does |
 |---|---|
-| `scripts/list-skills [--target <repo>] [phase ...]` | ranked candidates per phase with availability; `--target` adds the repo's project skills |
-| `scripts/validate-catalog [--target <repo>] [--verbose]` | checks sources, paths, ids, categories, rankings, preferences, personal skills; `--target` also checks the repo's `docs/agents/skills.yaml`; `--verbose` lists uncataloged upstream skills |
+| `scripts/list-skills [--target <repo>] [phase ...]` | ranked candidates per phase with availability; with phases, each candidate's source description (from its `SKILL.md` frontmatter) and catalog metadata; `--target` adds the repo's project skills |
+| `scripts/list-skills --guides` | the registered vendor guides with their source descriptions |
+| `scripts/skill-index [--check]` | regenerates `docs/skill-index.md` from the guides, the catalog and the checked-out vendor revisions; `--check` only reports a stale index |
+| `scripts/validate-catalog [--target <repo>] [--verbose]` | checks sources, paths, ids, categories, rankings, preferences, personal skills, guides (source ownership, never also a skill); warns on unreadable descriptions; `--target` also checks the repo's `docs/agents/skills.yaml`; `--verbose` lists uncataloged upstream skills |
 | `scripts/update` | pulls vendor submodules, prints added/removed skills; never edits the catalog |
 | `scripts/check-state <target-repo>` | checks the target repo's `.router/state.json` against `skills/engineering-router/state.md` |
 | `scripts/selftest` | checks the scripts against a scratch catalog and scratch state files, then runs the Pi adapter tests |

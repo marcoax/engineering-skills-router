@@ -1,0 +1,21 @@
+# Vendor guides: each collection's own entry point for choosing among its skills. The selector
+# consults them as advisory source material; they are never phase candidates and never run as a
+# workflow step. Descriptions are read from the SKILL.md frontmatter, as for skills.yaml.
+#
+# Fields:
+#   source  key in sources.yaml; the id must start with it
+#   path    SKILL.md path, relative to the repo root, inside that source's local_path
+
+guides:
+
+  mattpocock/ask-matt:
+    source: mattpocock
+    path: vendors/mattpocock/skills/engineering/ask-matt/SKILL.md
+
+  pstack/poteto-help:
+    source: pstack
+    path: vendors/pstack/skills/poteto-help/SKILL.md
+
+  addyosmani/using-agent-skills:
+    source: addyosmani
+    path: vendors/addyosmani/skills/using-agent-skills/SKILL.md
