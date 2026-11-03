@@ -132,7 +132,7 @@ Missing: <phase>: no available skill (only when any)
 Reply: go | <step><letter> to swap (e.g. 2b) | <step>on / <step>off (e.g. 5on) | edit | full (light path) | stop
 ```
 
-The numbered list is `steps` from the state file, in the same order: one line per step, router and covered steps included, so `<step>` is the position in `steps`.
+The numbered list is `steps` from the state file, in the same order: one line per step, router and covered steps included, so `<step>` is the position in `steps`. `primary` in the `Models:` line is the run's, from the state file ([models.md](models.md)).
 
 Apply every reply with `scripts/state <target repo> reply <reply>`: it swaps (the old skill becomes the alternative), switches optional steps (review 2 and the comparison together; an optional step that is off shows `(off)`; `<step>on` also works later, until the step starts), and starts or stops the workflow. After a swap or switch, show the workflow again. It exits 2 on `edit`, and on `full` for a light path: recompose §2–§4 (set `path` to `full` for `full`) and write the state again as above. Done on `go` or `stop`.
 
