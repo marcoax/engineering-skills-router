@@ -3,7 +3,9 @@
 1. `git submodule add <repo-url> vendors/<key>`
 2. Add `<key>` to `catalog/sources.yaml` with `repository`, `local_path` and the `skill_globs` that match its `SKILL.md` files.
 3. `scripts/validate-catalog --verbose` lists the new uncataloged skills.
-4. Catalog the ones worth routing to in `catalog/skills.yaml` as `<key>/<skill>`, then place them in `catalog/rankings.yaml` where they should be a default or fallback.
+4. Read each discovered `SKILL.md` and register it in `catalog/skills.yaml` as `<key>/<skill>`, with categories, specific usage signals and any prerequisites or exclusions. Add it to `catalog/rankings.yaml` only if it should become a default or fallback; other tagged skills are already candidates.
 5. `scripts/validate-catalog` must pass.
 
 The router reads only the catalog, so no router change is needed.
+
+Cataloging a skill makes it available for selection; it does not add it to every workflow. Communication, learning, retrospectives, context management, workflow selection and skill authoring have supporting categories with no preferred or fallback skills. They are selected when the task needs them. Vendor orchestrators are for explicit requests for that vendor's workflow, rather than nested replacements for the router's own selection. Principles have narrow usage signals for the decisions they address.

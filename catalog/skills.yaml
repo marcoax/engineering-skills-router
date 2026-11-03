@@ -179,6 +179,77 @@ skills:
     use_when:
       - target repo has no docs/agents/issue-tracker.md and a tracker-config skill is selected
 
+  mattpocock/ask-matt:
+    source: mattpocock
+    path: vendors/mattpocock/skills/engineering/ask-matt/SKILL.md
+    categories: [workflow-selection]
+    use_when:
+      - "the user asks which Matt Pocock skill or flow fits their situation"
+    avoid_when:
+      - "the router has already selected a workflow and no vendor-specific guidance was requested"
+
+  mattpocock/retro:
+    source: mattpocock
+    path: vendors/mattpocock/skills/engineering/retro/SKILL.md
+    categories: [retrospective]
+    use_when:
+      - "a coding session needs a retrospective on navigation, guardrails and agent instructions"
+    avoid_when:
+      - "there is no session evidence to inspect"
+    invokes: [mattpocock/writing-for-agents]
+
+  mattpocock/wizard:
+    source: mattpocock
+    path: vendors/mattpocock/skills/engineering/wizard/SKILL.md
+    categories: [setup]
+    use_when:
+      - "a manual setup, credential configuration or cutover needs a guided bash wizard"
+    avoid_when:
+      - "the agent can perform all the steps itself"
+
+  mattpocock/handoff:
+    source: mattpocock
+    path: vendors/mattpocock/skills/productivity/handoff/SKILL.md
+    categories: [context-management, multi-session]
+    use_when:
+      - "the current conversation must become a compact handoff for a fresh agent"
+    avoid_when:
+      - "the task is to reconstruct prior sessions rather than hand off the current one"
+
+  mattpocock/teach:
+    source: mattpocock
+    path: vendors/mattpocock/skills/productivity/teach/SKILL.md
+    categories: [learning]
+    use_when:
+      - "the user wants a teaching workspace with lessons, practice and a learning record across sessions"
+    avoid_when:
+      - "the user only wants a short explanation of existing code"
+
+  mattpocock/to-questionnaire:
+    source: mattpocock
+    path: vendors/mattpocock/skills/productivity/to-questionnaire/SKILL.md
+    categories: [requirements, clarification]
+    use_when:
+      - "a decision depends on facts held by someone else and needs an asynchronous questionnaire"
+    avoid_when:
+      - "the user can already answer the unresolved questions directly"
+
+  mattpocock/wait-what:
+    source: mattpocock
+    path: vendors/mattpocock/skills/productivity/wait-what/SKILL.md
+    categories: [communication]
+    use_when:
+      - "the user did not understand the last response and wants it explained with context and project terminology"
+
+  mattpocock/writing-for-agents:
+    source: mattpocock
+    path: vendors/mattpocock/skills/productivity/writing-for-agents/SKILL.md
+    categories: [skill-authoring, documentation]
+    use_when:
+      - "writing or editing skills, AGENTS.md, CLAUDE.md or documents consumed by agents"
+    avoid_when:
+      - "the document is only for human readers"
+
   # ---------- pstack ----------
 
   pstack/how:
@@ -265,6 +336,409 @@ skills:
     categories: [documentation]
     use_when:
       - writing or reviewing docs, READMEs, RFCs
+
+  pstack/automate-me:
+    source: pstack
+    path: vendors/pstack/skills/automate-me/SKILL.md
+    categories: [skill-authoring]
+    use_when:
+      - "the user explicitly wants to capture or refresh their working conventions in a personal mode skill"
+    avoid_when:
+      - "the request is for one task-specific workflow rather than working conventions"
+    invokes: [pstack/unslop]
+
+  pstack/bro:
+    source: pstack
+    path: vendors/pstack/skills/bro/SKILL.md
+    categories: [communication]
+    use_when:
+      - "the user asks for the last response to be restated simply and without jargon"
+
+  pstack/correct:
+    source: pstack
+    path: vendors/pstack/skills/correct/SKILL.md
+    categories: [retrospective, refactoring]
+    use_when:
+      - "the same classes of agent mistakes have recurred and need structural prevention backed by past examples"
+    avoid_when:
+      - "there is only a one-off mistake without evidence of recurrence"
+
+  pstack/create-formal-verification-skill:
+    source: pstack
+    path: vendors/pstack/skills/create-formal-verification-skill/SKILL.md
+    categories: [skill-authoring, testing]
+    use_when:
+      - "the user wants a project-local skill that verifies a high-impact invariant beyond ordinary test cases"
+    avoid_when:
+      - "the task only needs ordinary example-based tests"
+    complexity: [medium, high]
+
+  pstack/create-verification-skill:
+    source: pstack
+    path: vendors/pstack/skills/create-verification-skill/SKILL.md
+    categories: [skill-authoring, testing]
+    use_when:
+      - "the project needs a reusable verification skill that drives its real UI, CLI or service and captures evidence"
+    avoid_when:
+      - "the request is only to run an existing verification harness"
+    requires:
+      - "a runnable target application and a way to drive its primary user surface"
+
+  pstack/in-your-own-words:
+    source: pstack
+    path: vendors/pstack/skills/in-your-own-words/SKILL.md
+    categories: [clarification]
+    use_when:
+      - "the user wants the agent to restate its understanding of their goal before acting"
+
+  pstack/ketchup-video:
+    source: pstack
+    path: vendors/pstack/skills/ketchup-video/SKILL.md
+    categories: [communication]
+    use_when:
+      - "the user explicitly requests a short subtitled video recap of work in this chat and pending decisions"
+    avoid_when:
+      - "a text recap is enough or video rendering and inspection are unavailable"
+    invokes: [pstack/ketchup]
+
+  pstack/ketchup:
+    source: pstack
+    path: vendors/pstack/skills/ketchup/SKILL.md
+    categories: [communication]
+    use_when:
+      - "the user wants a read-only recap of changes in this chat since their last message and every pending decision"
+    avoid_when:
+      - "the task is to recover working context from earlier conversations"
+
+  pstack/maintain-formal-verification-skill:
+    source: pstack
+    path: vendors/pstack/skills/maintain-formal-verification-skill/SKILL.md
+    categories: [testing]
+    use_when:
+      - "verified code changed and its project-local formal verification must be checked for drift and rerun"
+    avoid_when:
+      - "the project has no formal verification to maintain"
+    requires:
+      - "an existing project-local formal verification skill or harness"
+
+  pstack/maintain-verification-skill:
+    source: pstack
+    path: vendors/pstack/skills/maintain-verification-skill/SKILL.md
+    categories: [testing]
+    use_when:
+      - "an existing verification skill and feature map need a source audit and live coverage of every feature"
+    avoid_when:
+      - "the project has no verification skill or feature map yet"
+    requires:
+      - "an existing verification skill with a feature map and a runnable target application"
+
+  pstack/make-bot-ui:
+    source: pstack
+    path: vendors/pstack/skills/make-bot-ui/SKILL.md
+    categories: [implementation]
+    use_when:
+      - "the user explicitly wants a custom UI that wakes a Grok Bot through a webhook and is reachable over Tailscale"
+    avoid_when:
+      - "the harness lacks webhook routines or a secure secret-request mechanism"
+    requires:
+      - "Grok Bot webhook routine tools, secure secret submission and Tailscale access"
+
+  pstack/no-comments:
+    source: pstack
+    path: vendors/pstack/skills/no-comments/SKILL.md
+    categories: [refactoring]
+    use_when:
+      - "the user wants scoped comment cleanup with a fresh reviewer and root-cause fixes for accepted findings"
+    avoid_when:
+      - "the request is a read-only review without authorization to edit comments or code"
+
+  pstack/poteto-help:
+    source: pstack
+    path: vendors/pstack/skills/poteto-help/SKILL.md
+    categories: [workflow-selection]
+    use_when:
+      - "the user asks how to set up pstack, choose its skills or recover a pstack run"
+    avoid_when:
+      - "the user asked to execute work rather than explain pstack"
+
+  pstack/poteto-mode:
+    source: pstack
+    path: vendors/pstack/skills/poteto-mode/SKILL.md
+    categories: [workflow-selection]
+    use_when:
+      - "the user explicitly requests pstack orchestration for a non-trivial task"
+    avoid_when:
+      - "the router is already orchestrating the task and no switch to pstack was requested"
+    complexity: [medium, high]
+
+  pstack/principle-attack-the-premise:
+    source: pstack
+    path: vendors/pstack/skills/principle-attack-the-premise/SKILL.md
+    categories: [debugging]
+    use_when:
+      - "two or more fixes sharing one premise have failed the same check and the premise needs a direct test"
+
+  pstack/principle-boundary-discipline:
+    source: pstack
+    path: vendors/pstack/skills/principle-boundary-discipline/SKILL.md
+    categories: [architecture, refactoring]
+    use_when:
+      - "validation, error handling or framework wiring needs clear boundaries around pure business logic"
+
+  pstack/principle-build-the-lever:
+    source: pstack
+    path: vendors/pstack/skills/principle-build-the-lever/SKILL.md
+    categories: [implementation]
+    use_when:
+      - "non-trivial edits, migrations or checks need a small rerunnable script or generator to perform or prove the work"
+    avoid_when:
+      - "the work is only a couple of obvious edits"
+
+  pstack/principle-encode-lessons-in-structure:
+    source: pstack
+    path: vendors/pstack/skills/principle-encode-lessons-in-structure/SKILL.md
+    categories: [retrospective, refactoring]
+    use_when:
+      - "a recurring instruction or correction should become an enforceable structural guardrail"
+
+  pstack/principle-exhaust-the-design-space:
+    source: pstack
+    path: vendors/pstack/skills/principle-exhaust-the-design-space/SKILL.md
+    categories: [architecture, prototype]
+    use_when:
+      - "a novel interaction or architectural decision lacks precedent and needs competing prototypes"
+    avoid_when:
+      - "the design already has a clear precedent or the cost of alternatives is unjustified"
+
+  pstack/principle-experience-first:
+    source: pstack
+    path: vendors/pstack/skills/principle-experience-first/SKILL.md
+    categories: [requirements, prototype]
+    use_when:
+      - "product scope or UX tradeoffs need to prioritize the consumer experience and polish over implementation convenience"
+
+  pstack/principle-explain-the-number:
+    source: pstack
+    path: vendors/pstack/skills/principle-explain-the-number/SKILL.md
+    categories: [performance, testing]
+    use_when:
+      - "a benchmark or evaluation result needs a decision threshold, noise estimate and evidence of what limits it"
+    avoid_when:
+      - "no measurement or evaluation claim is involved"
+
+  pstack/principle-fix-root-causes:
+    source: pstack
+    path: vendors/pstack/skills/principle-fix-root-causes/SKILL.md
+    categories: [debugging]
+    use_when:
+      - "a reproduced failure needs tracing to the first incorrect decision rather than a symptom guard"
+
+  pstack/principle-foundational-thinking:
+    source: pstack
+    path: vendors/pstack/skills/principle-foundational-thinking/SKILL.md
+    categories: [architecture, planning]
+    use_when:
+      - "core types, access patterns or shared state must be designed before logic and scaffold work sequenced before features"
+
+  pstack/principle-guard-the-context-window:
+    source: pstack
+    path: vendors/pstack/skills/principle-guard-the-context-window/SKILL.md
+    categories: [context-management]
+    use_when:
+      - "large outputs, repeated reads or planned fan-out risk filling the context window"
+
+  pstack/principle-laziness-protocol:
+    source: pstack
+    path: vendors/pstack/skills/principle-laziness-protocol/SKILL.md
+    categories: [refactoring]
+    use_when:
+      - "a proposed abstraction or large diff should be reduced to the smallest change with one source of truth"
+
+  pstack/principle-make-operations-idempotent:
+    source: pstack
+    path: vendors/pstack/skills/principle-make-operations-idempotent/SKILL.md
+    categories: [architecture, implementation]
+    use_when:
+      - "commands, lifecycle steps or processing loops must converge after retries, restarts and partial runs"
+
+  pstack/principle-migrate-callers-then-delete-legacy-apis:
+    source: pstack
+    path: vendors/pstack/skills/principle-migrate-callers-then-delete-legacy-apis/SKILL.md
+    categories: [refactoring]
+    use_when:
+      - "an internal API is being replaced and callers can migrate together with removal of the old API"
+    avoid_when:
+      - "external users require backward compatibility or a coordinated breaking change is not possible"
+
+  pstack/principle-minimize-reader-load:
+    source: pstack
+    path: vendors/pstack/skills/principle-minimize-reader-load/SKILL.md
+    categories: [refactoring]
+    use_when:
+      - "code is hard to trace because of pass-through layers or hidden mutable state"
+
+  pstack/principle-model-the-domain:
+    source: pstack
+    path: vendors/pstack/skills/principle-model-the-domain/SKILL.md
+    categories: [architecture, refactoring]
+    use_when:
+      - "stateful logic repeats shape assumptions or grows conditionals that a domain data structure could eliminate"
+    avoid_when:
+      - "the current shape is already clear, local and unlikely to grow"
+
+  pstack/principle-never-block-on-the-human:
+    source: pstack
+    path: vendors/pstack/skills/principle-never-block-on-the-human/SKILL.md
+    categories: [implementation]
+    use_when:
+      - "authorized reversible work is stalled on a routine execution choice the agent can reasonably make"
+    avoid_when:
+      - "product direction or an irreversible action requires a decision from the user"
+
+  pstack/principle-outcome-oriented-execution:
+    source: pstack
+    path: vendors/pstack/skills/principle-outcome-oriented-execution/SKILL.md
+    categories: [planning, refactoring]
+    use_when:
+      - "a planned rewrite or migration has explicit verification boundaries and reversible intermediate breakage"
+    avoid_when:
+      - "intermediate breakage is not explicitly scoped and acceptable"
+
+  pstack/principle-prove-it-works:
+    source: pstack
+    path: vendors/pstack/skills/principle-prove-it-works/SKILL.md
+    categories: [testing]
+    use_when:
+      - "completed work needs direct verification against the real artifact before it is reported as done"
+
+  pstack/principle-redesign-from-first-principles:
+    source: pstack
+    path: vendors/pstack/skills/principle-redesign-from-first-principles/SKILL.md
+    categories: [architecture, refactoring]
+    use_when:
+      - "a new requirement must be integrated coherently into an existing design rather than bolted on"
+
+  pstack/principle-separate-before-serializing-shared-state:
+    source: pstack
+    path: vendors/pstack/skills/principle-separate-before-serializing-shared-state/SKILL.md
+    categories: [architecture]
+    use_when:
+      - "concurrent actors may write the same mutable object and ownership should be separated before adding locks"
+
+  pstack/principle-sequence-verifiable-units:
+    source: pstack
+    path: vendors/pstack/skills/principle-sequence-verifiable-units/SKILL.md
+    categories: [planning]
+    use_when:
+      - "a multi-step sweep, migration or commit stack needs small ordered units with a check after each"
+
+  pstack/principle-subtract-before-you-add:
+    source: pstack
+    path: vendors/pstack/skills/principle-subtract-before-you-add/SKILL.md
+    categories: [refactoring, planning]
+    use_when:
+      - "an addition, refactor or rewrite should first remove dead code, redundant validation and obsolete references"
+
+  pstack/principle-test-behavior-not-implementation:
+    source: pstack
+    path: vendors/pstack/skills/principle-test-behavior-not-implementation/SKILL.md
+    categories: [testing]
+    use_when:
+      - "tests are being written, changed or assessed for whether they catch broken behavior and survive internal refactors"
+
+  pstack/principle-type-system-discipline:
+    source: pstack
+    path: vendors/pstack/skills/principle-type-system-discipline/SKILL.md
+    categories: [implementation, architecture]
+    use_when:
+      - "statically typed code needs semantic types, parsed boundaries and exhaustive variants that rule out invalid states"
+    avoid_when:
+      - "the target has no static type system"
+
+  pstack/recall:
+    source: pstack
+    path: vendors/pstack/skills/recall/SKILL.md
+    categories: [context-management, discovery]
+    use_when:
+      - "the user wants recent working context on a topic reconstructed from their own history, shared records and live state"
+    avoid_when:
+      - "the user already provided a complete state capsule or only wants a recap of the current chat"
+    invokes: [pstack/unslop]
+
+  pstack/reflect:
+    source: pstack
+    path: vendors/pstack/skills/reflect/SKILL.md
+    categories: [retrospective, skill-authoring]
+    use_when:
+      - "the user explicitly asks to reflect on a non-trivial session and propose durable improvements to existing skills"
+    avoid_when:
+      - "the conversation is trivial, off-topic or already covered by instructions followed correctly"
+
+  pstack/setup-pstack:
+    source: pstack
+    path: vendors/pstack/skills/setup-pstack/SKILL.md
+    categories: [setup]
+    use_when:
+      - "the user explicitly wants to configure pstack model roles and reasoning budgets"
+    avoid_when:
+      - "the active repo forbids writes to the user-level agent settings this skill produces"
+
+  pstack/show-me-your-work:
+    source: pstack
+    path: vendors/pstack/skills/show-me-your-work/SKILL.md
+    categories: [documentation, multi-session]
+    use_when:
+      - "long-running or unattended work needs a reviewable decision trail with evidence and results"
+    avoid_when:
+      - "the task is short and does not need a durable audit trail"
+
+  pstack/statechart:
+    source: pstack
+    path: vendors/pstack/skills/statechart/SKILL.md
+    categories: [architecture, testing]
+    use_when:
+      - "a stateful system needs a TLA+ model check and a Mermaid chart showing paths to invariant violations"
+    avoid_when:
+      - "the task only needs a diagram without model checking"
+    requires:
+      - "a TypeScript-capable runtime and network access for the initial TLC and Java installation"
+
+  pstack/swarm:
+    source: pstack
+    path: vendors/pstack/skills/swarm/SKILL.md
+    categories: [implementation, discovery]
+    use_when:
+      - "the user explicitly requests parallel coverage, worker races or a swarm with one consolidated report"
+    avoid_when:
+      - "no subagent tool is available or deterministic processing can cover every unit more cheaply"
+    requires:
+      - "a subagent tool and isolated write targets for workers"
+
+  pstack/teach:
+    source: pstack
+    path: vendors/pstack/skills/teach/SKILL.md
+    categories: [code-understanding, learning]
+    use_when:
+      - "the user wants to understand what a change or subsystem does, how it works and why it was built that way"
+    avoid_when:
+      - "the user wants code changes rather than an explanation"
+    invokes: [pstack/how, pstack/why]
+
+  pstack/typescript-best-practices:
+    source: pstack
+    path: vendors/pstack/skills/typescript-best-practices/SKILL.md
+    categories: [implementation, review]
+    use_when:
+      - "the change reads or edits TypeScript or TSX and needs guidance on types, narrowing and runtime boundaries"
+    avoid_when:
+      - "the change does not involve TypeScript or TSX"
+
+  pstack/unslop:
+    source: pstack
+    path: vendors/pstack/skills/unslop/SKILL.md
+    categories: [documentation]
+    use_when:
+      - "existing prose needs editing to remove AI writing patterns while preserving meaning and tone"
 
   # ---------- addyosmani ----------
 
@@ -374,3 +848,93 @@ skills:
     categories: [release]
     use_when:
       - preparing a production deploy, staged rollout or rollback plan
+
+  addyosmani/browser-testing-with-devtools:
+    source: addyosmani
+    path: vendors/addyosmani/skills/browser-testing-with-devtools/SKILL.md
+    categories: [testing, debugging, performance]
+    use_when:
+      - "browser behavior needs live DOM, console, network, screenshot or profiling evidence through Chrome DevTools MCP"
+    avoid_when:
+      - "the change is backend-only or Chrome DevTools MCP is unavailable"
+    requires:
+      - "a configured chrome-devtools MCP server"
+
+  addyosmani/ci-cd-and-automation:
+    source: addyosmani
+    path: vendors/addyosmani/skills/ci-cd-and-automation/SKILL.md
+    categories: [setup, release]
+    use_when:
+      - "build or deployment pipelines need automated quality gates, CI test runners or deployment strategies"
+
+  addyosmani/constraint-driven-development:
+    source: addyosmani
+    path: vendors/addyosmani/skills/constraint-driven-development/SKILL.md
+    categories: [specification, setup]
+    use_when:
+      - "the project needs explicit quality thresholds in CONSTRAINTS.md and checks that prevent silently weakening them"
+    avoid_when:
+      - "the quality bar is already defined and the task only needs implementation within it"
+
+  addyosmani/context-engineering:
+    source: addyosmani
+    path: vendors/addyosmani/skills/context-engineering/SKILL.md
+    categories: [context-management, setup]
+    use_when:
+      - "agent context or rules need curation at session startup, task switches or when output stops following project conventions"
+
+  addyosmani/deprecation-and-migration:
+    source: addyosmani
+    path: vendors/addyosmani/skills/deprecation-and-migration/SKILL.md
+    categories: [planning, refactoring, release]
+    use_when:
+      - "an old API, system or production schema needs a staged migration and eventual removal"
+    complexity: [medium, high]
+
+  addyosmani/doubt-driven-development:
+    source: addyosmani
+    path: vendors/addyosmani/skills/doubt-driven-development/SKILL.md
+    categories: [independent-review]
+    use_when:
+      - "non-trivial decisions need fresh-context adversarial checks while correction is still cheap"
+    avoid_when:
+      - "the step must run inside a subagent; this skill requires the main-session orchestrator to spawn reviewers"
+    complexity: [medium, high]
+    requires:
+      - "main-session execution with a fresh-context reviewer tool"
+
+  addyosmani/frontend-ui-engineering:
+    source: addyosmani
+    path: vendors/addyosmani/skills/frontend-ui-engineering/SKILL.md
+    categories: [implementation]
+    use_when:
+      - "building or changing user-facing components, responsive layouts, interaction states or accessibility"
+    avoid_when:
+      - "the change has no user-facing interface"
+
+  addyosmani/observability-and-instrumentation:
+    source: addyosmani
+    path: vendors/addyosmani/skills/observability-and-instrumentation/SKILL.md
+    categories: [implementation]
+    use_when:
+      - "production features need structured logs, metrics, traces and symptom-based alerts tied to operational questions"
+    avoid_when:
+      - "the request is to diagnose an active failure, optimize measured slowness or plan launch-day monitoring"
+
+  addyosmani/source-driven-development:
+    source: addyosmani
+    path: vendors/addyosmani/skills/source-driven-development/SKILL.md
+    categories: [research, implementation]
+    use_when:
+      - "framework-specific implementation decisions need verification and citations from the official documentation for the installed versions"
+    avoid_when:
+      - "the task is version-independent logic or the user explicitly prioritizes speed over documentation verification"
+
+  addyosmani/using-agent-skills:
+    source: addyosmani
+    path: vendors/addyosmani/skills/using-agent-skills/SKILL.md
+    categories: [workflow-selection]
+    use_when:
+      - "the user asks to discover or apply the Addy Osmani skill collection and its development workflow"
+    avoid_when:
+      - "the router already selected the workflow and no vendor-specific routing was requested"

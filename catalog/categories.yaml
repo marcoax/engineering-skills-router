@@ -24,3 +24,11 @@ categories:
   pull-request:        Open or describe a pull request.
   release:             Prepare a production launch.
   setup:               One-time repo configuration a skill depends on.
+
+  # Supporting tasks, selected when needed rather than added to the default flow.
+  communication:       Explain a response or report progress and pending decisions plainly.
+  learning:            Teach a concept or skill through lessons and practice.
+  retrospective:       Extract durable improvements from a completed session or repeated mistakes.
+  context-management:  Recover, curate or hand off the context needed for agent work.
+  workflow-selection:  Help choose a vendor workflow or run an explicitly requested vendor orchestrator.
+  skill-authoring:     Create or improve reusable instructions and verification skills.

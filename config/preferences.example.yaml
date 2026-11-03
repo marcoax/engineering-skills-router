@@ -15,8 +15,7 @@ preferences:
     model: claude
 
   # Skills never to select.
-  exclude:
-    - pstack/interrogate
+  exclude: []
 
   # Folder holding your own skills, listed in config/personal-skills.yaml
   # (see config/personal-skills.example.yaml). A leading ~ is your home dir;
