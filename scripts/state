@@ -13,6 +13,9 @@
 //   handoff issue <n> <url> | spec <path> | ticket <n> <url> | branch <name> | base <sha|HEAD> | pr <n> <url>
 //   reply <reply>            a selection reply: go, 2b, 5on, 5off, stop, pause, resume.
 //                            edit and full exit 2: recompose the workflow (SKILL.md §2-§4).
+//   primary [<family>|<n>]   without an answer, the primary question: the two families with
+//                            their models, the run's current one first (1 keeps it). With one,
+//                            sets the run's primary. Both only while the workflow is selecting.
 //   show                     the workflow, one line per step, with the step model when set,
 //                            then the run's Models line (primary from the state)
 //   model <n|id>             the model a step's subagent runs on: its first phase's `model` in
@@ -35,7 +38,7 @@ const prefs = (() => {
 
 const [target, command, ...rest] = process.argv.slice(2);
 if (!target || !command) {
-  console.error('usage: scripts/state <target-repo> step|workflow|handoff|reply|show|model ...');
+  console.error('usage: scripts/state <target-repo> step|workflow|handoff|reply|primary|show|model ...');
   process.exit(1);
 }
 const file = path.join(target, '.router', 'state.json');
@@ -71,6 +74,16 @@ if (command === 'show') {
   process.exit(0);
 }
 
+if (command === 'primary' && !args.length) {
+  try {
+    ops.setPrimary(state, models.runPrimary(state, prefs)); // asked only while the workflow is selecting
+  } catch (e) {
+    die(e.message);
+  }
+  console.log(models.primaryQuestion(state, prefs));
+  process.exit(0);
+}
+
 if (command === 'model') {
   let i;
   try {
@@ -86,6 +99,12 @@ let next;
 try {
   if (command === 'step') next = ops.setStep(state, args[0], args[1], flags);
   else if (command === 'workflow') next = ops.setWorkflow(state, args[0]);
+  else if (command === 'primary') {
+    const family = models.primaryAnswer(state, prefs, args[0]);
+    if (!family) die(`primary must be ${models.FAMILIES.join(' | ')} or an option number from \`primary\`, got "${args[0]}"`);
+    next = ops.setPrimary(state, family);
+    args[0] = family;
+  }
   else if (command === 'handoff') {
     let values = args.slice(1);
     if (args[0] === 'base' && values[0] === 'HEAD') {

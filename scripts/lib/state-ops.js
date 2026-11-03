@@ -75,6 +75,12 @@ function setWorkflow(state, status) {
   return { ...clone(state), status };
 }
 
+// The run's primary family is chosen before the workflow starts; a started run keeps its own.
+function setPrimary(state, family) {
+  if (state.status !== 'selecting') fail(`primary is chosen before the workflow starts; this run is ${state.status} and keeps ${state.primary ?? 'its family'}`);
+  return { ...clone(state), primary: family };
+}
+
 // Handoff values: issue <n> <url>, spec <path>, ticket <n> <url> (added), branch <name>,
 // base <sha>, pr <n> <url>.
 function setHandoff(state, field, args) {
@@ -163,4 +169,4 @@ function applyReply(state, reply) {
   return swap(state, i, m[2]);
 }
 
-module.exports = { setStep, setWorkflow, setHandoff, applyReply, stepIndex, STEP_STATUSES, WORKFLOW_STATUSES };
+module.exports = { setStep, setWorkflow, setPrimary, setHandoff, applyReply, stepIndex, STEP_STATUSES, WORKFLOW_STATUSES };
