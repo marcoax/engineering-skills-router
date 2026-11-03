@@ -1,0 +1,6 @@
+# Written by scripts/update --approve: the vendor revision each source's catalog entries were
+# last reviewed against. The submodule gitlinks pin what is checked out; this records what was reviewed.
+reviewed:
+  pstack: ecec42adbe4f240e4ae19d296768445f0dfbd38e
+  mattpocock: 4ae2317ddb22b046e26455e4f9c9b3aaaf62212d
+  addyosmani: 301b02b12bff98e4688e6984af6556802322bbde
