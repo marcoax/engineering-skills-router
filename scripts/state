@@ -12,7 +12,9 @@
 //   workflow <status>        selecting | running | waiting | done | paused | stopped
 //   handoff issue <n> <url> | spec <path> | ticket <n> <url> | branch <name> | base <sha|HEAD> | pr <n> <url>
 //   reply <reply>            a selection reply: go, 2b, 5on, 5off, stop, pause, resume.
-//                            A swap recalculates coverage from the newly selected skill.
+//                            A swap restores, as steps of their own, the tests and reviews the
+//                            old skill ran inside the step, and recalculates coverage from the
+//                            newly selected skill.
 //                            edit and full exit 2: reselect and recompose (SKILL.md §3-§4).
 //   primary [<family>|<n>]   without an answer, the primary question: the two families with
 //                            their models, the run's current one first (1 keeps it); --json
@@ -93,15 +95,13 @@ function compose() {
   } catch (e) {
     die(`invalid JSON in ${file}: ${e.message}`);
   }
-  const unfinished = previous && ['running', 'waiting', 'paused', 'stopped', 'selecting'].includes(previous.status);
   const errors = [];
-  if (isNew && unfinished && previous.status !== 'selecting')
+  if (isNew && ops.UNFINISHED.includes(previous?.status))
     die(`an unfinished workflow (${previous.status}) is in ${target}: resume it or discard it first (resume.md)`);
   if (!isNew) {
-    if (!unfinished) die(`no workflow to recompose in ${target}: start one with compose --new`);
+    if (![...ops.UNFINISHED, 'selecting'].includes(previous?.status)) die(`no workflow to recompose in ${target}: start one with compose --new`);
     // Completed work stays as it ran; only the remaining work is reconsidered.
-    const ran = (x) => ['done', 'failed'].includes(x.status) || (x.status === 'skipped' && x.outcome !== 'off (optional)');
-    for (const old of previous.steps.filter(ran)) {
+    for (const old of previous.steps.filter(ops.ran)) {
       const i = next.steps.findIndex((x) => x?.id === old.id);
       if (i === -1) errors.push(`${old.id}: a recomposition keeps completed steps (${old.status})`);
       else next.steps[i] = old;
@@ -111,7 +111,6 @@ function compose() {
   }
   const Catalog = require('./lib/catalog');
   const skills = Catalog.skills(target);
-  const guides = Catalog.guides();
   const categories = Catalog.categories();
   const done = new Set(isNew ? [] : previous.steps.filter((x) => next.steps.includes(x)).map((x) => x.id));
   for (const step of next.steps) {
@@ -122,21 +121,19 @@ function compose() {
     const picks = [[null, step.skill], ...Catalog.arr(step.alternatives).map((a) => ['alternative', a?.skill])];
     for (const [role, id] of picks) {
       if (id == null) continue;
-      const where = `${step.id}: ${role ? `${role} ` : ''}${id}`;
-      const hint = role ? '' : ` (choose another, or report ${phases.join(', ') || step.id} as missing)`;
-      const candidate = phases.flatMap((p) => Catalog.candidates(p, skills)).find((c) => c.id === id);
-      if (Object.hasOwn(guides, id)) errors.push(`${where}: a guide, not an executable skill`);
-      else if (!Object.hasOwn(skills, id)) errors.push(`${where}: unknown skill${hint}`);
-      else if (!candidate) errors.push(`${where}: not a candidate for ${phases.join(', ') || 'a step without phases'}`);
-      else if (candidate.status !== 'ok') errors.push(`${where}: ${candidate.status}${hint}`);
+      const problem = Catalog.pickProblem(id, phases, skills);
+      if (!problem) continue;
+      // The selector's default for a phase that cannot run: another pick, or a missing capability.
+      const hint = role || !problem.replaceable ? '' : ` (choose another, or report ${phases.join(', ') || step.id} as missing)`;
+      errors.push(`${step.id}: ${role ? `${role} ` : ''}${id}: ${problem.message}${hint}`);
     }
   }
   const classified = classify(next, isNew ? null : previous);
   errors.push(...classified.errors.map((e) => (e.startsWith('classification') ? e : `classification: ${e}`)));
   if (errors.length) die(errors.join('\nerror: '));
-  const recovered = ops.recover({ ...next, status: 'selecting' }, invokesFor(target));
-  write(recovered.state, previous ? JSON.stringify(previous) : null, `compose${isNew ? ' --new' : ''}`,
-    [classified.line, ...recovered.notes.map((n) => `coverage: ${n}`)]);
+  const covered = ops.recalculateCoverage({ ...next, status: 'selecting' }, invokesFor(target));
+  write(covered.state, previous ? JSON.stringify(previous) : null, `compose${isNew ? ' --new' : ''}`,
+    [classified.line, ...covered.notes.map((n) => `coverage: ${n}`)]);
 }
 
 // The classification (classification.md) a composed workflow carries. A recomposition that does not
@@ -234,13 +231,10 @@ try {
     }
     next = ops.setHandoff(state, args[0], values);
   } else if (command === 'reply') {
-    next = ops.applyReply(state, args.join(' '));
-    // A swap changes what the step runs internally: recalculate coverage before go.
-    if (/^\d+[a-z]$/.test(args.join(' ').trim().toLowerCase())) {
-      const recovered = ops.recover(next, invokesFor(target));
-      next = recovered.state;
-      notes.push(...recovered.notes);
-    }
+    // A swap changes what the step runs internally: coverage is recalculated before go.
+    const replied = ops.reply(state, args.join(' '), invokesFor(target));
+    next = replied.state;
+    notes.push(...replied.notes);
   }
   else die(`unknown command ${command}`);
 } catch (e) {

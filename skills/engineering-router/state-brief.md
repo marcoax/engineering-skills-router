@@ -23,8 +23,8 @@ Read from SKILL.md §5. Write the composed workflow like this example to a file 
       "alternatives": [], "confirm": false, "optional": false, "covered_by": null, "model": null, "effort": null, "status": "pending", "outcome": null },
     { "id": "implementation", "phases": ["implementation"], "skill": "mattpocock/implement", "reason": "one spec, built here", "summary": "Build the export test-first",
       "alternatives": [], "confirm": false, "optional": false, "covered_by": null, "model": null, "effort": null, "status": "pending", "outcome": null },
-    { "id": "review-1", "phases": ["review"], "skill": "mattpocock/code-review", "reason": "runs inside implement", "summary": "Review since the base commit",
-      "alternatives": [], "confirm": false, "optional": false, "covered_by": "implementation", "model": null, "effort": null, "status": "pending", "outcome": null },
+    { "id": "review-1", "phases": ["review"], "skill": "addyosmani/code-review-and-quality", "reason": "five axes fit a user-facing export", "summary": "Review since the base commit",
+      "alternatives": [{ "skill": "mattpocock/code-review", "reason": "standards and spec axes" }], "confirm": false, "optional": false, "covered_by": null, "model": null, "effort": null, "status": "pending", "outcome": null },
     { "id": "review-2", "phases": ["review"], "skill": "addyosmani/code-review-and-quality", "reason": "other axes, other family", "summary": "Second review on the other family",
       "alternatives": [], "confirm": false, "optional": true, "covered_by": null, "model": "openai-codex/gpt-6-sol", "effort": null, "status": "skipped", "outcome": "off (optional)" }
   ],
@@ -37,7 +37,7 @@ Read from SKILL.md §5. Write the composed workflow like this example to a file 
 - **skill** the selector's default (`source/name`), or `null` for a router step (then no alternatives). At most two **alternatives**, the selector's, none equal to the skill. `compose` refuses any that is not a usable candidate for the step's `phases`.
 - **confirm** `false` by default; `true` for a user-requested checkpoint, recorded as in [autonomy.md](autonomy.md).
 - **optional** `true` for review 2, comparison, independent-review, verification; while off: `status` `skipped`, `outcome` `off (optional)`.
-- **covered_by**: the id of the step whose skill runs this one (review 1 inside implementation); never review 1 on a light path. `compose` recalculates it from the catalog's `invokes`.
+- **covered_by** `null`, with the selector's default and alternatives on every step, also one an earlier skill runs (review 1 inside implementation): `compose` covers it from the catalog's `invokes`, gives it the skill the covering step runs and keeps the selector's pick in `selected`, which a swap restores when the step runs on its own again. Never review 1 on a light path.
 - **primary**: the answer to the primary question; leave it out to take `primary` from the user's `preferences.yaml` (default `claude`). A recomposition keeps the run's own ([models.md](models.md)).
 - **model** and **effort** `null`: no step has run yet. From §6 on, `scripts/state` sets each step's step model ([models.md](models.md)), recorded as its source names it, when it starts and when it closes; `model` stays `null` only for a step that did not run.
 - **handoff.issue** is `{number, url}` when the task is an issue; everything else starts empty and is set later with `scripts/state … handoff`.

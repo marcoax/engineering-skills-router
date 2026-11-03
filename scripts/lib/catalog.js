@@ -188,7 +188,18 @@ function candidates(category, allSkills = skills(), prefs = preferences()) {
     .map(([id, origin]) => ({ id, origin, status: status(allSkills[id], id, excluded), skill: allSkills[id] }));
 }
 
+// Why `id` cannot be picked for a step filling `phases` (it must be an `ok` candidate of one of
+// them), or null when it can: { message, replaceable }. `replaceable` problems (unknown, excluded,
+// missing) leave the step needing another pick or a missing capability; the others are misplacements.
+function pickProblem(id, phases, allSkills = skills(), prefs = preferences()) {
+  if (Object.hasOwn(guides(), id)) return { message: 'a guide, not an executable skill', replaceable: false };
+  if (!Object.hasOwn(allSkills, id)) return { message: 'unknown skill', replaceable: true };
+  const candidate = phases.flatMap((p) => candidates(p, allSkills, prefs)).find((c) => c.id === id);
+  if (!candidate) return { message: `not a candidate for ${phases.join(', ') || 'a step without phases'}`, replaceable: false };
+  return candidate.status === 'ok' ? null : { message: candidate.status, replaceable: true };
+}
+
 module.exports = {
   ROOT, PROJECT_CATALOG, PROJECT_PHASES, CONFIG_ENV, CONFIG_FILES, CLONE_CONFIG, config, label, readYaml, arr, sources, skills, vendorSkills, guides, ownedBy, projectSkills,
-  personalPath, personalSkills, namesake, categories, preferences, available, description, targetArg, upstreamPaths, candidates,
+  personalPath, personalSkills, namesake, categories, preferences, available, description, targetArg, upstreamPaths, candidates, pickProblem,
 };

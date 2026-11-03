@@ -805,8 +805,8 @@ ${['one', 'folded', 'plain', 'nodesc', 'broken', 'nofm'].map((n) => `  acme/${n}
     [mutate((s) => { s.phases[0].default.skill = 'nobody/nothing'; }), 'review: default nobody/nothing: unknown skill'],
     [mutate((s) => { s.phases[0].default.skill = 'mattpocock/ask-matt'; }), 'review: default mattpocock/ask-matt: a guide, not an executable skill'],
     [mutate((s) => { s.phases[0].default.skill = 'mattpocock/code-review'; }), 'review: default mattpocock/code-review: excluded'],
-    [mutate((s) => { s.phases[0].alternatives[0].skill = 'mattpocock/tdd'; }), 'review: alternative mattpocock/tdd: not a candidate for this phase'],
-    [mutate((s) => { s.phases[1].default.skill = 'addyosmani/code-review-and-quality'; }), 'framework-review: default addyosmani/code-review-and-quality: not a candidate for this phase'],
+    [mutate((s) => { s.phases[0].alternatives[0].skill = 'mattpocock/tdd'; }), 'review: alternative mattpocock/tdd: not a candidate for review'],
+    [mutate((s) => { s.phases[1].default.skill = 'addyosmani/code-review-and-quality'; }), 'framework-review: default addyosmani/code-review-and-quality: not a candidate for framework-review'],
     [mutate((s) => { s.phases[2].alternatives.push(pick('pstack/swarm')); }), 'implementation: at most two alternatives'],
     [mutate((s) => { s.phases[2].alternatives[0].skill = 'mattpocock/implement'; }), 'implementation: alternative mattpocock/implement: repeats another pick'],
     [mutate((s) => { s.phases[0].default.reason = ' '; }), 'review: default pstack/interrogate: needs a reason'],
@@ -1352,6 +1352,45 @@ expectStateOk('unknown fields', variant((s) => { s.extra = 1; s.steps[0].extra =
   expectOk('reply 3a on a light path', st('reply', '3a'));
   if (byId('review-1').covered_by !== null || byId('review-1').skill !== 'addyosmani/code-review-and-quality')
     fail(`a light path never covers review 1: ${JSON.stringify(byId('review-1'))}`);
+
+  // Swapping back and forth keeps the selector's own pick for a covered step: covering keeps it
+  // aside, running on its own restores it with its alternatives and reason.
+  fs.rmSync(stateFile);
+  const composedFile = path.join(tmp, 'swap-composed.json');
+  const selectorPick = { skill: 'addyosmani/code-review-and-quality', reason: 'axes fit this change',
+    alternatives: [{ skill: 'pstack/interrogate', reason: 'question the change' }] };
+  fs.writeFileSync(composedFile, JSON.stringify(integrated((s) => {
+    s.steps.splice(3, 1);
+    Object.assign(s.steps[3], { covered_by: null, ...selectorPick });
+  })));
+  expectOk('compose --new', run('state', repo, 'compose', '--new', composedFile));
+  const covered = byId('review-1');
+  if (covered.covered_by !== 'implementation' || covered.skill !== 'mattpocock/code-review' || covered.alternatives.length !== 0)
+    fail(`compose should cover review 1 with the skill implement runs: ${JSON.stringify(covered)}`);
+  // Swapping away from an implementation that ran the tests, with no testing step: the tests it
+  // ran come back as a step of their own, right after it.
+  r = expectOk('reply 3a (to arena, no testing step)', st('reply', '3a'));
+  const ids = read().steps.map((x) => x.id);
+  const testing = byId('testing');
+  if (!testing || ids.indexOf('testing') !== ids.indexOf('implementation') + 1 || testing.skill !== 'mattpocock/tdd'
+    || testing.status !== 'pending' || testing.covered_by !== null || JSON.stringify(testing.phases) !== '["testing"]')
+    fail(`a swap away from implement should restore its tests as a step: ${JSON.stringify(read().steps)}`);
+  if (!r.out.includes('coverage: testing restored as a step of its own (mattpocock/implement ran mattpocock/tdd inside implementation)'))
+    fail(`the swap should say testing was restored\n${r.out}`);
+  for (let round = 1; round <= 2; round++) {
+    if (round > 1) r = expectOk(`reply 3a (away, round ${round})`, st('reply', '3a'));
+    const own = byId('review-1');
+    if (own.covered_by !== null || own.skill !== selectorPick.skill || own.reason !== selectorPick.reason
+      || JSON.stringify(own.alternatives) !== JSON.stringify(selectorPick.alternatives))
+      fail(`round ${round}: review 1 on its own should get the selector's pick back: ${JSON.stringify(own)}`);
+    if (r.out.includes('null')) fail(`coverage notes should name the covering skill\n${r.out}`);
+    expectOk(`reply 3a (back, round ${round})`, st('reply', '3a'));
+    if (byId('review-1').covered_by !== 'implementation') fail(`round ${round}: review 1 should be covered again`);
+  }
+
+  // Swapping back covers the restored step again; it is not duplicated.
+  if (read().steps.filter((x) => x.id.startsWith('testing')).length !== 1 || byId('testing').covered_by !== 'implementation')
+    fail(`swapping back should cover the restored testing step: ${JSON.stringify(read().steps)}`);
 }
 
 // compose: the selector-to-state boundary. A composed workflow becomes the executable state only
@@ -1634,6 +1673,23 @@ ${primary ? `  primary: ${primary}\n` : ''}  effort: medium
     'simple-but-sensitive', 'complex-low-impact', 'misleading-terms'];
   const absent = KINDS.filter((k) => !kinds.has(k));
   if (absent.length) fail(`classification evals need cases of kind: ${absent.join(', ')}`);
+}
+
+// The router's instructions and the scripts agree: a new run is selected by the skill selector and
+// written through `scripts/state … compose --new`, and §1 resumes exactly the workflows the scripts
+// treat as unfinished.
+{
+  const router = fs.readFileSync(path.join(ROOT, 'skills/engineering-router/SKILL.md'), 'utf8');
+  const section = (n) => router.split(/^## /m).find((s) => s.startsWith(`${n}. `)) ?? '';
+  if (!section(3).includes('`skills/skill-selector/SKILL.md`') || !/scripts\/check-selection --target/.test(section(3)))
+    fail('router SKILL.md §3 should select through skills/skill-selector/SKILL.md, checked by check-selection');
+  if (!/scripts\/state <target repo> compose --new <file>/.test(section(5)))
+    fail('router SKILL.md §5 should write a new workflow with scripts/state … compose --new');
+  if (/scripts\/list-skills/.test(section(3))) fail('router SKILL.md §3 should leave candidate listing to the selector');
+  const { UNFINISHED } = require(path.join(ROOT, 'scripts/lib/state-ops'));
+  const named = [...(section(1).match(/unfinished workflow:.*? with status ((?:`\w+`(?:, | or )?)+)/)?.[1] ?? '').matchAll(/`(\w+)`/g)].map((m) => m[1]);
+  if (JSON.stringify(named.sort()) !== JSON.stringify([...UNFINISHED].sort()))
+    fail(`router SKILL.md §1 should name the unfinished statuses ${UNFINISHED.join(', ')}; names ${named.join(', ')}`);
 }
 
 const adapterDir = path.join(ROOT, 'adapters/pi');
