@@ -804,7 +804,9 @@ ${['one', 'folded', 'plain', 'nodesc', 'broken', 'nofm'].map((n) => `  acme/${n}
     { phase: 'framework-review', reason: 'the repo has its own practices', default: pick('project/fw'), alternatives: [] },
     { phase: 'implementation', reason: 'code must change', default: pick('mattpocock/implement'),
       alternatives: [pick('addyosmani/incremental-implementation'), pick('pstack/arena', 'High cost: competing designs')] },
-  ], { missing: [{ phase: 'release', reason: 'no shipping skill fits' }] });
+  ], { missing: [{ phase: 'release', reason: 'no shipping skill fits' }],
+    omitted: ['requirements', 'specification', 'planning', 'security', 'independent-review', 'pull-request']
+      .map((phase) => ({ phase, reason: 'not needed for this task' })) });
   let r = check(good);
   if (!r.ok || !r.out.includes('selection OK')) fail(`a usable selection should pass check-selection\n${r.out}`);
   const mutate = (fn) => { const s = JSON.parse(JSON.stringify(good)); fn(s); return s; };
@@ -822,6 +824,11 @@ ${['one', 'folded', 'plain', 'nodesc', 'broken', 'nofm'].map((n) => `  acme/${n}
     [mutate((s) => { delete s.phases[0].default; }), 'review: needs a default (or list the phase under missing)'],
     [mutate((s) => { s.missing.push({ phase: 'review', reason: 'x' }); }), 'review: both selected and missing'],
     [mutate((s) => { s.missing[0].reason = ''; }), 'missing release: needs a reason'],
+    // Every default-flow phase is accounted for: selected, omitted with a reason, or missing.
+    [mutate((s) => { s.omitted.splice(1, 1); }), 'specification: a default-flow phase must be selected, omitted with a reason, or missing'],
+    [mutate((s) => { s.omitted = []; s.phases.splice(0, 1); }), 'review: a default-flow phase must be selected, omitted with a reason, or missing'],
+    [mutate((s) => { s.omitted[0].reason = ' '; }), 'omitted requirements: needs a reason'],
+    [mutate((s) => { s.omitted.push({ phase: 'review', reason: 'x' }); }), 'review: both selected and omitted'],
   ]) {
     r = check(sel);
     if (r.ok || !r.out.includes(`error: ${msg}`)) fail(`check-selection, expected: ${msg}\ngot:\n${r.out}`);
@@ -1693,6 +1700,11 @@ ${primary ? `  primary: ${primary}\n` : ''}  effort: medium
   if (!/scripts\/state <target repo> compose --new <file>/.test(section(5)))
     fail('router SKILL.md §5 should write a new workflow with scripts/state … compose --new');
   if (/scripts\/list-skills/.test(section(3))) fail('router SKILL.md §3 should leave candidate listing to the selector');
+  // check-selection requires a decision on the phases of §2's default flow, and only those.
+  const flow = section(2).match(/```text\n([\s\S]*?)```/)?.[1].replace(/ /g, '-') ?? '';
+  const { DEFAULT_FLOW } = require(path.join(ROOT, 'scripts/lib/catalog'));
+  const absent = DEFAULT_FLOW.filter((phase) => !flow.includes(phase));
+  if (absent.length) fail(`DEFAULT_FLOW names phases router SKILL.md §2's flow does not: ${absent.join(', ')}`);
   const { UNFINISHED } = require(path.join(ROOT, 'scripts/lib/state-ops'));
   const named = [...(section(1).match(/unfinished workflow:.*? with status ((?:`\w+`(?:, | or )?)+)/)?.[1] ?? '').matchAll(/`(\w+)`/g)].map((m) => m[1]);
   if (JSON.stringify(named.sort()) !== JSON.stringify([...UNFINISHED].sort()))

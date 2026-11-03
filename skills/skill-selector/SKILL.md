@@ -35,7 +35,7 @@ A guide whose file is missing or unreadable is **unavailable**: record it with t
 
 ## 4. Choose phases
 
-Pick the phases this task needs from `catalog/categories.yaml`, starting from the router's default flow (its SKILL.md §2) and keeping the smallest useful set. Each phase gets a task-specific reason. Discovery, code-understanding, clarification and architecture enter when the task's behavior or design is still uncertain: locating the file the task touches leaves that question open. `framework-review` enters only when the target has `docs/agents/skills.yaml` with a fitting skill. Name every default-flow phase you leave out, with its reason. Done when every chosen and every omitted phase has a reason.
+Pick the phases this task needs from `catalog/categories.yaml`, starting from the router's default flow (its SKILL.md §2) and keeping the smallest useful set. Each phase gets a task-specific reason. Discovery, code-understanding, clarification and architecture enter when the task's behavior or design is still uncertain: locating the file the task touches leaves that question open. `framework-review` enters only when the target has `docs/agents/skills.yaml` with a fitting skill. Name every default-flow phase you leave out, with its reason (on a light path: every phase light.md leaves out); `check-selection` refuses a default-flow phase that is neither selected, omitted nor missing. Done when every chosen and every omitted phase has a reason.
 
 ## 5. Select
 

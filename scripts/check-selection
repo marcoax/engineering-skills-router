@@ -4,16 +4,21 @@
 // Markdown answer holding it as the last ```json block. Each selected phase needs a reason and a
 // default; each pick (default and at most two alternatives) needs a reason and must be an `ok`
 // candidate of `list-skills` for its phase: cataloged, personal or (with --target)
-// project, present, not excluded, never a guide. A missing phase needs a reason. Judging fit is
-// the selector's job; this only proves every proposed step could run. Reads only.
+// project, present, not excluded, never a guide. Every phase of the router's default flow
+// (DEFAULT_FLOW) is accounted for: selected, omitted with a reason, or missing with a reason.
+// Judging fit is the selector's job; this only proves every proposed step could run and no
+// required phase was silently dropped. Reads only.
 //
 // {
 //   "phases":  [{ "phase": "review", "reason": "...", "default": { "skill": "<id>", "reason": "..." },
 //                 "alternatives": [{ "skill": "<id>", "reason": "..." }] }],
+//   "omitted": [{ "phase": "planning", "reason": "..." }],
 //   "missing": [{ "phase": "release", "reason": "..." }]
 // }
 const fs = require('node:fs');
 const Catalog = require('./lib/catalog');
+
+const { DEFAULT_FLOW } = Catalog;
 
 const { target, args } = Catalog.targetArg(process.argv.slice(2));
 Catalog.requireConfig();
@@ -38,12 +43,14 @@ const skills = Catalog.skills(target);
 const hasReason = (o) => typeof o?.reason === 'string' && o.reason.trim() !== '';
 const phases = Catalog.arr(selection.phases);
 const missing = Catalog.arr(selection.missing);
+const omitted = Catalog.arr(selection.omitted);
 
 for (const p of phases) {
   const name = p?.phase;
   if (!Object.hasOwn(categories, name)) { errors.push(`${name}: unknown phase`); continue; }
   if (!hasReason(p)) errors.push(`${name}: needs a reason`);
   if (missing.some((m) => m?.phase === name)) errors.push(`${name}: both selected and missing`);
+  if (omitted.some((m) => m?.phase === name)) errors.push(`${name}: both selected and omitted`);
   if (!p.default) { errors.push(`${name}: needs a default (or list the phase under missing)`); continue; }
   const alternatives = Catalog.arr(p.alternatives);
   if (alternatives.length > 2) errors.push(`${name}: at most two alternatives`);
@@ -58,9 +65,15 @@ for (const p of phases) {
     if (problem) errors.push(`${where}: ${problem.message}`);
   }
 }
-for (const m of missing) {
-  if (!Object.hasOwn(categories, m?.phase)) errors.push(`missing ${m?.phase}: unknown phase`);
-  if (!hasReason(m)) errors.push(`missing ${m?.phase}: needs a reason`);
+for (const [label, list] of [['missing', missing], ['omitted', omitted]]) {
+  for (const m of list) {
+    if (!Object.hasOwn(categories, m?.phase)) errors.push(`${label} ${m?.phase}: unknown phase`);
+    if (!hasReason(m)) errors.push(`${label} ${m?.phase}: needs a reason`);
+  }
+}
+for (const phase of DEFAULT_FLOW) {
+  if (![...phases, ...omitted, ...missing].some((p) => p?.phase === phase))
+    errors.push(`${phase}: a default-flow phase must be selected, omitted with a reason, or missing`);
 }
 
 for (const e of errors) console.log(`error: ${e}`);

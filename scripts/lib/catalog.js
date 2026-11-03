@@ -94,6 +94,10 @@ function requireConfig(cfg = config()) {
   console.error('The user configuration in effect cannot be read: fix it (scripts/config shows where, scripts/validate-catalog checks it).');
   process.exit(1);
 }
+// The phases of the router's default flow (skills/engineering-router/SKILL.md §2) a selection must
+// decide on. issue-tracking is left out: only a skill selected for another phase fills it.
+const DEFAULT_FLOW = ['requirements', 'specification', 'planning', 'implementation', 'review', 'framework-review',
+  'security', 'independent-review', 'pull-request'];
 // Phases only project skills fill.
 const PROJECT_PHASES = ['framework-review'];
 
@@ -228,6 +232,6 @@ function pickProblem(id, phases, allSkills = skills(), prefs = preferences()) {
 }
 
 module.exports = {
-  ROOT, PROJECT_CATALOG, PROJECT_PHASES, CONFIG_ENV, CONFIG_FILES, CLONE_CONFIG, config, configErrors, requireConfig, label, readYaml, arr, sources, skills, vendorSkills, guides, ownedBy, projectSkills,
+  ROOT, PROJECT_CATALOG, PROJECT_PHASES, DEFAULT_FLOW, CONFIG_ENV, CONFIG_FILES, CLONE_CONFIG, config, configErrors, requireConfig, label, readYaml, arr, sources, skills, vendorSkills, guides, ownedBy, projectSkills,
   personalPath, personalSkills, namesake, categories, preferences, available, description, targetArg, upstreamPaths, candidates, pickProblem,
 };
