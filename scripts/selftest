@@ -12,6 +12,9 @@ const ROOT = path.resolve(__dirname, '..');
 const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'router-selftest-'));
 process.on('exit', () => fs.rmSync(tmp, { recursive: true, force: true }));
 const STATE_MD = 'skills/engineering-router/state.md';
+// Never the maintainer's configuration: no explicit location, and an empty scratch XDG config root.
+delete process.env.ENGINEERING_ROUTER_CONFIG;
+process.env.XDG_CONFIG_HOME = path.join(tmp, 'xdg config');
 for (const dir of ['catalog', 'scripts', 'skills']) fs.cpSync(path.join(ROOT, dir), path.join(tmp, dir), { recursive: true });
 fs.mkdirSync(path.join(tmp, 'config'));
 for (const dir of ['vendors', 'node_modules']) fs.symlinkSync(path.join(ROOT, dir), path.join(tmp, dir));
@@ -292,6 +295,168 @@ fs.rmSync(prefsFile);
     fail('personal_path without a personal catalog should change nothing');
 }
 fs.rmSync(prefsFile);
+
+// Configuration discovery: user configuration outside the checkout survives a package update.
+// A disposable managed checkout, a separate user-configuration root (both with spaces) and a
+// fixture personal skill; behavior is observed through the scripts before and after the update.
+{
+  const managed = path.join(tmp, 'managed checkout');
+  // What a package update leaves: a fresh checkout, ignored files (config/*.yaml) cleaned.
+  const install = () => {
+    fs.rmSync(managed, { recursive: true, force: true });
+    for (const dir of ['catalog', 'scripts', 'skills']) fs.cpSync(path.join(ROOT, dir), path.join(managed, dir), { recursive: true });
+    fs.mkdirSync(path.join(managed, 'config'));
+    for (const dir of ['vendors', 'node_modules']) fs.symlinkSync(path.join(ROOT, dir), path.join(managed, dir));
+  };
+  const runIn = (script, args = [], extra = {}) => {
+    const r = spawnSync(path.join(managed, 'scripts', script), args, { encoding: 'utf8', env: { ...process.env, ...extra } });
+    return { ok: r.status === 0, out: r.stdout + r.stderr };
+  };
+  const xdg = path.join(tmp, 'user config root');
+  const external = path.join(xdg, 'engineering-skills-router');
+  const emptyRoot = { XDG_CONFIG_HOME: path.join(tmp, 'empty root') };
+  const skillsHome = path.join(fs.realpathSync(tmp), 'my skills');
+  fs.mkdirSync(path.join(skillsHome, 'notes'), { recursive: true });
+  fs.writeFileSync(path.join(skillsHome, 'notes/SKILL.md'), '---\ndescription: Fixture notes skill.\n---\n# notes\n');
+  const personalYaml = 'skills:\n  personal/notes:\n    path: notes/SKILL.md\n    categories: [documentation]\n    use_when:\n      - the task fits\n';
+  const prefsYaml = (personalPath) => `preferences:\n  personal_path: ${personalPath}\n  documentation:\n    prefer: [personal/notes]\n`
+    + '  exclude: [mattpocock/code-review]\n  implementation:\n    model: openai\n  context_threshold: 123456\n';
+  const target = fs.mkdtempSync(path.join(tmp, 'config-target-'));
+  fs.mkdirSync(path.join(target, '.router'));
+  fs.writeFileSync(path.join(target, '.router/state.json'),
+    fs.readFileSync(path.join(ROOT, STATE_MD), 'utf8').match(/```json\n([\s\S]*?)```/)[1]);
+  // The effective behavior a user sees: selected and excluded skills, a step's model, the threshold.
+  const behavior = (extra) => {
+    const docs = runIn('list-skills', ['documentation'], extra).out;
+    const review = runIn('list-skills', ['review'], extra).out;
+    return [
+      docs.match(/^1\. .*$/m)?.[0], docs.match(/^ {3}path: .*notes.*$/m)?.[0],
+      review.match(/^\d+\. mattpocock\/code-review {2}.*$/m)?.[0],
+      runIn('state', [target, 'model', 'implementation'], extra).out.trim(),
+      runIn('context-threshold', [], extra).out.trim(),
+    ].join('\n');
+  };
+  const expected = ['1. personal/notes  [preference, ok]', `   path: ${path.join(skillsHome, 'notes/SKILL.md')}`,
+    '1. mattpocock/code-review  [preferred, excluded]', 'openai-codex/gpt-6-sol', '123456'].join('\n');
+
+  // External configuration (the XDG default) applies, and survives replacement and cleanup.
+  install();
+  fs.mkdirSync(external, { recursive: true });
+  fs.writeFileSync(path.join(external, 'preferences.yaml'), prefsYaml(skillsHome));
+  fs.writeFileSync(path.join(external, 'personal-skills.yaml'), personalYaml);
+  const xdgEnv = { XDG_CONFIG_HOME: xdg };
+  if (behavior(xdgEnv) !== expected) fail(`external configuration should apply\n${behavior(xdgEnv)}`);
+  {
+    const r = runIn('validate-catalog', [], xdgEnv);
+    if (!r.ok || !/catalog OK \(\d+ skills \+ 1 personal,/.test(r.out)) fail(`external configuration should validate\n${r.out}`);
+    const shown = runIn('config', [], xdgEnv);
+    if (!shown.ok || !shown.out.includes('source: external') || !shown.out.includes(`preferences: ${path.join(external, 'preferences.yaml')}`))
+      fail(`scripts/config should report the external source\n${shown.out}`);
+  }
+  const before = fs.readFileSync(path.join(external, 'preferences.yaml'), 'utf8');
+  install();
+  if (behavior(xdgEnv) !== expected) fail(`behavior should survive a checkout update\n${behavior(xdgEnv)}`);
+  if (fs.readFileSync(path.join(external, 'preferences.yaml'), 'utf8') !== before) fail('the update should leave external files unchanged');
+  if (!runIn('validate-catalog', [], xdgEnv).ok) fail('external configuration should validate after the update');
+
+  // No configuration anywhere: documented defaults, reported as such.
+  {
+    const b = behavior(emptyRoot);
+    if (b.includes('personal/notes') || b.includes('excluded') || !b.endsWith('claude-bridge/claude-opus-5-5\n150000'))
+      fail(`missing configuration should give the defaults\n${b}`);
+    if (!runIn('config', [], emptyRoot).out.includes('source: defaults')) fail('scripts/config should report defaults');
+  }
+
+  // An explicit location wins over the XDG default, with a path containing spaces.
+  {
+    const chosen = path.join(tmp, 'chosen config');
+    fs.cpSync(external, chosen, { recursive: true });
+    const env = { ...emptyRoot, ENGINEERING_ROUTER_CONFIG: chosen };
+    if (behavior(env) !== expected) fail(`explicit configuration should apply\n${behavior(env)}`);
+    if (!runIn('config', [], env).out.includes('source: explicit')) fail('scripts/config should report the explicit source');
+    const missing = runIn('validate-catalog', [], { ENGINEERING_ROUTER_CONFIG: path.join(tmp, 'nowhere') });
+    if (missing.ok || !missing.out.includes('ENGINEERING_ROUTER_CONFIG: not a directory')) fail(`a missing explicit directory should fail\n${missing.out}`);
+  }
+
+  // Malformed configuration is diagnosed, not read as absent.
+  for (const [file, text, msg] of [
+    ['preferences.yaml', 'preferences: [unclosed\n', 'malformed YAML'],
+    ['preferences.yaml', 'review:\n  prefer: [mattpocock/tdd]\n', "expected a top-level 'preferences:' mapping"],
+    ['personal-skills.yaml', 'skills: {\n', 'malformed YAML'],
+  ]) {
+    const dir = fs.mkdtempSync(path.join(tmp, 'bad config '));
+    fs.writeFileSync(path.join(dir, file), text);
+    const r = runIn('validate-catalog', [], { ENGINEERING_ROUTER_CONFIG: dir });
+    if (r.ok || !r.out.includes(`error: ${path.join(dir, file)}: ${msg}`)) fail(`expected: ${file}: ${msg}\n${r.out}`);
+  }
+
+  // Clone-local configuration still works on its own; a relative personal_path keeps the checkout as its base.
+  const cloneFiles = ['preferences.yaml', 'personal-skills.yaml'].map((f) => path.join(managed, 'config', f));
+  const cloneLocal = () => {
+    install();
+    fs.writeFileSync(cloneFiles[0], prefsYaml('../my skills'));
+    fs.writeFileSync(cloneFiles[1], personalYaml);
+  };
+  cloneLocal();
+  if (behavior(emptyRoot) !== expected) fail(`clone-local configuration should apply\n${behavior(emptyRoot)}`);
+  if (!runIn('config', [], emptyRoot).out.includes('source: clone-local')) fail('scripts/config should report the clone-local source');
+
+  // Both present: the external one is used, never merged, and validation names the collision.
+  {
+    const r = runIn('validate-catalog', [], xdgEnv);
+    if (r.ok || !r.out.includes('error: config/preferences.yaml: ignored, the external configuration')) fail(`a collision should fail validation\n${r.out}`);
+    if (behavior(xdgEnv) !== expected) fail(`the external configuration should win a collision\n${behavior(xdgEnv)}`);
+  }
+
+  // Transition: migrate shows the plan, refuses to overwrite, validates, and keeps the originals on failure.
+  const snapshot = (dir) => (fs.existsSync(dir) ? fs.readdirSync(dir).sort().map((f) => `${f}:${fs.readFileSync(path.join(dir, f), 'utf8')}`).join('|') : 'absent');
+  const fresh = (name) => {
+    const root = path.join(tmp, name);
+    return { env: { XDG_CONFIG_HOME: root }, dest: path.join(root, 'engineering-skills-router') };
+  };
+  {
+    const { env, dest } = fresh('plan root');
+    const original = snapshot(path.join(managed, 'config'));
+    const plan = runIn('config', ['migrate'], env);
+    if (!plan.ok || !plan.out.includes(`${cloneFiles[0]}\n    -> ${path.join(dest, 'preferences.yaml')}`)
+      || !plan.out.includes(`personal_path ../my skills becomes ${skillsHome}`) || !plan.out.includes('Nothing changed'))
+      fail(`migrate should show the concrete movement\n${plan.out}`);
+    if (snapshot(path.join(managed, 'config')) !== original || fs.existsSync(dest)) fail('migrate without --yes should change nothing');
+
+    const taken = runIn('config', ['migrate', '--yes'], xdgEnv);
+    const externalBefore = snapshot(external);
+    if (taken.ok || !taken.out.includes('already exist') || snapshot(external) !== externalBefore || snapshot(path.join(managed, 'config')) !== original)
+      fail(`migrate should refuse an existing destination and change nothing\n${taken.out}`);
+
+    fs.writeFileSync(cloneFiles[0], `${prefsYaml('../my skills')}  review:\n    prefer: [nobody/nothing]\n`);
+    const invalid = snapshot(path.join(managed, 'config'));
+    const bad = runIn('config', ['migrate', '--yes'], env);
+    if (bad.ok || !bad.out.includes('does not validate') || snapshot(path.join(managed, 'config')) !== invalid || snapshot(dest) !== 'absent')
+      fail(`a configuration that does not validate should not move\n${bad.out}\n${snapshot(dest)}`);
+  }
+  {
+    // Success: the files move, the relative personal_path keeps pointing at the same skills, and the
+    // behavior survives the next update.
+    cloneLocal();
+    const { env, dest } = fresh('migrated root');
+    const done = runIn('config', ['migrate', '--yes'], env);
+    if (!done.ok || !done.out.includes(`In effect now: ${dest}`)) fail(`migrate --yes should succeed\n${done.out}`);
+    if (cloneFiles.some((f) => fs.existsSync(f))) fail('migrate --yes should remove the clone-local originals once done');
+    if (!fs.readFileSync(path.join(dest, 'preferences.yaml'), 'utf8').includes(`personal_path: ${JSON.stringify(skillsHome)}\n`)) fail(`personal_path should keep its meaning\n${fs.readFileSync(path.join(dest, 'preferences.yaml'), 'utf8')}`);
+    if (fs.readFileSync(path.join(dest, 'personal-skills.yaml'), 'utf8') !== personalYaml) fail('the personal catalog should move unchanged');
+    if (behavior(env) !== expected) fail(`behavior should be unchanged after migration\n${behavior(env)}`);
+    install();
+    if (behavior(env) !== expected || !runIn('validate-catalog', [], env).ok) fail(`behavior should survive an update after migration\n${behavior(env)}`);
+  }
+  {
+    // An explicit location is the migration's destination.
+    cloneLocal();
+    const chosen = path.join(tmp, 'explicit dest');
+    const env = { ...emptyRoot, ENGINEERING_ROUTER_CONFIG: chosen };
+    const done = runIn('config', ['migrate', '--yes'], env);
+    if (!done.ok || !fs.existsSync(path.join(chosen, 'personal-skills.yaml')) || behavior(env) !== expected) fail(`migrate should honor ${'ENGINEERING_ROUTER_CONFIG'}\n${done.out}`);
+  }
+}
 
 // Source-backed descriptions: a scratch vendor checkout (a git repo) registered as source `acme`.
 // Descriptions come from each SKILL.md frontmatter at the checked-out revision, never the catalog.
