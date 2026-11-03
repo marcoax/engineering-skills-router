@@ -165,7 +165,7 @@ Decide module shape, interfaces and boundaries before code.
 | [mattpocock/codebase-design](https://github.com/mattpocock/skills/blob/4ae2317ddb22b046e26455e4f9c9b3aaaf62212d/skills/engineering/codebase-design/SKILL.md) | designing a single module interface or deciding where a seam goes | — |
 | [mattpocock/improve-codebase-architecture](https://github.com/mattpocock/skills/blob/4ae2317ddb22b046e26455e4f9c9b3aaaf62212d/skills/engineering/improve-codebase-architecture/SKILL.md) | looking for deepening opportunities across the codebase, no specific target yet | Refactoring |
 | [pstack/architect](https://github.com/backnotprop/pstack/blob/ecec42adbe4f240e4ae19d296768445f0dfbd38e/skills/architect/SKILL.md) | types, signatures and module structure should be sketched before code | Planning |
-| [pstack/arena](https://github.com/backnotprop/pstack/blob/ecec42adbe4f240e4ae19d296768445f0dfbd38e/skills/arena/SKILL.md) | one attempt would lock in the wrong shape and parallel candidates are affordable | Prototyping |
+| [pstack/arena](https://github.com/backnotprop/pstack/blob/ecec42adbe4f240e4ae19d296768445f0dfbd38e/skills/arena/SKILL.md) | **High cost.** Build competing solutions to a complex design or implementation, choose a base and integrate the strongest parts. Useful when comparison justifies repeated implementation, judging, synthesis and verification; requires subagents with isolated outputs. | Prototyping, Implementation |
 | [pstack/statechart](https://github.com/backnotprop/pstack/blob/ecec42adbe4f240e4ae19d296768445f0dfbd38e/skills/statechart/SKILL.md) | a stateful system needs a TLA+ model check and a Mermaid chart showing paths to invariant violations | Testing and verification |
 
 ### Specification

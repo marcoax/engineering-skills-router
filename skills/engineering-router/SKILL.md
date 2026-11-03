@@ -86,6 +86,8 @@ Run `scripts/list-skills --target <target repo> <phase> ...` for the chosen phas
 
 For each phase, the **default** is the first candidate with status `ok` whose `use_when` fits and whose `avoid_when` and `complexity` do not contradict the task. A user preference wins only when it fits. `complexity` ranks but never empties a phase: when it rules out every candidate that otherwise fits, take the first of those as the default and the next as alternatives, and say they are sized for other tasks. You may pass over the default when the task context clearly matches a lower candidate better; say why. **Alternatives** are the next fitting `ok` candidates, at most two, each with a one-line reason.
 
+**Competing implementations.** For a high-complexity implementation with meaningful competing solutions, reserve one of the two alternative slots for `pstack/arena` when it is `ok`, its usage signals fit, and the harness supports subagents with isolated candidate outputs. Keep a single-implementation skill as the default unless the user explicitly chooses arena. Whenever arena appears in the proposal, label its reason **High cost** and explain that agents build the same artifact independently, followed by judging, synthesis and verification, consuming substantially more tokens than a single implementation. State the task-specific benefit of comparing candidates; quote a monetary estimate only when models, runner count and prices are known.
+
 - **review 1** is the `review` phase.
 - **review 2** takes the first fitting `ok` `review` candidate other than review 1's skill ([review-2.md](review-2.md)).
 - **framework-review** reviews the same diff as the reviews (from the base commit to HEAD) against the project skill's practices.
