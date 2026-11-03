@@ -21,7 +21,7 @@ The moment after one step has closed and before the next one starts. The step's 
 _Avoid_: checkpoint, mid-step pause
 
 **Primary family**:
-The model family (`claude` or `openai`) a run's steps run on unless their phase sets its own. Each run keeps its own in `.router/state.json`, starting from `primary` in `config/preferences.yaml`.
+The model family (`claude` or `openai`) a run's steps run on unless their phase sets its own. Each run keeps its own in `.router/state.json`, starting from `primary` in the user's `preferences.yaml`.
 _Avoid_: default model, main model
 
 **Primary question**:

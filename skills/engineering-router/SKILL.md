@@ -28,11 +28,13 @@ When it also prints `skill:`, this file is a copy installed apart from the check
 
 Tell the user the root in use and how it was found (`found:`). With `found: pi` the checkout belongs to Pi: keep it read-only and skip §0 (`pi update git:github.com/marcoax/engineering-skills-router` updates it). Run scripts from the root; every path below and every catalog `path` is relative to it, while `list-skills` prints personal and project skills' paths absolute (§3). Read vendor skills from `vendors/` at their catalog `path` and personal skills in place, where `list-skills` points, rather than from copies installed for the agent. The **target repo** is the one the task is about.
 
+Run `scripts/config` and tell the user the configuration source it prints (`source:`) and, when it is `clone-local` and `found: pi`, that a package update removes that configuration and `scripts/config migrate` shows how to move it out ([docs/configuration.md](../../docs/configuration.md)); move nothing unless the user asks. Every user setting below (`preferences.yaml`, `personal-skills.yaml`) is read from the directory it prints.
+
 Then run `scripts/validate-catalog`. When it prints errors, show them with the file they point at and ask: fix them now, or continue with the defaults for the settings in error. Done when it passes or the user chose.
 
 ## 0. Check for updates
 
-Read `update_check_days` from `config/preferences.yaml` (default 14; `0` means never ask) and the date in `config/.last-update-check` (missing file = never checked). If the setting is not 0 and that many days have passed, the check is due: follow [checkout.md](checkout.md). Done when it is not due, or checkout.md's check is done.
+Read `update_check_days` from the `preferences:` file `scripts/config` printed (default 14; `0` means never ask) and the date in `config/.last-update-check` (missing file = never checked). If the setting is not 0 and that many days have passed, the check is due: follow [checkout.md](checkout.md). Done when it is not due, or checkout.md's check is done.
 
 ## 1. Classify
 

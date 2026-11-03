@@ -27,7 +27,7 @@ const path = require('node:path');
 const { spawnSync } = require('node:child_process');
 const ops = require('./lib/state-ops');
 const models = require('./lib/models');
-// Preferences beside this script, never the target repo's. Unreadable ones keep the defaults;
+// The user configuration in effect (scripts/config), never the target repo's. Unreadable ones keep the defaults;
 // scripts/validate-catalog reports them.
 const prefs = (() => {
   try {

@@ -7,6 +7,9 @@ import { spawnSync } from "node:child_process";
 import adapter from "./context.ts";
 
 const ROOT = path.resolve(import.meta.dirname, "../..");
+// Never the maintainer's configuration: no explicit location, an empty XDG config root.
+delete process.env.ENGINEERING_ROUTER_CONFIG;
+process.env.XDG_CONFIG_HOME = path.join(os.tmpdir(), `router-no-user-config-${process.pid}`);
 const fixture = () => {
  const target = fs.mkdtempSync(path.join(os.tmpdir(), "router-boundary-"));
  fs.mkdirSync(path.join(target, ".router"));
@@ -63,6 +66,27 @@ for (const [label, preference, tokens, window, expected] of [
   }
  });
 }
+
+// User configuration outside the checkout (docs/configuration.md) reaches the adapter through the bridge.
+test("Pi boundary: threshold from an explicit configuration directory", async () => {
+ const target = fixture();
+ const router = fs.mkdtempSync(path.join(os.tmpdir(), "router checkout-"));
+ const config = fs.mkdtempSync(path.join(os.tmpdir(), "router user config-"));
+ const saved = process.env.ENGINEERING_ROUTER_CONFIG;
+ try {
+  fs.cpSync(path.join(ROOT, "scripts"), path.join(router, "scripts"), {recursive: true});
+  fs.symlinkSync(path.join(ROOT, "node_modules"), path.join(router, "node_modules"));
+  fs.writeFileSync(path.join(config, "preferences.yaml"), "preferences:\n  context_threshold: 162000\n");
+  process.env.ENGINEERING_ROUTER_CONFIG = config;
+  const command = `node "${router}/scripts/state" "${target}" step 2 done`;
+  const content = [{type: "text", text: "state: step 2 done → workflow running\n"}];
+  const result = await hook()!({toolName: "bash", input: {command}, isError: false, content}, {cwd: target, getContextUsage: () => ({tokens: 162000, contextWindow: 200000})});
+  assert.equal(result?.content.at(-1).text, "context: 162000 of 200000 window, threshold 162000");
+ } finally {
+  if (saved === undefined) delete process.env.ENGINEERING_ROUTER_CONFIG; else process.env.ENGINEERING_ROUTER_CONFIG = saved;
+  for (const dir of [target, router, config]) fs.rmSync(dir, {recursive: true, force: true});
+ }
+});
 
 for (const [label, command, output, isError] of [
  ["quoted echo", `echo '${ROOT}/scripts/state /target step 2 done'`, 'state: step 2 done → workflow running\n', false],
