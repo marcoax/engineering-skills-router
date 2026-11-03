@@ -16,7 +16,7 @@ skills:
 
   mattpocock/grill-me:
     source: mattpocock
-    path: vendors/mattpocock/skills/productivity/grill-me/SKILL.md
+    path: vendors/mattpocock/skills/productivity/no-such-skill/SKILL.md
     categories: [requirements, clarification]
     use_when:
       - task is vague or a plan needs stress-testing
