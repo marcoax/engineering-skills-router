@@ -280,6 +280,153 @@ fs.rmSync(prefsFile);
 }
 fs.rmSync(prefsFile);
 
+// Source-backed descriptions: a scratch vendor checkout (a git repo) registered as source `acme`.
+// Descriptions come from each SKILL.md frontmatter at the checked-out revision, never the catalog.
+const acmeDir = path.join(tmp, 'fixtures/acme');
+const acmeSkill = (name, text) => {
+  fs.mkdirSync(path.join(acmeDir, 'skills', name), { recursive: true });
+  fs.writeFileSync(path.join(acmeDir, 'skills', name, 'SKILL.md'), text);
+};
+// Without the GIT_* variables a pre-commit hook exports, which would aim these at the router repo.
+const gitEnv = Object.fromEntries(Object.entries(process.env).filter(([k]) => !k.startsWith('GIT_')));
+const git = (...a) => spawnSync('git', ['-C', acmeDir, '-c', 'user.name=t', '-c', 'user.email=t@t', ...a], { encoding: 'utf8', env: gitEnv });
+acmeSkill('one', '---\nname: one\ndescription: Reviews a diff | flags <risky> changes & more.\n---\n# one\n');
+acmeSkill('folded', '---\nname: folded\ndescription: >\n  Folded text\n  across   lines.\n---\n');
+acmeSkill('plain', '---\nname: plain\ndescription: Plain scalar\n  continued on the next line.\n---\n');
+acmeSkill('nodesc', '---\nname: nodesc\n---\n# no description\n');
+acmeSkill('broken', '---\nname: [broken\ndescription: x\n---\n');
+acmeSkill('nofm', '# no frontmatter\n');
+git('init', '-q');
+git('add', '.');
+git('commit', '-qm', 'fixture');
+const acmeRev = git('rev-parse', 'HEAD').stdout.trim();
+const sourcesFile = path.join(tmp, 'catalog/sources.yaml');
+const sourcesText = fs.readFileSync(sourcesFile, 'utf8');
+const catalogSkillsFile = path.join(tmp, 'catalog/skills.yaml');
+const catalogSkillsText = fs.readFileSync(catalogSkillsFile, 'utf8');
+fs.writeFileSync(sourcesFile, `${sourcesText}
+  acme:
+    repository: https://github.com/acme/skills
+    local_path: fixtures/acme
+    skill_globs:
+      - skills/*/SKILL.md
+`);
+fs.writeFileSync(catalogSkillsFile, `${catalogSkillsText}
+${['one', 'folded', 'plain', 'nodesc', 'broken', 'nofm'].map((n) => `  acme/${n}:
+    source: acme
+    path: fixtures/acme/skills/${n}/SKILL.md
+    categories: [review]
+    use_when:
+      - router-owned signal for ${n}
+`).join('\n')}`);
+{
+  const r = run('validate-catalog');
+  if (!r.ok) fail(`a source with missing descriptions should still validate\n${r.out}`);
+  for (const [id, reason] of [['acme/nodesc', 'missing description'], ['acme/broken', 'malformed frontmatter'], ['acme/nofm', 'no frontmatter']]) {
+    if (!r.out.includes(`warning: ${id}: description unavailable: ${reason}`)) fail(`validate-catalog should warn: ${id} ${reason}\n${r.out}`);
+  }
+  ({ out } = run('list-skills', 'review'));
+  const descriptionOf = (id) => out.split(/^\d+\. /m).find((b) => b.startsWith(`${id}  `))?.match(/^ {3}description: (.*)$/m)?.[1];
+  for (const [id, want] of [
+    ['acme/one', 'Reviews a diff | flags <risky> changes & more.'],
+    ['acme/folded', 'Folded text across lines.'],
+    ['acme/plain', 'Plain scalar continued on the next line.'],
+    ['acme/nodesc', '(unavailable: missing description)'],
+    ['acme/nofm', '(unavailable: no frontmatter)'],
+  ]) {
+    if (descriptionOf(id) !== want) fail(`list-skills ${id}: expected description ${want}; got ${descriptionOf(id)}\n${out}`);
+  }
+  if (!/^\(unavailable: malformed frontmatter: /.test(descriptionOf('acme/broken') ?? '')) fail(`list-skills acme/broken: expected malformed diagnostic\n${out}`);
+  if (!/use_when: router-owned signal for one$/m.test(out)) fail('router metadata should stay alongside the source description');
+  // Changing only the source changes the next listing; the catalog is untouched.
+  acmeSkill('one', '---\nname: one\ndescription: Rewritten upstream.\n---\n');
+  ({ out } = run('list-skills', 'review'));
+  if (descriptionOf('acme/one') !== 'Rewritten upstream.') fail(`list-skills should follow the source description\n${out}`);
+  if (fs.readFileSync(catalogSkillsFile, 'utf8').includes('Rewritten')) fail('the catalog should not receive source text');
+  acmeSkill('one', '---\nname: one\ndescription: Reviews a diff | flags <risky> changes & more.\n---\n# one\n');
+}
+
+// Guides: a registry separate from executable skills, with validated source ownership.
+{
+  ({ out } = run('list-skills', '--guides'));
+  for (const [id, text] of [
+    ['mattpocock/ask-matt', 'Ask which skill or flow fits your situation.'],
+    ['pstack/poteto-help', 'Guides users through pstack setup'],
+    ['addyosmani/using-agent-skills', 'Discovers and invokes agent skills.'],
+  ]) {
+    if (!new RegExp(`^\\d+\\. ${id}\\n {3}path: \\S+\\n {3}description: ${text}`, 'm').test(out)) fail(`list-skills --guides should list ${id} with its source description\n${out}`);
+  }
+  const allPhases = run('list-skills').out;
+  if (/ask-matt|poteto-help|using-agent-skills/.test(allPhases)) fail(`guides should never be phase candidates\n${allPhases}`);
+  if (!/^workflow-selection +pstack\/poteto-mode$/m.test(allPhases)) fail(`poteto-mode should stay an executable orchestrator\n${allPhases}`);
+
+  const guidesFile = path.join(tmp, 'catalog/guides.yaml');
+  const guidesText = fs.readFileSync(guidesFile, 'utf8');
+  const guide = (id, source, guidePath) => `  ${id}:\n    source: ${source}\n    path: ${guidePath}\n`;
+  fs.writeFileSync(guidesFile, `${guidesText}${guide('acme/nodesc', 'acme', 'fixtures/acme/skills/nodesc/SKILL.md')}`);
+  // A guide cannot also be a cataloged executable skill: acme/nodesc is one in this scratch catalog.
+  let r = run('validate-catalog');
+  if (r.ok || !r.out.includes('error: guides: acme/nodesc: also cataloged as an executable skill')) fail(`validate-catalog should reject a guide that is also a skill\n${r.out}`);
+  fs.writeFileSync(guidesFile, `${guidesText}${guide('acme/guide', 'acme', 'fixtures/acme/skills/nodesc/SKILL.md')}`);
+  r = run('validate-catalog');
+  if (!r.ok || !r.out.includes('warning: guides: acme/guide: description unavailable: missing description')) fail(`a guide without a description should validate with a warning\n${r.out}`);
+  ({ out } = run('list-skills', '--guides'));
+  if (!/^\d+\. acme\/guide\n {3}path: \S+\n {3}description: \(unavailable: missing description\)$/m.test(out)) fail(`list-skills --guides should show the diagnostic\n${out}`);
+  for (const [entry, msg] of [
+    [guide('acme/guide', 'nobody', 'fixtures/acme/skills/one/SKILL.md'), "guides: acme/guide: unknown source 'nobody'"],
+    [guide('acme/guide', 'pstack', 'vendors/pstack/skills/poteto-help/SKILL.md'), "guides: acme/guide: id must start with 'pstack/'"],
+    [guide('acme/guide', 'acme', 'fixtures/acme/skills/none/SKILL.md'), 'guides: acme/guide: path not found fixtures/acme/skills/none/SKILL.md'],
+    [guide('acme/guide', 'acme', 'vendors/pstack/skills/poteto-help/SKILL.md'), 'guides: acme/guide: path outside source acme (fixtures/acme): vendors/pstack/skills/poteto-help/SKILL.md'],
+    [guide('acme/guide', 'acme', 'fixtures/acme/../acme/skills/one/SKILL.md'), null],
+  ]) {
+    fs.writeFileSync(guidesFile, `${guidesText}${entry}`);
+    r = run('validate-catalog');
+    if (msg === null ? !r.ok : (r.ok || !r.out.includes(`error: ${msg}`))) fail(`validate-catalog guides, expected: ${msg ?? 'OK'}\ngot:\n${r.out}`);
+  }
+  fs.writeFileSync(guidesFile, guidesText);
+  // A preference cannot turn a guide into a phase candidate.
+  fs.writeFileSync(prefsFile, 'preferences:\n  workflow-selection:\n    prefer: [mattpocock/ask-matt]\n');
+  r = run('validate-catalog');
+  if (r.ok || !r.out.includes('error: preferences.workflow-selection: unknown skill mattpocock/ask-matt')) fail(`a preference should not name a guide\n${r.out}`);
+  fs.rmSync(prefsFile);
+}
+
+// The skill index is generated from the guide registry, the catalog and the vendor checkouts,
+// with the same descriptions as list-skills and links pinned to the checked-out revisions.
+{
+  const indexFile = path.join(tmp, 'docs/skill-index.md');
+  let r = run('skill-index');
+  if (!r.ok) fail(`skill-index should write the index\n${r.out}`);
+  if (!r.out.includes('warning: acme/nodesc: description unavailable: missing description')) fail(`skill-index should report an unreadable description\n${r.out}`);
+  const index = fs.readFileSync(indexFile, 'utf8');
+  const section = (title) => index.split(/^## /m).find((s) => s.startsWith(`${title}\n`)) ?? '';
+  if (!index.includes('[Back to the README](../README.md)')) fail('the index should link back to the README');
+  const oneLink = `[acme/one](https://github.com/acme/skills/blob/${acmeRev}/skills/one/SKILL.md)`;
+  const reviewRow = `| ${oneLink} | Reviews a diff \\| flags &lt;risky&gt; changes &amp; more. | — |`;
+  if (!section('Workflow and supporting skills').includes(`### Review\n`) || !index.includes(reviewRow)) fail(`index should list acme/one under Review, escaped and pinned\n${reviewRow}`);
+  ({ out } = run('list-skills', 'review'));
+  const folded = out.match(/^\d+\. acme\/folded .*\n(?: {3}.*\n)*? {3}description: (.*)$/m)[1];
+  if (!index.includes(`/skills/folded/SKILL.md) | ${folded} |`)) fail('index and list-skills should share one description');
+  if (!index.includes('/skills/nodesc/SKILL.md) | _(description unavailable: missing description)_ |')) fail('index should show the diagnostic, not invented text');
+  if (!/\[mattpocock\/ask-matt\]\(https:\/\/github\.com\/mattpocock\/skills\/blob\/[0-9a-f]{40}\/skills\/engineering\/ask-matt\/SKILL\.md\) \| Ask which skill/.test(section('Guides')))
+    fail('Guides should list ask-matt with its pinned link and source description');
+  if (!section('Orchestrators').includes('[pstack/poteto-mode]') || section('Guides').includes('[pstack/poteto-mode]')) fail('poteto-mode should be an orchestrator, not a guide');
+  if (!section('Principles').includes('[pstack/principle-prove-it-works]') || section('Workflow and supporting skills').includes('principle-'))
+    fail('principles should have their own section');
+  if (!run('skill-index', '--check').ok) fail('a fresh index should pass --check');
+  acmeSkill('one', '---\nname: one\ndescription: Rewritten upstream.\n---\n');
+  r = run('skill-index', '--check');
+  if (r.ok || !r.out.includes('docs/skill-index.md is stale')) fail(`--check should report a stale index\n${r.out}`);
+  if (fs.readFileSync(indexFile, 'utf8') !== index) fail('--check should not write');
+  acmeSkill('one', '---\nname: one\ndescription: Reviews a diff | flags <risky> changes & more.\n---\n# one\n');
+}
+// The committed index matches the catalog and the checked-out vendor revisions, also under a
+// git hook, whose GIT_DIR must not decide which revision is read.
+{
+  const r = spawnSync(path.join(ROOT, 'scripts/skill-index'), ['--check'], { encoding: 'utf8', env: { ...process.env, GIT_DIR: path.join(tmp, 'no-repo') } });
+  if (r.status !== 0) fail(`docs/skill-index.md should be current\n${r.stdout}${r.stderr}`);
+}
+
 fs.appendFileSync(path.join(tmp, 'catalog/skills.yaml'), `
   pstack/how:
     source: pstack
