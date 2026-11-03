@@ -6,7 +6,7 @@ Review 2 takes the first fitting `ok` `review` candidate other than review 1's s
 
 ## Before showing the workflow
 
-Review 1's family is the one it will actually run on ([models.md](models.md)): in Claude Code that is `claude` even when `primary` is `openai`, so review 2's other family is `openai`. Judge whether this harness can run review 2 on the family opposite to review 1's: it needs subagents that take an explicit model, and a provider configured for that family under the ID in `config/preferences.yaml`. Availability depends on the harness and its configuration, not on the router: Pi with a subagent extension and both providers set up can do it; a harness whose subagents run only its own vendor's models cannot. Decide one of:
+Review 1's family is the one it will actually run on ([models.md](models.md)): the run's `primary` from `.router/state.json` unless the review phase sets its own `model`, and in Claude Code `claude` even when `primary` is `openai`, so review 2's other family is `openai`. Judge whether this harness can run review 2 on the family opposite to review 1's: it needs subagents that take an explicit model, and a provider configured for that family under the ID in `config/preferences.yaml`. Availability depends on the harness and its configuration, not on the router: Pi with a subagent extension and both providers set up can do it; a harness whose subagents run only its own vendor's models cannot. Decide one of:
 
 - **available**: the harness can start a subagent on that model.
 - **unverified**: it seems able to, but you cannot confirm the provider ID before a subagent starts. Say so; a failed start is handled below.

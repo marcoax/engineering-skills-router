@@ -30,7 +30,7 @@ For working on the router itself or its catalog. Install and use: the [README](.
 | `scripts/check-state <target-repo>` | checks the target repo's `.router/state.json` against `skills/engineering-router/state.md` |
 | `scripts/selftest` | checks the scripts against a scratch catalog and scratch state files, then runs the Pi adapter tests |
 | `scripts/context-threshold` | read-only adapter bridge: prints this router checkout’s context threshold (150000 by default) |
-| `scripts/state <target-repo> step\|workflow\|handoff\|reply\|show ...` | the router's only way to change `.router/state.json` after writing it: applies the change, validates it with `check-state`, keeps the old file when invalid |
+| `scripts/state <target-repo> step\|workflow\|handoff\|reply\|show\|model ...` | the router's only way to change `.router/state.json` after writing it: applies the change, validates it with `check-state`, keeps the old file when invalid; `model <step>` prints the model a step runs on, from the run's `primary` in the state |
 | `scripts/record <target-repo> [--findings f] [--checklist p,a[,ok,ko]] [--pr n] ...` | composes the run record from the state and the findings, and writes it into the PR body |
 | `scripts/stats [--repo <owner/name>] [--limit <n>] [--json]` | adds up the run records in a repo's PRs (via `gh`): per review and model, per skill, per severity, checklists, tokens |
 

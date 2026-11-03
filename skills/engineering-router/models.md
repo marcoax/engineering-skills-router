@@ -6,11 +6,13 @@ Read from SKILL.md before showing the workflow (§5). It holds which model each 
 
 `config/preferences.yaml` maps two families to models: `models.claude` (default `claude-bridge/claude-opus-5-5`) and `models.openai` (default `openai-codex/gpt-6-sol`). The provider prefix must match the harness's provider IDs: when the harness names them differently, tell the user to adjust it.
 
-A step subagent runs on the family set as `model` for its first phase, else on `primary` (default `claude`). Pass the model explicitly every time, since subagent defaults may point elsewhere: as `provider/model-id` where the subagent tool takes one, else as the tool's name for that model (Claude Code's Agent tool takes only an alias, such as `opus` for a `claude-opus-*` ID). `effort` (`low` | `medium` | `high`, unset = the harness default) is the thinking level of every step subagent, passed the way the subagent tool takes it (Pi: `provider/model-id:<effort>`). Main-session steps keep the session's model.
+**The run's primary family** is `primary` in `.router/state.json`: written there from `primary` in `config/preferences.yaml` (default `claude`) when the state is first written, unless the user chose another for this run, and kept for the whole run, resume included. Read it from the state, never from the preferences, once the state exists; never write `config/preferences.yaml`.
+
+A step subagent runs on the family set as `model` for its first phase in `config/preferences.yaml`, else on the run's `primary`; `scripts/state <target repo> model <n|id>` prints that model for a step (for review 2, the family opposite to review 1's). Pass the model explicitly every time, since subagent defaults may point elsewhere: as `provider/model-id` where the subagent tool takes one, else as the tool's name for that model (Claude Code's Agent tool takes only an alias, such as `opus` for a `claude-opus-*` ID). `effort` (`low` | `medium` | `high`, unset = the harness default) is the thinking level of every step subagent, passed the way the subagent tool takes it (Pi: `provider/model-id:<effort>`). Main-session steps keep the session's model.
 
 **A step's family is the one it actually runs on.** A harness whose subagents run only its own vendor's models (Claude Code: only Claude) runs every step on that family, whatever `primary` or a phase's `model` says: say so once in the workflow (`primary openai, not reachable here: steps run on claude`), and record the model those steps actually run on. Review 2's family: [review-2.md](review-2.md).
 
-Show each step's step model (and effort when set) on its line in §5, as `scripts/state … show` does.
+Show each step's step model (and effort when set) on its line in §5, as `scripts/state … show` does, and the `Models:` line with the run's `primary`, as `show` prints it last.
 
 ## Step model
 

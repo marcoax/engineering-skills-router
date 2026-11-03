@@ -13,15 +13,29 @@
 //   handoff issue <n> <url> | spec <path> | ticket <n> <url> | branch <name> | base <sha|HEAD> | pr <n> <url>
 //   reply <reply>            a selection reply: go, 2b, 5on, 5off, stop, pause, resume.
 //                            edit and full exit 2: recompose the workflow (SKILL.md §2-§4).
-//   show                     the workflow, one line per step, with the step model when set
+//   show                     the workflow, one line per step, with the step model when set,
+//                            then the run's Models line (primary from the state)
+//   model <n|id>             the model a step's subagent runs on: its first phase's `model` in
+//                            config/preferences.yaml, else the run's primary; review 2 the
+//                            family opposite to review 1's
 const fs = require('node:fs');
 const path = require('node:path');
 const { spawnSync } = require('node:child_process');
 const ops = require('./lib/state-ops');
+const models = require('./lib/models');
+// Preferences beside this script, never the target repo's. Unreadable ones keep the defaults;
+// scripts/validate-catalog reports them.
+const prefs = (() => {
+  try {
+    return require('./lib/catalog').preferences();
+  } catch {
+    return {};
+  }
+})();
 
 const [target, command, ...rest] = process.argv.slice(2);
 if (!target || !command) {
-  console.error('usage: scripts/state <target-repo> step|workflow|handoff|reply|show ...');
+  console.error('usage: scripts/state <target-repo> step|workflow|handoff|reply|show|model ...');
   process.exit(1);
 }
 const file = path.join(target, '.router', 'state.json');
@@ -53,6 +67,18 @@ if (command === 'show') {
     const model = s.model ? `  on ${s.model}${s.effort ? ` · effort ${s.effort}` : ''}` : '';
     console.log(`${mark[s.status] ?? '?'} ${i + 1}. ${s.id}  ${s.skill ?? '(router)'}${inside}${model}${s.outcome ? ` → ${s.outcome}` : ''}`);
   });
+  console.log(models.modelsLine(state, prefs));
+  process.exit(0);
+}
+
+if (command === 'model') {
+  let i;
+  try {
+    i = ops.stepIndex(state, args[0]);
+  } catch (e) {
+    die(e.message);
+  }
+  console.log(models.stepModel(state, state.steps[i], prefs));
   process.exit(0);
 }
 
@@ -74,6 +100,8 @@ try {
   die(e.message, e.code === 'RECOMPOSE' ? 2 : 1);
 }
 
+// A state written without a primary family takes the preferences'; a stored one stays for the run.
+next.primary ??= models.preferredPrimary(prefs);
 next.updated_at = new Date().toISOString().replace(/\.\d{3}Z$/, 'Z');
 fs.writeFileSync(file, `${JSON.stringify(next, null, 2)}\n`);
 const check = spawnSync(path.join(__dirname, 'check-state'), [target], { encoding: 'utf8' });

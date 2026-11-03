@@ -458,6 +458,11 @@ expectStateOk('a low-risk workflow', variant((s) => { s.risk = 'low'; }));
 expectStateOk('a state without complexity', variant((s) => { delete s.complexity; }));
 expectState('complexity', variant((s) => { s.complexity = 'tiny'; }),
   'complexity: must be "low" | "medium" | "high", got "tiny"');
+// primary was added within version 1: a run keeps its own family; absent, it is the preferences'.
+expectStateOk('a run with primary claude', variant((s) => { s.primary = 'claude'; }));
+expectStateOk('a run with primary openai', variant((s) => { s.primary = 'openai'; }));
+expectStateOk('a state without primary', variant((s) => { delete s.primary; }));
+expectState('primary', variant((s) => { s.primary = 'gemini'; }), 'primary: must be "claude" | "openai", got "gemini"');
 expectState('rules from the prose', variant((s) => {
   s.updated_at = '2026-10-17 09:42';
   s.steps[0].alternatives.push({ skill: 'x', reason: 'r' }, { skill: 'a/b', reason: 'r' });
@@ -662,6 +667,52 @@ expectStateOk('unknown fields', variant((s) => { s.extra = 1; s.steps[0].extra =
   }
   fs.writeFileSync(findingsFile, JSON.stringify([{ title: 'x', severity: 'high', found_by: ['review-9'], decision: 'fixed' }]));
   if (run('record', repo, '--findings', findingsFile).ok) fail('scripts/record should refuse a finding from a step not in the workflow');
+}
+
+// The run's primary family lives in the state: written from the preferences when the state has
+// none, then kept whatever the preferences say, and every model the run shows follows it.
+{
+  const repo = fs.mkdtempSync(path.join(tmp, 'primary-'));
+  fs.mkdirSync(path.join(repo, '.router'));
+  const stateFile = path.join(repo, '.router/state.json');
+  const read = () => JSON.parse(fs.readFileSync(stateFile, 'utf8'));
+  const st = (...a) => run('state', repo, ...a);
+  const prefs = (primary) => fs.writeFileSync(prefsFile, `preferences:
+  models:
+    claude: claude-bridge/claude-opus-5-5
+    openai: openai-codex/gpt-6-sol
+${primary ? `  primary: ${primary}\n` : ''}  effort: medium
+`);
+  const fresh = variant((s) => { delete s.primary; s.status = 'selecting'; });
+
+  prefs('openai');
+  fs.writeFileSync(stateFile, JSON.stringify(fresh));
+  if (!st('workflow', 'selecting').ok || read().primary !== 'openai') fail(`a state written without primary should take it from the preferences: ${read().primary}`);
+  prefs('claude');
+  if (!st('reply', 'go').ok || read().primary !== 'openai') fail(`a run should keep its own primary when the preferences change: ${read().primary}`);
+  if (!st('reply', 'pause').ok || !st('reply', 'resume').ok || read().primary !== 'openai') fail(`a resumed run should keep its own primary: ${read().primary}`);
+  const models = (primary) => `Models: claude claude-bridge/claude-opus-5-5 · openai openai-codex/gpt-6-sol · primary ${primary} · effort medium`;
+  if (!st('show').out.split('\n').includes(models('openai'))) fail(`show should print the run's Models line\n${st('show').out}`);
+
+  // Each step's model follows the run's primary; a phase's own model still wins, and review 2
+  // runs on the family opposite to review 1's.
+  const stepModels = () => ['implementation', 'review-1', 'review-2', 'specification'].map((id) => st('model', id).out.trim()).join(' ');
+  const withReview2 = (s) => s.steps.push({ ...s.steps[3], id: 'review-2', skill: 'addyosmani/code-review', covered_by: null, optional: true, status: 'skipped', outcome: 'off (optional)' });
+  fs.writeFileSync(stateFile, JSON.stringify(variant((s) => { withReview2(s); s.primary = 'openai'; })));
+  fs.writeFileSync(prefsFile, `preferences:\n  primary: claude\n  specification:\n    model: claude\n`);
+  const C = 'claude-bridge/claude-opus-5-5';
+  const O = 'openai-codex/gpt-6-sol';
+  if (stepModels() !== [O, O, C, C].join(' ')) fail(`step models should follow the run's primary openai: ${stepModels()}`);
+  fs.writeFileSync(stateFile, JSON.stringify(variant((s) => { withReview2(s); s.primary = 'claude'; })));
+  fs.writeFileSync(prefsFile, `preferences:\n  primary: openai\n  review:\n    model: openai\n`);
+  if (stepModels() !== [C, O, C, C].join(' ')) fail(`step models should follow the run's primary claude, review overridden to openai: ${stepModels()}`);
+  if (st('model', 'nowhere').ok) fail('model should refuse an unknown step');
+
+  prefs(null);
+  fs.writeFileSync(stateFile, JSON.stringify(fresh));
+  if (!st('workflow', 'selecting').ok || read().primary !== 'claude') fail(`primary should default to claude: ${read().primary}`);
+  if (!st('show').out.split('\n').includes(models('claude'))) fail(`show should print the run's Models line\n${st('show').out}`);
+  fs.rmSync(prefsFile, { force: true });
 }
 
 const adapter = spawnSync(process.execPath, ['--test', path.join(ROOT, 'adapters/pi/state.test.ts')], { encoding: 'utf8' });
