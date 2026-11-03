@@ -6,7 +6,7 @@ Read from SKILL.md before showing the workflow (§5). It holds the primary quest
 
 `config/preferences.yaml` maps two families to models: `models.claude` (default `claude-bridge/claude-opus-5-5`) and `models.openai` (default `openai-codex/gpt-6-sol`). The provider prefix must match the harness's provider IDs: when the harness names them differently, tell the user to adjust it.
 
-**The run's primary family** is `primary` in `.router/state.json`, the source for every model the run uses once the state exists. The first write takes it from `primary` in `config/preferences.yaml` (default `claude`); the primary question may change it; a recompose (`edit`, `full`) writes it back as it is. The run keeps it to the end, resume included. The user's choice lives in the state alone: `config/preferences.yaml` stays as the user wrote it.
+**The run's primary family** is `primary` in `.router/state.json`, the source for every model the run uses once the state exists. The first write takes it from `primary` in `config/preferences.yaml` (default `claude`); the primary question may change it; a recomposition (`scripts/state … compose` without `--new`) keeps it. The run keeps it to the end, resume included. The user's choice lives in the state alone: `config/preferences.yaml` stays as the user wrote it.
 
 ## The primary question
 

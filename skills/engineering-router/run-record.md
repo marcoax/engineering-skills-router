@@ -1,6 +1,6 @@
 # Run record — format v1
 
-At the pull request (§6) the router appends one **run record** to the PR body: what ran, on which models, what the reviews found and what was done with it. `scripts/stats` reads the records back from a repo's PRs with `gh` and adds them up, so the catalog, the rankings and this skill can be judged on results rather than impressions. This document is the only definition of the format.
+At the pull request (§6) the router appends one **run record** to the PR body: what ran, on which models, what the reviews found and what was done with it. `scripts/stats` reads the records back from a repo's PRs with `gh` and adds them up, so the catalog, the selection and this skill can be judged on results rather than impressions. This document is the only definition of the format.
 
 - **Writer**: only the router, once, when it opens the PR. A record already in the body (a resumed workflow) is replaced, never duplicated.
 - **Where**: the end of the PR body, inside an HTML comment, so GitHub does not show it:
@@ -30,7 +30,7 @@ At the pull request (§6) the router appends one **run record** to the PR body: 
     { "id": "specification", "skill": "mattpocock/to-spec", "model": "claude-opus-5-5", "effort": null, "status": "done", "tokens": null },
     { "id": "implementation", "skill": "mattpocock/implement", "model": "claude-sonnet-5-5", "effort": "high", "status": "done", "tokens": 182000 },
     { "id": "review-1", "skill": "mattpocock/code-review", "model": "claude-opus-5-5", "effort": null, "status": "done", "tokens": null },
-    { "id": "review-2", "skill": "addyosmani/code-review", "model": "openai-codex/gpt-6-sol", "effort": "high", "status": "done", "tokens": null },
+    { "id": "review-2", "skill": "addyosmani/code-review-and-quality", "model": "openai-codex/gpt-6-sol", "effort": "high", "status": "done", "tokens": null },
     { "id": "comparison", "skill": null, "model": "claude-opus-5-5", "effort": null, "status": "done", "tokens": null }
   ],
   "session_model": "claude-opus-5-5",

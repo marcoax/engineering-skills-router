@@ -16,4 +16,4 @@ branch → implementation → review 1 → [security] → [framework-review] →
 - Consolidate their findings after the last of them and fix in-scope problems as in [after-implementation.md](after-implementation.md). Approval and exceptional stops follow [autonomy.md](autonomy.md), as on the full path.
 - The PR closes the ticket and carries the manual checklist and the run record. Given a spec file instead of an issue, the spec file is `handoff.spec`, the branch and the PR follow [issue-free.md](issue-free.md), and review 1 reads the spec file as the ticket.
 
-§3–§5 run as usual on those steps, so the user still sees the workflow and can swap skills. `full` in the selection reply switches to the full path: `scripts/state … reply full` exits 2; set `path` to `full`, recompose §2–§4 and write the state again (SKILL.md §5).
+§3–§5 run as usual on those steps, so the user still sees the workflow and can swap skills. `full` in the selection reply switches to the full path: `scripts/state … reply full` exits 2; set `path` to `full`, run the selector again and recompose, then write it with `scripts/state … compose <file>` (SKILL.md §5).

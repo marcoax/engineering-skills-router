@@ -1,6 +1,6 @@
-# Writing the state the first time
+# Composing the state
 
-Read from SKILL.md §5. Write `.router/state.json` like this example, then run `scripts/check-state <target repo>`: its errors name the field to fix. The full format, for anything this does not settle, is [state.md](state.md).
+Read from SKILL.md §5. Write the composed workflow like this example to a file outside the target repo, then run `scripts/state <target repo> compose --new <file>` (a recomposition: `compose <file>`): its errors name the step or field to fix, and it writes `.router/state.json`. The full format, for anything this does not settle, is [state.md](state.md).
 
 ```json
 {
@@ -22,7 +22,7 @@ Read from SKILL.md §5. Write `.router/state.json` like this example, then run `
       "alternatives": [], "confirm": false, "optional": false, "covered_by": null, "model": null, "effort": null, "status": "pending", "outcome": null },
     { "id": "review-1", "phases": ["review"], "skill": "mattpocock/code-review", "reason": "runs inside implement", "summary": "Review since the base commit",
       "alternatives": [], "confirm": false, "optional": false, "covered_by": "implementation", "model": null, "effort": null, "status": "pending", "outcome": null },
-    { "id": "review-2", "phases": ["review"], "skill": "addyosmani/code-review", "reason": "other axes, other family", "summary": "Second review on the other family",
+    { "id": "review-2", "phases": ["review"], "skill": "addyosmani/code-review-and-quality", "reason": "other axes, other family", "summary": "Second review on the other family",
       "alternatives": [], "confirm": false, "optional": true, "covered_by": null, "model": "openai-codex/gpt-6-sol", "effort": null, "status": "skipped", "outcome": "off (optional)" }
   ],
   "handoff": { "issue": null, "spec": null, "tickets": [], "branch": null, "base_commit": null, "pr": null }
@@ -30,10 +30,10 @@ Read from SKILL.md §5. Write `.router/state.json` like this example, then run `
 ```
 
 - **Every step** of §5's list, in order, router and covered steps included; `id` unique (the phase name, or `branch`, `review-1`, `review-2`, `comparison`, `verification`, `pull-request`).
-- **skill** `source/name` from the catalog, or `null` for a router step (then no alternatives). At most two **alternatives**, none equal to the skill.
+- **skill** the selector's default (`source/name`), or `null` for a router step (then no alternatives). At most two **alternatives**, the selector's, none equal to the skill. `compose` refuses any that is not a usable candidate for the step's `phases`.
 - **confirm** `false` by default; `true` for a user-requested checkpoint, recorded as in [autonomy.md](autonomy.md).
 - **optional** `true` for review 2, comparison, independent-review, verification; while off: `status` `skipped`, `outcome` `off (optional)`.
-- **covered_by**: the id of the step whose skill runs this one (review 1 inside implementation); never on a light path.
-- **primary**: `primary` from `config/preferences.yaml` (default `claude`) on the first write; on a recompose, the run's own ([models.md](models.md)).
+- **covered_by**: the id of the step whose skill runs this one (review 1 inside implementation); never review 1 on a light path. `compose` recalculates it from the catalog's `invokes`.
+- **primary**: the answer to the primary question; leave it out to take `primary` from `config/preferences.yaml` (default `claude`). A recomposition keeps the run's own ([models.md](models.md)).
 - **model** and **effort** `null`: no step has run yet. From §6 on, `scripts/state` sets each step's step model ([models.md](models.md)), recorded as its source names it, when it starts and when it closes; `model` stays `null` only for a step that did not run.
 - **handoff.issue** is `{number, url}` when the task is an issue; everything else starts empty and is set later with `scripts/state … handoff`.

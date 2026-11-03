@@ -39,7 +39,7 @@ Pick the phases this task needs from `catalog/categories.yaml`, starting from th
 
 ## 5. Select
 
-Run `scripts/list-skills --neutral --target <target repo> <phase> ...`. It lists each phase's candidates as `[origin, status]`: `preference` and `project` are explicit choices, `personal` the user's own skills, `vendor` everything else; the order within `vendor` is by name and carries no meaning. Usage signals (`use_when`, `avoid_when`, `complexity`, `invokes`, `requires`) are the router's own metadata; `description` is the vendor's text. Quote them as such.
+Run `scripts/list-skills --target <target repo> <phase> ...`. It lists each phase's candidates as `[origin, status]`: `preference` and `project` are explicit choices, `personal` the user's own skills, `vendor` everything else; the order within `vendor` is by name and carries no meaning. Usage signals (`use_when`, `avoid_when`, `complexity`, `invokes`, `requires`) are the router's own metadata; `description` is the vendor's text. Quote them as such.
 
 For each phase:
 
@@ -50,7 +50,7 @@ For each phase:
 5. When two candidates fit equally, call them a **tie**: name them as equivalent, say what would separate them, and pick the default with that stated reason.
 6. **Arena** (`pstack/arena`) takes an alternative slot only for a high-complexity implementation with meaningful competing designs, when the harness runs subagents with isolated outputs; a single-implementation skill stays the default. Its reason starts **High cost**: runners repeat the same task, then judging, synthesis and verification follow. State the benefit for this task; give a monetary estimate only when models, runner count and prices are known.
 
-A phase with no candidate left is a **missing capability**, with the reason. Done when every phase has a default or is missing.
+`complexity` informs fit but never empties a phase: when it rules out every candidate that otherwise fits, propose those anyway and say they are sized for other tasks. A phase with no candidate left is a **missing capability**, with the reason. Done when every phase has a default or is missing.
 
 ## 6. Report
 

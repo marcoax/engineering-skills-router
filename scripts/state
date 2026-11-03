@@ -12,11 +12,19 @@
 //   workflow <status>        selecting | running | waiting | done | paused | stopped
 //   handoff issue <n> <url> | spec <path> | ticket <n> <url> | branch <name> | base <sha|HEAD> | pr <n> <url>
 //   reply <reply>            a selection reply: go, 2b, 5on, 5off, stop, pause, resume.
-//                            edit and full exit 2: recompose the workflow (SKILL.md §2-§4).
+//                            A swap recalculates coverage from the newly selected skill.
+//                            edit and full exit 2: reselect and recompose (SKILL.md §3-§4).
 //   primary [<family>|<n>]   without an answer, the primary question: the two families with
 //                            their models, the run's current one first (1 keeps it); --json
 //                            prints the options as [{family, label, current}] for a selector.
 //                            With one, sets the run's primary. Only while the workflow is selecting.
+//   compose [--new] <file>   writes a composed workflow (SKILL.md §4-§5) as the state, status
+//                            selecting. Every step skill and alternative must be a usable
+//                            candidate (scripts/list-skills) for one of the step's phases; coverage
+//                            is recalculated from what the skills invoke. --new starts a run and
+//                            refuses to replace an unfinished one; without it, the file recomposes
+//                            the current run: completed steps (done, failed, skipped after running)
+//                            stay as they ran, and the run keeps its primary and handoff.
 //   show                     the workflow, one line per step, with the step model when set,
 //                            then the run's Models line (primary from the state)
 //   model <n|id>             the model a step's subagent runs on: its first phase's `model` in
@@ -37,6 +45,16 @@ const prefs = (() => {
   }
 })();
 
+// What a selected skill runs internally, for coverage (SKILL.md §4): the skills it `invokes` that
+// are tagged with one of the phases, from the catalog beside this script plus the target's
+// project skills.
+const invokesFor = (target) => {
+  const Catalog = require('./lib/catalog');
+  const skills = Catalog.skills(target);
+  return (id, phases) => Catalog.arr(skills[id]?.invokes)
+    .filter((inv) => Catalog.arr(skills[inv]?.categories).some((c) => phases.includes(c)));
+};
+
 const [target, command, ...rest] = process.argv.slice(2);
 if (!target || !command) {
   console.error('usage: scripts/state <target-repo> step|workflow|handoff|reply|primary|show|model ...');
@@ -47,6 +65,7 @@ const die = (msg, code = 1) => {
   console.error(`error: ${msg}`);
   process.exit(code);
 };
+if (command === 'compose') compose();
 if (!fs.existsSync(file)) die(`.router/state.json not found in ${target}`);
 const before = fs.readFileSync(file, 'utf8');
 let state;
@@ -54,6 +73,85 @@ try {
   state = JSON.parse(before);
 } catch (e) {
   die(`invalid JSON in ${file}: ${e.message}`);
+}
+
+// The composed workflow in `file` becomes the state, or the reason it cannot is printed.
+function compose() {
+  const isNew = rest.includes('--new');
+  const source = rest.find((a) => a !== '--new');
+  if (!source || !fs.existsSync(source)) die(`usage: scripts/state <target-repo> compose [--new] <file>${source ? `\nnot found: ${source}` : ''}`);
+  let next;
+  try {
+    next = JSON.parse(fs.readFileSync(source, 'utf8'));
+  } catch (e) {
+    die(`invalid JSON in ${source}: ${e.message}`);
+  }
+  if (!Array.isArray(next?.steps)) die(`${source}: needs a steps array (state-brief.md)`);
+  let previous = null;
+  try {
+    if (fs.existsSync(file)) previous = JSON.parse(fs.readFileSync(file, 'utf8'));
+  } catch (e) {
+    die(`invalid JSON in ${file}: ${e.message}`);
+  }
+  const unfinished = previous && ['running', 'waiting', 'paused', 'stopped', 'selecting'].includes(previous.status);
+  const errors = [];
+  if (isNew && unfinished && previous.status !== 'selecting')
+    die(`an unfinished workflow (${previous.status}) is in ${target}: resume it or discard it first (resume.md)`);
+  if (!isNew) {
+    if (!unfinished) die(`no workflow to recompose in ${target}: start one with compose --new`);
+    // Completed work stays as it ran; only the remaining work is reconsidered.
+    const ran = (x) => ['done', 'failed'].includes(x.status) || (x.status === 'skipped' && x.outcome !== 'off (optional)');
+    for (const old of previous.steps.filter(ran)) {
+      const i = next.steps.findIndex((x) => x?.id === old.id);
+      if (i === -1) errors.push(`${old.id}: a recomposition keeps completed steps (${old.status})`);
+      else next.steps[i] = old;
+    }
+    next.primary = previous.primary ?? next.primary;
+    next.handoff = previous.handoff;
+  }
+  const Catalog = require('./lib/catalog');
+  const skills = Catalog.skills(target);
+  const guides = Catalog.guides();
+  const categories = Catalog.categories();
+  const done = new Set(isNew ? [] : previous.steps.filter((x) => next.steps.includes(x)).map((x) => x.id));
+  for (const step of next.steps) {
+    if (!step || done.has(step.id)) continue;
+    const phases = Catalog.arr(step.phases);
+    const unknown = phases.filter((p) => !Object.hasOwn(categories, p));
+    if (unknown.length) { errors.push(`${step.id}: unknown phase ${unknown.join(', ')}`); continue; }
+    const picks = [[null, step.skill], ...Catalog.arr(step.alternatives).map((a) => ['alternative', a?.skill])];
+    for (const [role, id] of picks) {
+      if (id == null) continue;
+      const where = `${step.id}: ${role ? `${role} ` : ''}${id}`;
+      const hint = role ? '' : ` (choose another, or report ${phases.join(', ') || step.id} as missing)`;
+      const candidate = phases.flatMap((p) => Catalog.candidates(p, skills)).find((c) => c.id === id);
+      if (Object.hasOwn(guides, id)) errors.push(`${where}: a guide, not an executable skill`);
+      else if (!Object.hasOwn(skills, id)) errors.push(`${where}: unknown skill${hint}`);
+      else if (!candidate) errors.push(`${where}: not a candidate for ${phases.join(', ') || 'a step without phases'}`);
+      else if (candidate.status !== 'ok') errors.push(`${where}: ${candidate.status}${hint}`);
+    }
+  }
+  if (errors.length) die(errors.join('\nerror: '));
+  const recovered = ops.recover({ ...next, status: 'selecting' }, invokesFor(target));
+  write(recovered.state, previous ? JSON.stringify(previous) : null, `compose${isNew ? ' --new' : ''}`, recovered.notes);
+}
+
+// Writes `next` (primary and time filled in), validates it with check-state and restores
+// `before` (null: no file) when it is invalid.
+function write(next, before, label, notes = []) {
+  next.primary ??= models.preferredPrimary(prefs);
+  next.updated_at = new Date().toISOString().replace(/\.\d{3}Z$/, 'Z');
+  fs.mkdirSync(path.dirname(file), { recursive: true });
+  fs.writeFileSync(file, `${JSON.stringify(next, null, 2)}\n`);
+  const check = spawnSync(path.join(__dirname, 'check-state'), [target], { encoding: 'utf8' });
+  if (check.status !== 0) {
+    if (before == null) fs.rmSync(file);
+    else fs.writeFileSync(file, before);
+    die(`the change would make the state invalid; kept the previous state\n${check.stdout}${check.stderr}`);
+  }
+  console.log(`state: ${label} → workflow ${next.status}`);
+  for (const note of notes) console.log(`coverage: ${note}`);
+  process.exit(0);
 }
 
 const flags = {};
@@ -98,6 +196,7 @@ if (command === 'model') {
 
 let next;
 let logged = args;
+const notes = [];
 try {
   if (command === 'step') next = ops.setStep(state, args[0], args[1], flags);
   else if (command === 'workflow') next = ops.setWorkflow(state, args[0]);
@@ -115,19 +214,19 @@ try {
       values = [r.stdout.trim()];
     }
     next = ops.setHandoff(state, args[0], values);
-  } else if (command === 'reply') next = ops.applyReply(state, args.join(' '));
+  } else if (command === 'reply') {
+    next = ops.applyReply(state, args.join(' '));
+    // A swap changes what the step runs internally: recalculate coverage before go.
+    if (/^\d+[a-z]$/.test(args.join(' ').trim().toLowerCase())) {
+      const recovered = ops.recover(next, invokesFor(target));
+      next = recovered.state;
+      notes.push(...recovered.notes);
+    }
+  }
   else die(`unknown command ${command}`);
 } catch (e) {
   die(e.message, e.code === 'RECOMPOSE' ? 2 : 1);
 }
 
 // A state written without a primary family takes the preferences'; a stored one stays for the run.
-next.primary ??= models.preferredPrimary(prefs);
-next.updated_at = new Date().toISOString().replace(/\.\d{3}Z$/, 'Z');
-fs.writeFileSync(file, `${JSON.stringify(next, null, 2)}\n`);
-const check = spawnSync(path.join(__dirname, 'check-state'), [target], { encoding: 'utf8' });
-if (check.status !== 0) {
-  fs.writeFileSync(file, before);
-  die(`the change would make the state invalid; kept the previous state\n${check.stdout}${check.stderr}`);
-}
-console.log(`state: ${command} ${logged.join(' ')} → workflow ${next.status}`);
+write(next, before, `${command} ${logged.join(' ')}`, notes);

@@ -70,7 +70,9 @@ fs.writeFileSync(prefsFile, `preferences:
 if (!run('validate-catalog').ok) fail('valid preferences should validate');
 let { out } = run('list-skills', 'review');
 if (!/^1\. addyosmani\/code-review-and-quality {2}\[preference, ok\]/m.test(out)) fail('preference should rank first');
-if (!out.includes('mattpocock/code-review  [preferred, excluded]')) fail('exclude should mark skill');
+if (!out.includes('mattpocock/code-review  [vendor, excluded]')) fail('exclude should mark skill');
+// Vendor rankings are retired: no listing shows a ranking tier.
+if (/\[(preferred|fallback|other),/.test(run('list-skills', 'review', 'implementation').out)) fail('list-skills should not show ranking tiers');
 
 fs.writeFileSync(prefsFile, 'preferences:\n  review:\n    prefer: [nobody/nothing]\n');
 if (run('validate-catalog').ok) fail('unknown preferred skill should fail');
@@ -125,13 +127,10 @@ const projectSkill = (o = {}) => skillEntry({ id: 'project/fw', skillPath: '.cla
   if (!/^1\. project\/fw {2}\[project, ok\]$/m.test(out)) fail(`list-skills --target should list project/fw as ok\n${out}`);
   if (!out.includes(`path: ${path.join(repo, '.claude/skills/fw/SKILL.md')}`)) fail(`project path should resolve against the target\n${out}`);
 
-  // framework-review is project-only: no preference, ranking or tagged catalog skill fills it,
+  // framework-review is project-only: no preference or tagged catalog skill fills it,
   // and validate-catalog rejects a catalog skill tagged with it.
-  const rankingsFile = path.join(tmp, 'catalog/rankings.yaml');
-  const rankingsText = fs.readFileSync(rankingsFile, 'utf8');
   const skillsFile = path.join(tmp, 'catalog/skills.yaml');
   const skillsText = fs.readFileSync(skillsFile, 'utf8');
-  fs.writeFileSync(rankingsFile, rankingsText.replace(/(framework-review:\n {4}preferred: )\[\]/, '$1[mattpocock/code-review]'));
   fs.writeFileSync(skillsFile, skillsText.replace(/(mattpocock\/code-review:\n(?: {4}.*\n)*? {4}categories: )\[review\]/,
     '$1[review, framework-review]'));
   fs.writeFileSync(prefsFile, 'preferences:\n  framework-review:\n    prefer: [addyosmani/code-review-and-quality]\n');
@@ -141,7 +140,6 @@ const projectSkill = (o = {}) => skillEntry({ id: 'project/fw', skillPath: '.cla
   const r = run('validate-catalog');
   const msg = "mattpocock/code-review: only project skills may fill 'framework-review'";
   if (r.ok || !r.out.includes(`error: ${msg}`)) fail(`validate-catalog, expected: ${msg}\ngot:\n${r.out}`);
-  fs.writeFileSync(rankingsFile, rankingsText);
   fs.writeFileSync(skillsFile, skillsText);
   fs.rmSync(prefsFile);
 }
@@ -189,14 +187,14 @@ for (const skillPath of [outsideSkill, '../outside/SKILL.md']) {
   ({ out } = run('list-skills', '--target', repo, 'framework-review'));
   if (!/^1\. project\/fw {2}\[project, missing\]$/m.test(out)) fail(`list-skills --target should list ${skillPath} as missing\n${out}`);
 }
-// A project skill tagged with another phase ranks after a user preference and before the catalog's.
+// A project skill tagged with another phase comes after a user preference and before the vendor skills.
 {
   const repo = targetRepo(projectSkill({ cats: '[framework-review, review]' }));
   if (!run('validate-catalog', '--target', repo).ok) fail('a project skill may fill review too');
   fs.writeFileSync(prefsFile, 'preferences:\n  review:\n    prefer: [addyosmani/code-review-and-quality]\n');
   ({ out } = run('list-skills', '--target', repo, 'review'));
   const order = [...out.matchAll(/^\d+\. (\S+) {2}\[(\w+)/gm)].slice(0, 3).map((m) => `${m[1]} ${m[2]}`).join(', ');
-  const expected = 'addyosmani/code-review-and-quality preference, project/fw project, mattpocock/code-review preferred';
+  const expected = 'addyosmani/code-review-and-quality preference, project/fw project, mattpocock/code-review vendor';
   if (order !== expected) fail(`list-skills --target review: expected ${expected}; got ${order}`);
   fs.rmSync(prefsFile);
 }
@@ -213,7 +211,7 @@ const withPersonal = (yaml, prefs = `  personal_path: ${personalDir}\n`) => {
 };
 withPersonal(personalSkill());
 ({ out } = run('list-skills', 'documentation'));
-if (!/^\d+\. personal\/notes {2}\[other, ok\]$/m.test(out)) fail(`list-skills should list personal/notes as other, ok\n${out}`);
+if (!/^\d+\. personal\/notes {2}\[personal, ok\]$/m.test(out)) fail(`list-skills should list personal/notes as personal, ok\n${out}`);
 if (!out.includes(`path: ${path.join(personalDir, 'notes/SKILL.md')}`)) fail(`personal path should resolve against personal_path\n${out}`);
 {
   const r = run('validate-catalog');
@@ -266,18 +264,7 @@ for (const [skill, msg, prefs] of [
 }
 withPersonal(personalSkill({ skillPath: '../outside/SKILL.md' }));
 ({ out } = run('list-skills', 'documentation'));
-if (!/^\d+\. personal\/notes {2}\[other, missing\]$/m.test(out)) fail(`list-skills should list an outside personal path as missing\n${out}`);
-// Rankings stay vendor-only.
-{
-  const rankingsFile = path.join(tmp, 'catalog/rankings.yaml');
-  const rankingsText = fs.readFileSync(rankingsFile, 'utf8');
-  withPersonal(personalSkill());
-  fs.writeFileSync(rankingsFile, rankingsText.replace(/(documentation:\n {4}preferred: )\[/, '$1[personal/notes, '));
-  const r = run('validate-catalog');
-  if (r.ok || !r.out.includes('error: rankings.documentation.preferred: unknown skill personal/notes'))
-    fail(`validate-catalog should reject a personal skill in rankings\n${r.out}`);
-  fs.writeFileSync(rankingsFile, rankingsText);
-}
+if (!/^\d+\. personal\/notes {2}\[personal, missing\]$/m.test(out)) fail(`list-skills should list an outside personal path as missing\n${out}`);
 // A leading ~ in personal_path expands to the home dir.
 withPersonal(personalSkill(), '  personal_path: ~/personal\n');
 if (!spawnSync(path.join(tmp, 'scripts/list-skills'), ['documentation'], { encoding: 'utf8', env: { ...process.env, HOME: tmp } })
@@ -433,13 +420,14 @@ ${['one', 'folded', 'plain', 'nodesc', 'broken', 'nofm'].map((n) => `  acme/${n}
   if (fs.readFileSync(indexFile, 'utf8') !== index) fail('--check should not write');
   acmeSkill('one', '---\nname: one\ndescription: Reviews a diff | flags <risky> changes & more.\n---\n# one\n');
 }
-// Selector preview: `list-skills --neutral` lists candidates on equal standing. Explicit choices
-// keep their origin; vendor entries never get a preferred or fallback tier, and neither catalog
-// order nor legacy rankings change the listing.
+// `list-skills` lists candidates on equal standing (`--neutral` is the same listing). Explicit
+// choices keep their origin; vendor entries never get a preferred or fallback tier, and neither
+// catalog order nor a legacy rankings file changes the listing.
 {
   const neutral = (...phases) => run('list-skills', '--neutral', ...phases).out;
   const rankingsFile = path.join(tmp, 'catalog/rankings.yaml');
-  const rankingsText = fs.readFileSync(rankingsFile, 'utf8');
+  if (fs.existsSync(rankingsFile)) fail('catalog/rankings.yaml is retired and should not ship');
+  if (neutral('review') !== run('list-skills', 'review').out) fail('list-skills and list-skills --neutral should print the same listing');
   const before = neutral('review', 'implementation');
   if (/\[(preferred|fallback|other),/.test(before)) fail(`--neutral should not show ranking tiers\n${before}`);
   for (const id of ['mattpocock/code-review', 'addyosmani/code-review-and-quality', 'pstack/interrogate', 'pstack/arena', 'mattpocock/implement']) {
@@ -450,15 +438,16 @@ ${['one', 'folded', 'plain', 'nodesc', 'broken', 'nofm'].map((n) => `  acme/${n}
   const shuffled = current.split('\n\n');
   const head = shuffled.indexOf('skills:') + 1;
   fs.writeFileSync(catalogSkillsFile, [...shuffled.slice(0, head), ...shuffled.slice(head).reverse()].join('\n\n'));
-  fs.writeFileSync(rankingsFile, rankingsText
-    .replace(/(review:\n {4}preferred: )\[[^\]]*\]/, '$1[pstack/interrogate]')
-    .replace(/(implementation:\n {4}preferred: )\[[^\]]*\]/, '$1[addyosmani/incremental-implementation]'));
-  if (!run('validate-catalog').ok) fail('the shuffled scratch catalog should validate');
+  fs.writeFileSync(rankingsFile, 'rankings:\n  review:\n    preferred: [pstack/interrogate]\n'
+    + '  implementation:\n    preferred: [addyosmani/incremental-implementation]\n    fallback: [nobody/nothing]\n');
+  const legacy = run('validate-catalog');
+  if (!legacy.ok || !legacy.out.includes('warning: catalog/rankings.yaml: no longer read; candidates stand on equal terms'))
+    fail(`validate-catalog should only warn about a legacy rankings file\n${legacy.out}`);
   const after = neutral('review', 'implementation');
   if (after !== before)
     fail(`--neutral should not depend on catalog order or rankings\nbefore:\n${before}\nafter:\n${after}`);
   fs.writeFileSync(catalogSkillsFile, current);
-  fs.writeFileSync(rankingsFile, rankingsText);
+  fs.rmSync(rankingsFile);
   // Explicit choices stay effective: a suitable preference is labeled, an exclusion still bars.
   fs.writeFileSync(prefsFile, 'preferences:\n  review:\n    prefer: [pstack/interrogate]\n  exclude: [mattpocock/code-review]\n');
   out = neutral('review');
@@ -954,6 +943,155 @@ expectStateOk('unknown fields', variant((s) => { s.extra = 1; s.steps[0].extra =
   if (run('record', repo, '--findings', findingsFile).ok) fail('scripts/record should refuse a finding from a step not in the workflow');
 }
 
+// A swap recalculates coverage from the newly selected skill's `invokes` before go: a step that
+// ran inside the old implementation runs on its own after a swap to one that does not run it, and
+// is covered again (with the skill that runs it) after the swap back. A light path never covers
+// review 1.
+{
+  const repo = fs.mkdtempSync(path.join(tmp, 'swap-'));
+  fs.mkdirSync(path.join(repo, '.router'));
+  const stateFile = path.join(repo, '.router/state.json');
+  const read = () => JSON.parse(fs.readFileSync(stateFile, 'utf8'));
+  const st = (...a) => run('state', repo, ...a);
+  const expectOk = (label, r) => { if (!r.ok) fail(`scripts/state ${label}\n${r.out}`); return r; };
+  const byId = (id) => read().steps.find((x) => x.id === id);
+  const pending = (s) => s.steps.forEach((x) => Object.assign(x, { status: 'pending', outcome: null, model: null }));
+  const integrated = (mutate = () => {}) => variant((s) => {
+    s.status = 'selecting';
+    pending(s);
+    s.handoff.branch = null;
+    s.steps[2].alternatives = [{ skill: 'pstack/arena', reason: 'High cost: competing designs' },
+      { skill: 'addyosmani/incremental-implementation', reason: 'thin slices' }];
+    // Testing ran inside the implementation too, so it is a covered step of its own.
+    s.steps.splice(3, 0, { ...s.steps[3], id: 'testing', phases: ['testing'], skill: 'mattpocock/tdd', reason: 'runs inside implement' });
+    mutate(s);
+  });
+
+  // Integrated -> standalone: testing and review 1 are open steps of their own after the swap.
+  fs.writeFileSync(stateFile, JSON.stringify(integrated()));
+  let r = expectOk('reply 3a (to arena)', st('reply', '3a'));
+  if (byId('implementation').skill !== 'pstack/arena') fail(`swap to arena: ${JSON.stringify(byId('implementation'))}`);
+  for (const id of ['testing', 'review-1']) {
+    if (byId(id).covered_by !== null) fail(`after a swap to arena, ${id} should run on its own: ${JSON.stringify(byId(id))}`);
+    if (!r.out.includes(`${id} runs on its own`)) fail(`the swap should say ${id} runs on its own\n${r.out}`);
+  }
+  if (/inside/.test(st('show').out)) fail(`show should list no covered step after the swap\n${st('show').out}`);
+  // Closing the implementation leaves the independent checks pending.
+  expectOk('go', st('reply', 'go'));
+  expectOk('implementation running', st('step', 'implementation', 'running', '--model', 'claude-opus-5-5'));
+  expectOk('implementation done', st('step', 'implementation', 'done', '--outcome', 'Built'));
+  for (const id of ['testing', 'review-1']) {
+    if (byId(id).status !== 'pending') fail(`${id} should stay pending when the implementation closes: ${JSON.stringify(byId(id))}`);
+  }
+
+  // Standalone -> integrated: the checks the new implementation runs are covered again, by the
+  // skill it invokes, and close with it.
+  fs.writeFileSync(stateFile, JSON.stringify(integrated((s) => {
+    s.steps[2].skill = 'addyosmani/incremental-implementation';
+    s.steps[2].alternatives = [{ skill: 'mattpocock/implement', reason: 'test-first, reviews itself' }];
+    Object.assign(s.steps[3], { covered_by: null, skill: 'addyosmani/test-driven-development' });
+    Object.assign(s.steps[4], { covered_by: null, skill: 'addyosmani/code-review-and-quality',
+      alternatives: [{ skill: 'mattpocock/code-review', reason: 'r' }] });
+  })));
+  r = expectOk('reply 3a (to implement)', st('reply', '3a'));
+  for (const [id, skill] of [['testing', 'mattpocock/tdd'], ['review-1', 'mattpocock/code-review']]) {
+    const step = byId(id);
+    if (step.covered_by !== 'implementation' || step.skill !== skill || step.alternatives.length !== 0)
+      fail(`after a swap to implement, ${id} should run inside it with ${skill}: ${JSON.stringify(step)}`);
+    if (!r.out.includes(`${id} runs inside implementation`)) fail(`the swap should say ${id} runs inside implementation\n${r.out}`);
+  }
+  expectOk('go', st('reply', 'go'));
+  expectOk('implementation done', st('step', 'implementation', 'done', '--outcome', 'Built'));
+  if (byId('review-1').status !== 'done' || byId('testing').status !== 'done') fail('covered steps should close with their implementation');
+
+  // Light path: review 1 stays independent whatever the implementation runs.
+  fs.writeFileSync(stateFile, JSON.stringify(integrated((s) => {
+    s.path = 'light';
+    s.steps.splice(3, 1);
+    s.steps[2].skill = 'addyosmani/incremental-implementation';
+    s.steps[2].alternatives = [{ skill: 'mattpocock/implement', reason: 'r' }];
+    Object.assign(s.steps[3], { covered_by: null, skill: 'addyosmani/code-review-and-quality' });
+  })));
+  expectOk('reply 3a on a light path', st('reply', '3a'));
+  if (byId('review-1').covered_by !== null || byId('review-1').skill !== 'addyosmani/code-review-and-quality')
+    fail(`a light path never covers review 1: ${JSON.stringify(byId('review-1'))}`);
+}
+
+// compose: the selector-to-state boundary. A composed workflow becomes the executable state only
+// when every skill and alternative is a usable candidate for its step's phases, with coverage
+// recalculated from what the skills run. A new run (--new) never overwrites an unfinished one; a
+// recomposition keeps the completed steps, the run's primary and the handoff, and reconsiders only
+// the remaining work.
+{
+  const repo = fs.mkdtempSync(path.join(tmp, 'compose-'));
+  const stateFile = path.join(repo, '.router/state.json');
+  const composed = path.join(tmp, 'composed.json');
+  const read = () => JSON.parse(fs.readFileSync(stateFile, 'utf8'));
+  const compose = (state, ...flags) => {
+    fs.writeFileSync(composed, JSON.stringify(state));
+    return run('state', repo, 'compose', ...flags, composed);
+  };
+  const fresh = (mutate = () => {}) => variant((s) => {
+    s.status = 'selecting';
+    s.steps.forEach((x) => Object.assign(x, { status: 'pending', outcome: null, model: null }));
+    s.handoff.branch = null;
+    s.handoff.base_commit = null;
+    s.steps[2].alternatives = [{ skill: 'addyosmani/incremental-implementation', reason: 'thin slices' }];
+    mutate(s);
+  });
+  const expectRefused = (label, state, flags, msg) => {
+    const before = fs.existsSync(stateFile) ? fs.readFileSync(stateFile, 'utf8') : null;
+    const r = compose(state, ...flags);
+    if (r.ok || !r.out.includes(`error: ${msg}`)) fail(`compose, ${label}: expected error: ${msg}\ngot:\n${r.out}`);
+    if ((fs.existsSync(stateFile) ? fs.readFileSync(stateFile, 'utf8') : null) !== before) fail(`compose, ${label}: a refused composition must leave the state as it was`);
+  };
+
+  // Unknown, unusable or misplaced references never reach the state.
+  expectRefused('unknown skill', fresh((s) => { s.steps[2].skill = 'nobody/nothing'; }), ['--new'],
+    'implementation: nobody/nothing: unknown skill (choose another, or report implementation as missing)');
+  expectRefused('a guide', fresh((s) => { s.steps[0].alternatives[0].skill = 'mattpocock/ask-matt'; }), ['--new'],
+    'specification: alternative mattpocock/ask-matt: a guide, not an executable skill');
+  expectRefused('wrong phase', fresh((s) => { s.steps[3].skill = 'mattpocock/tdd'; s.steps[3].covered_by = null; }), ['--new'],
+    'review-1: mattpocock/tdd: not a candidate for review');
+  fs.writeFileSync(prefsFile, 'preferences:\n  exclude: [addyosmani/incremental-implementation]\n');
+  expectRefused('an excluded alternative', fresh(), ['--new'], 'implementation: alternative addyosmani/incremental-implementation: excluded');
+  fs.rmSync(prefsFile);
+  expectRefused('unknown phase', fresh((s) => { s.steps[2].phases = ['coding']; }), ['--new'], 'implementation: unknown phase coding');
+  expectRefused('recompose without a run', fresh(), [], 'no workflow to recompose');
+
+  // A new run: written as selecting, with coverage taken from what the implementation runs.
+  let r = compose(fresh((s) => { s.steps[2].skill = 'addyosmani/incremental-implementation';
+    s.steps[2].alternatives = [{ skill: 'mattpocock/implement', reason: 'r' }]; delete s.primary; }), '--new');
+  if (!r.ok || !r.out.includes('coverage: review-1 runs on its own')) fail(`compose --new should write the run and recalculate coverage\n${r.out}`);
+  let s = read();
+  if (s.status !== 'selecting' || s.primary !== 'claude' || s.steps[3].covered_by !== null) fail(`compose --new: ${JSON.stringify(s)}`);
+
+  // An unfinished run is resumed or discarded, never replaced by --new.
+  if (!run('state', repo, 'reply', 'go').ok) fail('go after compose');
+  expectRefused('--new over an unfinished run', fresh(), ['--new'], 'an unfinished workflow (running) is in');
+
+  // Recomposition mid-run: completed steps, primary and handoff stay; the rest is reconsidered.
+  fs.writeFileSync(stateFile, JSON.stringify(variant((s) => {
+    s.primary = 'openai';
+    s.steps[2].status = 'pending';
+  })));
+  const done = read().steps.slice(0, 2);
+  const remaining = fresh((s) => {
+    s.primary = 'claude';
+    s.steps[0] = { ...s.steps[0], skill: 'addyosmani/spec-driven-development', alternatives: [] };
+    s.steps[2].skill = 'addyosmani/incremental-implementation';
+    s.steps[2].alternatives = [];
+  });
+  r = compose(remaining);
+  if (!r.ok) fail(`compose should recompose an unfinished run\n${r.out}`);
+  s = read();
+  if (JSON.stringify(s.steps.slice(0, 2)) !== JSON.stringify(done)) fail(`recomposition should keep completed steps as they ran\n${JSON.stringify(s.steps.slice(0, 2))}`);
+  if (s.primary !== 'openai' || s.handoff.branch !== '42-csv-export' || s.handoff.issue?.number !== 42) fail(`recomposition should keep the run's primary and handoff: ${JSON.stringify(s)}`);
+  if (s.status !== 'selecting' || s.steps[2].skill !== 'addyosmani/incremental-implementation' || s.steps[3].covered_by !== null)
+    fail(`recomposition should take the new remaining work: ${JSON.stringify(s.steps.slice(2))}`);
+  expectRefused('dropping a completed step', fresh((s) => { s.steps.shift(); }), [], 'specification: a recomposition keeps completed steps');
+}
+
 // The run's primary family lives in the state: written from the preferences when the state has
 // none, then kept whatever the preferences say, and every model the run shows follows it.
 {
@@ -982,7 +1120,7 @@ ${primary ? `  primary: ${primary}\n` : ''}  effort: medium
   // Each step's model follows the run's primary; a phase's own model still wins, and review 2
   // runs on the family opposite to review 1's.
   const stepModels = () => ['implementation', 'review-1', 'review-2', 'specification'].map((id) => st('model', id).out.trim()).join(' ');
-  const withReview2 = (s) => s.steps.push({ ...s.steps[3], id: 'review-2', skill: 'addyosmani/code-review', covered_by: null, optional: true, status: 'skipped', outcome: 'off (optional)' });
+  const withReview2 = (s) => s.steps.push({ ...s.steps[3], id: 'review-2', skill: 'addyosmani/code-review-and-quality', covered_by: null, optional: true, status: 'skipped', outcome: 'off (optional)' });
   fs.writeFileSync(stateFile, JSON.stringify(variant((s) => { withReview2(s); s.primary = 'openai'; })));
   fs.writeFileSync(prefsFile, `preferences:\n  primary: claude\n  specification:\n    model: claude\n`);
   const C = 'claude-bridge/claude-opus-5-5';
