@@ -1,6 +1,6 @@
 # Vendor-neutral skill selection before workflow composition
 
-Draft for GitHub Issues. Test seams await the confirmation required by `to-spec` before publication with the `ready-for-agent` label.
+Published as [spec #58](https://github.com/marcoax/engineering-skills-router/issues/58), with the `ready-for-agent` label. Public command/state tests and selector evaluations were confirmed before publication.
 
 ## Problem Statement
 
@@ -89,7 +89,7 @@ The proposed test seams are the public catalog/candidate commands and the genera
 
 ## Out of Scope
 
-- Executing `arena`, implementing this spec, creating implementation tickets, committing, pushing or opening a pull request as part of writing the spec.
+- Executing `arena`, implementing this spec, committing, pushing or opening a pull request as part of planning this work.
 - Automatically switching to a vendor's full orchestrator, running guide side effects, or launching multiple vendor workflows during selection.
 - Equal selection counts per vendor, random rotation, opaque scoring formulas or a learned recommendation system.
 - Automatically fetching upstream descriptions over the network on every selection. The checked-out vendor revision is the source in use.
@@ -103,4 +103,13 @@ The proposed test seams are the public catalog/candidate commands and the genera
 - There are currently 110 cataloged vendor skills. Candidate and guide counts are observations, not hard-coded acceptance requirements.
 - Existing changes already add `arena` to implementation candidates, document its cost and introduce a router selection rule. Review and reconcile them during implementation rather than assuming they satisfy this spec.
 - The existing source catalog and candidate listing currently expose fixed preferred and fallback ordering. The selector change must retire that behavior coherently across command output, instructions, examples and tests.
-- Publication target: `marcoax/engineering-skills-router` on GitHub, with the existing `ready-for-agent` label. This draft is not yet published; the test-seam confirmation required by `to-spec` remains pending.
+- Published in `marcoax/engineering-skills-router` on GitHub, with the existing `ready-for-agent` label. The user approved the spec and test seams, and authorized the implementation sub-issues below. All four are linked as native sub-issues of #58, with native blocking relationships.
+
+### Implementation slices
+
+1. [#59: Source-backed descriptions, a distinct guide registry and a consistent browsable index](https://github.com/marcoax/engineering-skills-router/issues/59). No blockers.
+2. [#60: A standalone, advisory selector preview with vendor-neutral recommendations and behavioral evaluations](https://github.com/marcoax/engineering-skills-router/issues/60). Blocked by #59.
+3. [#61: Router integration, retirement of active vendor rankings, recomposition and correct coverage after swaps](https://github.com/marcoax/engineering-skills-router/issues/61). Blocked by #60.
+4. [#62: A high-cost arena implementation alternative with capability checks and an end-to-end selection/swap scenario](https://github.com/marcoax/engineering-skills-router/issues/62). Blocked by #61.
+
+Each slice includes its own user-visible behavior and regression evidence. The selector preview is inspectable independently before the router integration changes live composition. Existing workflows remain resumable throughout.

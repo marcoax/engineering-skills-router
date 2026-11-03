@@ -130,11 +130,19 @@ test("optional steps: read, drawn as skipped, switched on and off", () => {
 test("details include every step field and the handoff", () => {
 	const { lines, stepStart } = detailLines(parsed(example()), 0);
 	const text = lines.join("\n");
-	for (const part of ["▸ ✓ 1. specification", "why: decisions already settled", "a) addyosmani/spec-driven-development", "→ Published #42", "asks before starting", "branch   42-csv-export", "#42 https://github.com/acme/app/issues/42"]) {
+	for (const part of ["▸ ✓ 1. specification", "why: decisions already settled", "a) addyosmani/spec-driven-development", "→ Published #42", "branch   42-csv-export", "#42 https://github.com/acme/app/issues/42"]) {
 		assert.ok(text.includes(part), part);
 	}
+	assert.ok(!text.includes("asks before starting"), "routine steps need no further confirmation");
 	assert.equal(stepStart.length, 4);
 	assert.ok(lines[stepStart[3]].includes("review-1"));
+
+	const checkpoint = example();
+	checkpoint.steps[2].confirm = true;
+	checkpoint.steps[2].reason = "user requested a check before implementation";
+	const withCheckpoint = detailLines(parsed(checkpoint)).lines.join("\n");
+	assert.equal(withCheckpoint.match(/asks before starting/g)?.length, 1, "explicit checkpoints remain visible");
+	assert.ok(withCheckpoint.includes(checkpoint.steps[2].reason));
 });
 
 test("details show the spec file in place of a missing issue", () => {

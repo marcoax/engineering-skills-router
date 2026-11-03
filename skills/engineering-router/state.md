@@ -32,7 +32,7 @@ The router writes this file in the **target repo** during a workflow so that ada
       "alternatives": [
         { "skill": "addyosmani/spec-driven-development", "reason": "spec as a repo document instead of an issue" }
       ],
-      "confirm": true,
+      "confirm": false,
       "covered_by": null,
       "model": "claude-opus-5-5",
       "effort": null,
@@ -60,7 +60,7 @@ The router writes this file in the **target repo** during a workflow so that ada
       "reason": "one spec, implemented in this session",
       "summary": "Build the CSV export test-first, then run review 1",
       "alternatives": [],
-      "confirm": true,
+      "confirm": false,
       "covered_by": null,
       "model": "claude-bridge/claude-opus-5-5",
       "effort": null,
@@ -116,7 +116,7 @@ Workflow `status`:
 |---|---|
 | `selecting` | Workflow shown; waiting for the user to accept or swap skills. |
 | `running` | Executing: a step is running, or one has ended and the next has not started yet. |
-| `waiting` | Paused for the user: a confirmation point, a question, or the user's check after implementation. The step concerned is `waiting` too. |
+| `waiting` | Paused for an unresolved question, an exceptional blocker or an explicit user checkpoint ([autonomy.md](autonomy.md)). The step concerned is `waiting` too. |
 | `done` | Stopped at the open pull request, or the last step finished. |
 | `paused` | The user paused the workflow to resume it later (`resume`). |
 | `stopped` | The user stopped the workflow. |
@@ -131,7 +131,7 @@ Workflow `status`:
 | `reason` | string | One line: why this skill (or step) was chosen. |
 | `summary` | string | One line: what the step does for this task. |
 | `alternatives` | `{skill, reason}[]` | At most two other `ok` candidates, each with a one-line reason. After a swap, the previous skill takes the swapped alternative's place. |
-| `confirm` | boolean | `true` when the router pauses for the user before this step (outward-facing action or start of implementation). |
+| `confirm` | boolean | Whether the router pauses before this step. Defaults to `false`; use `true` for an explicit user checkpoint and record the request in its reason or step note ([autonomy.md](autonomy.md)). |
 | `optional` (optional) | boolean | `true` when the user may switch the step on and off during selection (review 2, comparison, independent-review, verification). An optional step that is off is `skipped` with outcome `off (optional)`; switching it on sets `pending`. |
 | `covered_by` | string \| null | `id` of the step whose skill runs this one internally (e.g. review 1 inside implementation). |
 | `model` | string \| null | The **step model**: the model the step actually ran on, for every step that ran (`running`, `waiting`, `done`, `failed`, or `skipped` after running). Precedence: agent record, then the model passed to the step's subagent (or `review_other_family`'s backend), then the session's model; full rules in [models.md](models.md). Recorded as the source names it (`claude-bridge/claude-opus-5-5` and `claude-opus-5-5` may both appear), no spaces. `null` only for a step that did not run. |
@@ -145,7 +145,7 @@ Step `status`:
 |---|---|
 | `pending` | Not started. |
 | `running` | In progress (for a covered step: its covering step is running it). |
-| `waiting` | Paused for the user: its confirmation point, a question raised while it runs, or, for the first step after implementation still to run, the user's check of the result (that pause is not a step). |
+| `waiting` | Paused for an unresolved question, an exceptional blocker or an explicit user checkpoint. A user-requested check after implementation waits on the next unfinished step; it adds no step. |
 | `done` | Finished; `outcome` set. |
 | `skipped` | Will not run (user declined, or no longer needed); `outcome` says why. |
 | `failed` | Could not finish; `outcome` says why. |

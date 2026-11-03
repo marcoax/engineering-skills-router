@@ -10,6 +10,8 @@ The router records the task's type, risk and size, then builds a workflow on the
 
 Browse the [skill index](docs/skill-index.md) for all cataloged vendor skills, grouped into guides, orchestrators, principles and workflow skills by activity.
 
+Approve the workflow with `go` once: the router continues through implementation, tests, reviews, in-scope fixes, commits, push and the open PR. It reports progress and stops for unresolved decisions, scope changes, real blockers or checkpoints you request. Routine approval gates inside selected skills use that same authorization. Merge and deployment require separate authorization. Details: [execution policy](skills/engineering-router/autonomy.md).
+
 ## Install (Pi)
 
 The repo is a Pi package: the router skill plus the workflow widget. Needs Node 22.18+ and git; `gh`, logged in, publishes the spec issue and the tickets and lets the widget see merged PRs.

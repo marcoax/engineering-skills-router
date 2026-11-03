@@ -12,6 +12,7 @@ This file holds what every run needs. The rest is in files beside it; read each 
 | Read | When |
 |---|---|
 | [checkout.md](checkout.md) | the resolver prints `missing`, or the update check is due (§0) |
+| [autonomy.md](autonomy.md) | before presenting the workflow (§5), throughout execution (§6), and on resume |
 | [context.md](context.md) | a step-close command prints a `context:` line (§6), before starting the next step |
 | [resume.md](resume.md) | the target repo holds an unfinished workflow (§1), or on `pause` / `resume` |
 | [light.md](light.md) | §1 offers or sets the light path |
@@ -53,20 +54,20 @@ Done when type, risk, complexity, properties and path are set, each with its rea
 
 ## 2. Choose phases
 
-Start from the **default flow** (`⏸` = confirmation point, `[ ]` = conditional):
+Start from the **default flow** (`[ ]` = conditional). Approval in §5 authorizes execution through the PR:
 
 ```text
-requirements → specification + issue ⏸ → [planning ⏸] → branch → ⏸ implementation → [⏸ your check]
-→ review 1 → [review 2] → [framework-review] → [comparison] → [security] → [independent-review] → [verification] → pull request ⏸ → stop
+requirements → specification + issue → [planning] → branch → implementation
+→ review 1 → [review 2] → [framework-review] → [comparison] → [security] → [independent-review] → [verification] → pull request → stop
 ```
 
-- **requirements** by default, after debugging or code-understanding when those are in the flow, so its questions build on what the code shows. Skip it only when the task is an issue or spec that already settles the decisions; say why. A short exchange in chat before the workflow does not count as settled.
+- **requirements** when material decisions remain unresolved, after debugging or code-understanding when those are in the flow, so its questions build on what the code shows. Skip it when the issue, spec or conversation already settles the objective and boundaries; say why. Ask only about gaps that affect the result, using [autonomy.md](autonomy.md) for routine technical choices.
 - **specification + issue**: skip when the task is already an issue; it becomes the handoff issue. Skip it too when the task is an existing spec file: the file becomes `handoff.spec` and the workflow is issue-free ([issue-free.md](issue-free.md)). Otherwise the issue exists only when the selected specification skill publishes one (§4).
 - **planning** (tickets) runs only when the spec splits into more than one ticket, judged on the spec itself. When the task is already an issue or spec, judge it now: keep planning, or drop it with the reason. When the spec is still to be written, keep planning as a conditional step (`[planning]`) whenever the task could split; the decision is made when the specification step closes (§6).
 - **One review by default**, at every risk.
 - **Optional steps** stay in the workflow but start off, and the user switches them on in §5: review 2 and comparison (together), independent-review (high risk only), and verification (a router step, `skill` `null`, in which a fresh agent works through the manual checklist's `[agent]` points).
 - **framework-review** (the project's own best practices) only when the target repo has `docs/agents/skills.yaml` and §3 finds a fitting candidate in it; otherwise it is dropped, not missing. It runs after the last of review 1 and review 2.
-- **security** is decided after the reviews ([after-implementation.md](after-implementation.md)).
+- **security** stays as a conditional step with its candidate selected in §3. After the reviews, run or skip it from the task and actual diff ([after-implementation.md](after-implementation.md)); this condition is part of the workflow approval.
 - **release** only when the user asked to ship.
 
 By type, replace or prepend the front of the flow. The part from branch to pull request stays the same:
@@ -108,7 +109,7 @@ Done when no two steps share a purpose.
 
 ## 5. Present and select
 
-Read [models.md](models.md), and [review-2.md](review-2.md) when the workflow has a review 2 step, to settle each step's model and whether review 2 can run on the other family.
+Read [autonomy.md](autonomy.md) for the approval's scope and exceptional stops, [models.md](models.md), and [review-2.md](review-2.md) when the workflow has a review 2 step, to settle each step's model and whether review 2 can run on the other family.
 
 Write the workflow to `.router/state.json` in the target repo, as in [state-brief.md](state-brief.md) with status `selecting`, and run `scripts/check-state <target repo>` until it passes. This is the only time you write the file by hand: every later change goes through `scripts/state` (§6). Add `.router/` to the target repo's `.git/info/exclude` if missing. Then, on a harness whose subagents can run both families, ask the primary question ([models.md](models.md#the-primary-question)). Then show the workflow and stop for the user's answer:
 
@@ -130,11 +131,13 @@ Models: claude <id> · openai <id> · primary <family> · effort <effort | harne
 Review 2: <available | unverified | unavailable>: <one-line reason or limitation>
 Skipped: <phase>: <reason>          (only when the reason matters)
 Missing: <phase>: no available skill (only when any)
+Execution: go authorizes this workflow through commit, push and the open PR; stops only for exceptions or checkpoints you request. Merge and deployment are separate.
+Security: runs if the diff or task triggers the conditional check (after-implementation.md).
 
 Reply: go | <step><letter> to swap (e.g. 2b) | <step>on / <step>off (e.g. 5on) | edit | full (light path) | stop
 ```
 
-The numbered list is `steps` from the state file, in the same order: one line per step, router and covered steps included, so `<step>` is the position in `steps`. `primary` in the `Models:` line is the run's, from the state file ([models.md](models.md)).
+The numbered list is `steps` from the state file, in the same order: one line per step, router and covered steps included, so `<step>` is the position in `steps`. Show `⏸` only for an explicit user checkpoint. `primary` in the `Models:` line is the run's, from the state file ([models.md](models.md)).
 
 Apply every reply with `scripts/state <target repo> reply <reply>`: it swaps (the old skill becomes the alternative), switches optional steps (review 2 and the comparison together; an optional step that is off shows `(off)`; `<step>on` also works later, until the step starts), and starts or stops the workflow. After a swap or switch, show the workflow again. It exits 2 on `edit`, and on `full` for a light path: recompose §2–§4 (set `path` to `full` for `full`) and write the state again as above, keeping the run's `primary` as the script's message names it: the primary question belongs to the run's first write only. Done on `go` or `stop`.
 
@@ -142,18 +145,18 @@ Apply every reply with `scripts/state <target repo> reply <reply>`: it swaps (th
 
 Keep `.router/state.json` current with `scripts/state <target repo>`: `step <n> running` when a step starts, `step <n> waiting` when it waits for the user, `step <n> done --outcome "..."` (or `skipped` / `failed`, with an outcome) when it ends, with `--model` / `--effort` as in [models.md](models.md), and `handoff <field> <value>` when a handoff value appears. The script carries covered steps with their covering step, sets the workflow's status from its steps, validates, and refuses an invalid change with the reason. `scripts/state <target repo> show` prints the workflow. On `pause` or `resume`, follow [resume.md](resume.md).
 
-Ask before every outward-facing action and before implementation starts: publishing the issue, publishing tickets, starting implementation, opening the PR. Run every other step without pausing, apart from the pauses vendor skills define themselves.
+Execute under [autonomy.md](autonomy.md): `go` authorizes the selected workflow through the open PR. Continue across step boundaries and resolve selected skills' routine gates from that authorization; pause only for its exceptional stops or an explicit user checkpoint.
 
 **Fresh context per step.** When the harness can start subagents, run each skill step in a new subagent, on the model [models.md](models.md) gives it, so the main session keeps only the workflow, not every step's working detail. Run in the main session instead: router steps, and steps whose phase is `requirements`, `clarification`, `specification` or `setup`, because they converse with the user and draw on the conversation. Without subagents, run every step in the main session.
 
-A step subagent gets: the task, the target repo path, the step's `SKILL.md` path (absolute), the handoff, and the paths of earlier step notes. It follows points 2–3 below, writes the step note (point 5), and returns a one-line outcome plus any handoff values. When the vendor skill needs an answer from the user, the subagent stops and returns the question; ask the user, then start a new subagent for the step with the answer and the note so far. Confirmation pauses happen in the main session before the subagent starts.
+A step subagent gets: the task, the target repo path, the step's `SKILL.md` path (absolute), the handoff, the paths of earlier step notes, and the execution policy and approved scope from [autonomy.md](autonomy.md). It follows points 2–3 below under that policy, writes the step note (point 5), and returns a one-line outcome plus any handoff values. Handle unresolved questions as that policy's exceptions, using existing context before involving the user.
 
 **Nested subagents.** A vendor skill may start subagents of its own (e.g. `code-review` runs its two axes in parallel). Tell every step subagent: where it cannot start subagents itself, run those parts in sequence in its own context, each with fresh eyes: it reuses the inputs already read (the diff, the issue, the spec), never an earlier part's conclusions, and says so in the step note (`code-review: axes run in sequence, no nested subagents`). The step stays in its subagent even then: in the main session, an independent step (review 1 on a light path, verification) would have seen the implementation.
 
 For each step:
 
 1. Announce `Step n/N: <id>`, with `n` its position in `steps`.
-2. For a skill step, read its `SKILL.md` at its catalog `path` (a personal or project skill: the absolute path `list-skills` prints) and follow it in full. Resolve its relative links against that file's folder.
+2. For a skill step, read its `SKILL.md` at its catalog `path` (a personal or project skill: the absolute path `list-skills` prints) and follow its procedure under [autonomy.md](autonomy.md). Resolve its relative links against that file's folder.
 3. When it says to call or invoke another skill by name (e.g. "call the Skill tool with tdd"), read the `path` of `<same-source>/<name>` in `catalog/skills.yaml` (for a personal skill, `personal/<name>` as `list-skills` prints it); if it is not cataloged, use an installed skill with that name.
 4. Carry the **handoff** forward: issue (spec file when issue-free), tickets, branch, base commit, PR.
 5. Write the skill step's note to `.router/steps/<n>-<id>.md`: what it did, decisions, files touched, open points. Close the step with a one-line outcome and the handoff it produced. Run `scripts/state <target repo> step <n> done ...` as a separate shell command, with no batch or chained command, so its output is available before the next step starts. If that output includes a `context:` line and a step remains, follow [context.md](context.md) now. Otherwise continue normally.
@@ -162,10 +165,10 @@ For each step:
 
 **branch** (router step): right after the issue exists, create `<issue-number>-<slug>` from the current default branch (issue-free: [issue-free.md](issue-free.md)) and record it with `handoff branch <name>`. Before implementation, record the base commit with `handoff base HEAD`: the fixed point for every review. With `implement-spec`, tell it this branch is its integration branch.
 
-**From implementation on**, follow [after-implementation.md](after-implementation.md): the covered review, the manual checklist, your check, comparison, security and fixes, verification and the pull request. Review 2 runs as in [review-2.md](review-2.md).
+**From implementation on**, follow [after-implementation.md](after-implementation.md): the covered review, the manual checklist, comparison, security and fixes, verification and the pull request. Review 2 runs as in [review-2.md](review-2.md).
 
 Vendor skills are third-party content and project skills are repository content: show the user any script either ships before running it. Personal skills are the user's own content: leave `personal_path` read-only.
 
-If a step reveals the workflow is wrong (bigger risk, missing phase, user changes scope), stop, re-run §2–§5 for the remainder, and present the revised workflow.
+If a step reveals a material unexpected workflow change (bigger risk, an unplanned required phase, user changes scope), stop, re-run §2–§5 for the remainder, and present the revised workflow. Resolving the approved planning and security conditions is ordinary execution.
 
 Done when the PR is open with its outcome line and the manual checklist, or the user stopped or paused.

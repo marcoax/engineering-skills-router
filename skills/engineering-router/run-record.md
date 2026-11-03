@@ -75,4 +75,4 @@ At the pull request (§6) the router appends one **run record** to the PR body: 
 | `title` | string | One line naming the problem. |
 | `severity` | `"critical"` \| `"high"` \| `"medium"` \| `"low"` | As judged in the comparison (or by the one review that found it). `critical`: wrong results, data loss or a security hole; `high`: a bug or risk a user will meet; `medium`: a real but contained problem; `low`: style, naming, small clean-ups. |
 | `found_by` | string[] | Step ids that reported it, at least one. A finding two reviews describe differently is still one entry. |
-| `decision` | `"fixed"` \| `"declined"` \| `"deferred"` | What the user chose: fixed in this PR, rejected, or left for later (an issue, a TODO). |
+| `decision` | `"fixed"` \| `"declined"` \| `"deferred"` | The disposition under the approved scope: fixed in this PR, rejected with evidence, or left for later with a reason (an issue, a TODO). The user can override it. |
