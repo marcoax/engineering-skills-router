@@ -13,7 +13,6 @@ For working on the router itself or its catalog. Install and use: the [README](.
 | `catalog/sources.yaml` | vendor repos and where their skills live |
 | `catalog/skills.yaml` | project-owned metadata per skill (phases, use_when, invokes); descriptions are read from each `SKILL.md` |
 | `catalog/guides.yaml` | vendor guides consulted for selection: source and path only, never phase candidates |
-| `catalog/rankings.yaml` | default + fallback skill per phase |
 | `catalog/categories.yaml` | the phases |
 | `config/preferences.example.yaml` | template for personal overrides (`preferences.yaml` in the configuration directory, [configuration.md](configuration.md)) |
 | `config/personal-skills.example.yaml` | template for your own skills (`personal-skills.yaml` beside it) |
@@ -28,18 +27,17 @@ For working on the router itself or its catalog. Install and use: the [README](.
 
 | Script | Does |
 |---|---|
-| `scripts/list-skills [--target <repo>] [phase ...]` | ranked candidates per phase with availability; with phases, each candidate's source description (from its `SKILL.md` frontmatter) and catalog metadata; `--target` adds the repo's project skills |
-| `scripts/list-skills --neutral [--target <repo>] [phase ...]` | the same candidates on equal standing, for the selector: rankings unread, origin `preference`, `project`, `personal` or `vendor`, vendor skills by name |
+| `scripts/list-skills [--target <repo>] [phase ...]` | candidates per phase on equal standing, with availability and origin `preference`, `project`, `personal` or `vendor` (vendor and personal skills by name, not ranked); with phases, each candidate's source description (from its `SKILL.md` frontmatter) and catalog metadata; `--target` adds the repo's project skills |
 | `scripts/list-skills --guides` | the registered vendor guides with their source descriptions |
 | `scripts/check-selection [--target <repo>] <file>` | checks a selector proposal (JSON, or Markdown ending in a ```` ```json ```` block): every default and alternative is an `ok` candidate for its phase, at most two alternatives, every pick and phase has a reason; reads only |
 | `scripts/skill-index [--check]` | regenerates `docs/skill-index.md` from the guides, the catalog and the checked-out vendor revisions; `--check` only reports a stale index |
-| `scripts/validate-catalog [--target <repo>] [--verbose]` | checks sources, paths, ids, categories, rankings, preferences, personal skills, guides (source ownership, never also a skill); warns on unreadable descriptions; `--target` also checks the repo's `docs/agents/skills.yaml`; `--verbose` lists uncataloged upstream skills |
+| `scripts/validate-catalog [--target <repo>] [--verbose]` | checks sources, paths, ids, categories, preferences, personal skills, guides (source ownership, never also a skill); warns on unreadable descriptions and a leftover `catalog/rankings.yaml` (no longer read); `--target` also checks the repo's `docs/agents/skills.yaml`; `--verbose` lists uncataloged upstream skills |
 | `scripts/config [migrate [--yes]]` | prints the user configuration in effect (source, directory, files, ignored clone-local files); `migrate` shows, and with `--yes` performs, a validated move of `config/` files out of the checkout ([configuration.md](configuration.md)) |
 | `scripts/update` | pulls vendor submodules, prints added/removed skills; never edits the catalog |
 | `scripts/check-state <target-repo>` | checks the target repo's `.router/state.json` against `skills/engineering-router/state.md` |
 | `scripts/selftest` | checks the scripts against a scratch catalog and scratch state files, the installable skills and the selector eval references, then runs the Pi adapter tests |
 | `scripts/context-threshold` | read-only adapter bridge: prints the context threshold of the configuration in effect (150000 by default) |
-| `scripts/state <target-repo> step\|workflow\|handoff\|reply\|primary\|show\|model ...` | the router's only way to change `.router/state.json` after writing it: applies the change, validates it with `check-state`, keeps the old file when invalid; `primary` prints the primary question (the current family first; `--json` gives the options to a selector) and `primary <n\|family>` sets the run's `primary`, both only while the workflow is `selecting`; `model <step>` prints the model a step runs on, from the run's `primary` in the state |
+| `scripts/state <target-repo> compose\|step\|workflow\|handoff\|reply\|primary\|show\|model ...` | the router's only way to write `.router/state.json`: `compose [--new] <file>` writes a composed workflow after checking every skill and alternative is a usable candidate for its step's phases and recalculating coverage (`--new` never replaces an unfinished run; without it, completed steps, `primary` and handoff stay); a swap reply recalculates coverage from the new skill; every change is validated with `check-state`, keeping the old file when invalid; `primary` prints the primary question (the current family first; `--json` gives the options to a selector) and `primary <n\|family>` sets the run's `primary`, both only while the workflow is `selecting`; `model <step>` prints the model a step runs on, from the run's `primary` in the state |
 | `scripts/record <target-repo> [--findings f] [--checklist p,a[,ok,ko]] [--pr n] ...` | composes the run record from the state and the findings, and writes it into the PR body |
 | `scripts/stats [--repo <owner/name>] [--limit <n>] [--json]` | adds up the run records in a repo's PRs (via `gh`): per review and model, per skill, per severity, checklists, tokens |
 

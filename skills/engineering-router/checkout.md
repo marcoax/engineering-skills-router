@@ -16,6 +16,6 @@ The check is due (SKILL.md §0). Ask whether to check vendor updates now. If yes
 
 1. Run `scripts/update`.
 2. Read every vendor `SKILL.md` it reports as added, plus those changed since the pinned commit (`git diff --submodule=diff -- vendors/`).
-3. **Propose** a diff to `catalog/skills.yaml` and `catalog/rankings.yaml`. Apply it only after the user confirms, then run `scripts/validate-catalog`.
+3. **Propose** a diff to `catalog/skills.yaml` (and `catalog/guides.yaml` for a vendor's guide): categories and usage signals only, never a vendor ranking or a preferred/fallback order, since candidates stand on equal terms. Apply it only after the user confirms, then run `scripts/validate-catalog`.
 
 Done when the check was declined, or the catalog proposal was answered.

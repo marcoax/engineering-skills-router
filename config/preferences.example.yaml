@@ -5,7 +5,7 @@
 
 preferences:
 
-  # Per-phase preferred skills, tried before the catalog ranking.
+  # Per-phase preferred skills: the selector picks one when it fits the task.
   review:
     prefer: [addyosmani/code-review-and-quality]
 

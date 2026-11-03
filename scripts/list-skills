@@ -1,14 +1,15 @@
 #!/usr/bin/env node
 // Usage: scripts/list-skills [--target <repo>] [--neutral] [phase ...]
 //        scripts/list-skills --guides
-//   no args  one line per phase with its ranked candidates
+//   no args  one line per phase with its candidates
 //   phases   full detail for each candidate: the source description, read from its SKILL.md
 //            frontmatter, then the catalog's use_when, avoid_when, complexity, invokes, requires
 //   --guides the vendor guides (catalog/guides.yaml), with their source descriptions; guides are
 //            consulted for selection and are never phase candidates
-//   --neutral candidates on equal standing, for the skill selector: rankings are not read, and
-//            the origin is preference | project | personal | vendor. Vendor and personal skills
-//            are listed by skill name; the order is not a ranking
+//   --neutral accepted for compatibility; every listing is neutral
+// Candidates stand on equal terms: an explicit preference first, then the target's project
+// skills, then personal and vendor skills by skill name. The order is not a ranking; the origin
+// is preference | project | personal | vendor.
 //   --target adds the target repo's own skills (docs/agents/skills.yaml) as project/<name>,
 //            the only candidates for framework-review
 // Personal skills (personal-skills.yaml, see scripts/config; under preferences.personal_path) are listed as
@@ -18,7 +19,6 @@
 const Catalog = require('./lib/catalog');
 
 const { target, args: argv } = Catalog.targetArg(process.argv.slice(2));
-const neutral = argv.includes('--neutral');
 const args = argv.filter((a) => a !== '--neutral');
 const describe = (skill) => {
   const { text, error } = Catalog.description(skill);
@@ -43,7 +43,7 @@ if (unknown.length > 0) {
 }
 
 for (const phase of phases) {
-  const list = neutral ? Catalog.neutralCandidates(phase, skills) : Catalog.candidates(phase, skills);
+  const list = Catalog.candidates(phase, skills);
   if (args.length === 0) {
     console.log(`${phase.padEnd(20)} ` + list.map((c) => (c.status === 'ok' ? c.id : `(${c.id}: ${c.status})`)).join(', '));
     continue;

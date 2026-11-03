@@ -5,10 +5,12 @@ What a run does beyond the backbone in the [README](../README.md). Why it is bui
 ## Classification and backbone
 
 ```text
-task → classify → phases → one skill per phase → dedupe → show workflow → run
+task → classify → skill selector (phases, one skill per phase) → dedupe → show workflow → run
 ```
 
-The router first records the task's type, risk, size (`complexity`) and properties, each with a reason. A low-risk task gets no workflow: the router offers to do it directly, and if you want the workflow anyway it runs as at medium risk. Size helps pick skills: a skill's catalog `complexity` ranks it, but never leaves a phase without a skill.
+The router hands phase and skill choice to the [skill selector](../skills/skill-selector/SKILL.md): every vendor skill starts on equal terms, the selector consults each vendor's guide, reads the candidates and gives a default and up to two alternatives per phase with reasons. The router composes that proposal into the workflow and `scripts/state … compose` refuses any skill that is not usable for its step. When you swap a skill, the steps it runs internally (tests, review 1) are recalculated before `go`: picking an implementer without an integrated review puts review 1 back as a step of its own. A resumed workflow keeps its skills; a recomposition keeps the steps already done.
+
+The router first records the task's type, risk, size (`complexity`) and properties, each with a reason. A low-risk task gets no workflow: the router offers to do it directly, and if you want the workflow anyway it runs as at medium risk. Size helps pick skills: the selector weighs a skill's catalog `complexity`, which never leaves a phase without a skill.
 
 Default backbone: **requirements → spec + GitHub issue → tickets → implement + test → review**, trimmed or extended by task type and risk. Requirements runs after any code-understanding step and asks only about material gaps; it is skipped when the issue, spec or conversation already settles the objective and boundaries. One review runs by default at every risk; a second review on the other model family and a comparison of both (and, at high risk, an independent review) start off, and you switch them on when you approve the workflow.
 
@@ -55,7 +57,7 @@ skills:
       - change touches PHP/Laravel code
 ```
 
-When one fits the task, the workflow gets a `framework-review` step after the reviews: the change is checked against the project's own conventions, and its findings join the comparison. A repo without the file gets no such step. Only project skills fill `framework-review`; tagged with another phase (e.g. `implementation`), a project skill ranks right after a user preference there; `scripts/validate-catalog --target <repo>` checks the file.
+When one fits the task, the workflow gets a `framework-review` step after the reviews: the change is checked against the project's own conventions, and its findings join the comparison. A repo without the file gets no such step. Only project skills fill `framework-review`; tagged with another phase (e.g. `implementation`), a project skill is listed right after a user preference there; `scripts/validate-catalog --target <repo>` checks the file.
 
 ## Personal skills
 
@@ -66,7 +68,7 @@ preferences:
   personal_path: ~/my-skills
 ```
 
-They fill any phase but `framework-review`, after the ranked vendor skills; rank one first with `prefer` (`catalog/rankings.yaml` stays vendor-only). The router reads them in place and never writes there. They are not pinned: editing one changes the next workflow. One named like a cataloged vendor skill (`personal/tdd` next to `mattpocock/tdd`) is skipped with a warning, never used in its place. `scripts/validate-catalog` checks the file. A Pi package update wipes `config/`, so keep both files in the external configuration directory ([configuration.md](configuration.md)).
+They fill any phase but `framework-review`, on equal terms with the vendor skills; name one in `prefer` to have it chosen when it fits. The router reads them in place and never writes there. They are not pinned: editing one changes the next workflow. One named like a cataloged vendor skill (`personal/tdd` next to `mattpocock/tdd`) is skipped with a warning, never used in its place. `scripts/validate-catalog` checks the file. A Pi package update wipes `config/`, so keep both files in the external configuration directory ([configuration.md](configuration.md)).
 
 ## State and subagents
 

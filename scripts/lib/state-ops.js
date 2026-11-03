@@ -128,6 +128,37 @@ function swap(state, i, letter) {
   return s;
 }
 
+// Recalculates which open steps run inside another step, from what the selected skills actually
+// invoke (SKILL.md §4). `invokes(skill, phases)` lists the skills `skill` runs internally that are
+// tagged with one of `phases`. A pending, non-optional step is covered by the first earlier open
+// step, itself not covered, whose skill invokes one for its phases; it then takes that invoked
+// skill and has no alternatives. A covered step no such step runs any more runs on its own, so a
+// swap never leaves a check covered by a skill that does not run it. A light path never covers
+// review 1. Returns { state, notes }: one line per changed step.
+function recover(state, invokes) {
+  const s = clone(state);
+  const notes = [];
+  const open = (x) => ['pending', 'running', 'waiting'].includes(x.status);
+  s.steps.forEach((step, k) => {
+    if (step.status !== 'pending' || step.optional || step.skill == null || !(step.phases ?? []).length) return;
+    const phases = s.path === 'light' ? step.phases.filter((p) => p !== 'review') : step.phases;
+    const cover = phases.length === 0 ? undefined : s.steps.slice(0, k)
+      .find((x) => x.skill && x.covered_by == null && open(x) && invokes(x.skill, phases).length > 0);
+    if (cover) {
+      const runs = invokes(cover.skill, phases);
+      if (step.covered_by === cover.id && runs.includes(step.skill)) return;
+      Object.assign(step, { covered_by: cover.id, skill: runs[0], reason: `runs inside ${cover.skill}`, alternatives: [] });
+      notes.push(`${step.id} runs inside ${cover.id} (${cover.skill} runs ${runs[0]})`);
+    } else if (step.covered_by != null) {
+      const was = s.steps.find((x) => x.id === step.covered_by);
+      step.covered_by = null;
+      step.reason = `runs on its own: ${was?.skill ?? step.covered_by} does not run it`;
+      notes.push(`${step.id} runs on its own (${was?.skill ?? 'its covering step'} does not run it)`);
+    }
+  });
+  return { state: s, notes };
+}
+
 // Optional steps switch until they start: while selecting, and later for a step still
 // pending or off. A finished workflow switches nothing.
 function toggle(state, i, on) {
@@ -147,12 +178,12 @@ function toggle(state, i, on) {
 }
 
 // A reply in the selection syntax (state.md): go, <n><letter>, <n>on, <n>off, stop, pause,
-// resume. `edit` and `full` are not state changes: the router reopens §2-§4.
+// resume. `edit` and `full` are not state changes: the router reselects and recomposes (§3-§4).
 function applyReply(state, reply) {
   const r = String(reply).trim().toLowerCase();
   if (r === 'edit' || r === 'full') {
     const keep = state.primary ? `, and keep "primary": "${state.primary}"` : '';
-    const e = new Error(`${r} reopens SKILL.md §2-§4: recompose the workflow and write it again${keep}`);
+    const e = new Error(`${r} reopens SKILL.md §3-§4: select and recompose the workflow, then write it with \`scripts/state <target repo> compose <file>\`, which keeps the handoff and completed steps${keep}`);
     e.code = 'RECOMPOSE';
     throw e;
   }
@@ -174,4 +205,4 @@ function applyReply(state, reply) {
   return swap(state, i, m[2]);
 }
 
-module.exports = { setStep, setWorkflow, checkPrimaryOpen, setPrimary, setHandoff, applyReply, stepIndex, STEP_STATUSES, WORKFLOW_STATUSES };
+module.exports = { recover, setStep, setWorkflow, checkPrimaryOpen, setPrimary, setHandoff, applyReply, stepIndex, STEP_STATUSES, WORKFLOW_STATUSES };

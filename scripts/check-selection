@@ -3,7 +3,7 @@
 // Checks the references in a skill-selector proposal: the file is the selection JSON, or a
 // Markdown answer holding it as the last ```json block. Each selected phase needs a reason and a
 // default; each pick (default and at most two alternatives) needs a reason and must be an `ok`
-// candidate of `list-skills --neutral` for its phase: cataloged, personal or (with --target)
+// candidate of `list-skills` for its phase: cataloged, personal or (with --target)
 // project, present, not excluded, never a guide. A missing phase needs a reason. Judging fit is
 // the selector's job; this only proves every proposed step could run. Reads only.
 //
@@ -47,7 +47,7 @@ for (const p of phases) {
   if (!p.default) { errors.push(`${name}: needs a default (or list the phase under missing)`); continue; }
   const alternatives = Catalog.arr(p.alternatives);
   if (alternatives.length > 2) errors.push(`${name}: at most two alternatives`);
-  const candidates = Catalog.neutralCandidates(name, skills);
+  const candidates = Catalog.candidates(name, skills);
   const seen = new Set();
   for (const [role, pick] of [['default', p.default], ...alternatives.map((a) => ['alternative', a])]) {
     const id = pick?.skill;

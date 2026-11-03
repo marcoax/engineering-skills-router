@@ -70,7 +70,6 @@ const label = (file) => {
 const PROJECT_PHASES = ['framework-review'];
 
 const categories = () => read('catalog/categories.yaml').categories || {};
-const rankings = () => read('catalog/rankings.yaml').rankings || {};
 const preferences = (cfg = config()) => readYaml(cfg.preferencesFile).preferences || {};
 const vendorSkills = () => read('catalog/skills.yaml').skills || {};
 // Vendor guides (catalog/guides.yaml): advisory entry points, kept apart from executable skills.
@@ -161,40 +160,16 @@ function upstreamPaths(source) {
     .sort();
 }
 
-// Ordered candidates for a phase: user preference, the target's project skills, catalog preferred,
-// fallback, then any other cataloged skill tagged with the phase. A project phase lists only the
-// target's project skills.
-function candidates(category, allSkills = skills(), allRankings = rankings(), prefs = preferences()) {
-  const rank = allRankings[category] || {};
-  const pref = (prefs[category] || {}).prefer;
-  const tagged = Object.keys(allSkills).filter((id) => arr(allSkills[id].categories).includes(category));
-  const isProject = (id) => allSkills[id]?.source === 'project';
-  const ordered = PROJECT_PHASES.includes(category)
-    ? tagged.filter(isProject).map((id) => [id, 'project'])
-    // Preferences name catalog skills only, so a project id there is ignored.
-    : [['preference', arr(pref).filter((id) => !isProject(id))], ['project', tagged.filter(isProject)], ['preferred', rank.preferred],
-      ['fallback', rank.fallback], ['other', tagged]]
-      .flatMap(([origin, ids]) => arr(ids).map((id) => [id, origin]));
-  const excluded = arr(prefs.exclude);
-  const seen = new Set();
-  return ordered
-    .filter(([id]) => !seen.has(id) && seen.add(id))
-    .map(([id, origin]) => {
-      const skill = allSkills[id];
-      return { id, origin, status: status(skill, id, excluded), skill };
-    });
-}
-
 const status = (skill, id, excluded) => (!skill ? 'unknown'
   : excluded.includes(id) ? 'excluded'
   : !available(skill) ? 'missing'
   : 'ok');
 
-// Candidates for a phase on equal standing, for the selector: explicit user preferences first,
-// then the target's project skills, then every other tagged skill (personal or vendor) sorted by
-// skill name so neither vendor nor catalog order shows. Rankings are not read. Origins:
+// Candidates for a phase on equal standing: explicit user preferences first, then the target's
+// project skills, then every other tagged skill (personal or vendor) sorted by skill name so
+// neither vendor nor catalog order shows; the order is not a ranking. Origins:
 // preference | project | personal | vendor. A project phase lists only project skills.
-function neutralCandidates(category, allSkills = skills(), prefs = preferences()) {
+function candidates(category, allSkills = skills(), prefs = preferences()) {
   const tagged = Object.keys(allSkills).filter((id) => arr(allSkills[id].categories).includes(category));
   const sourceOf = (id) => allSkills[id]?.source;
   const byName = (a, b) => a.split('/')[1].localeCompare(b.split('/')[1]) || a.localeCompare(b);
@@ -215,5 +190,5 @@ function neutralCandidates(category, allSkills = skills(), prefs = preferences()
 
 module.exports = {
   ROOT, PROJECT_CATALOG, PROJECT_PHASES, CONFIG_ENV, CONFIG_FILES, CLONE_CONFIG, config, label, readYaml, arr, sources, skills, vendorSkills, guides, ownedBy, projectSkills,
-  personalPath, personalSkills, namesake, categories, rankings, preferences, available, description, targetArg, upstreamPaths, candidates, neutralCandidates,
+  personalPath, personalSkills, namesake, categories, preferences, available, description, targetArg, upstreamPaths, candidates,
 };
