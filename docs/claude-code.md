@@ -1,28 +1,30 @@
-# Claude Code mod
+# Claude Code reference
 
-Install it with the README's [quick start](../README.md#install-claude-code). This page is the reference.
+The recommended installation, its checks, update and removal are in the README's [Install (Claude Code)](../README.md#install-claude-code). This page describes the panel plugin and the other ways to install, for when that route does not fit.
 
-`adapters/claude-code/` is a Claude Code plugin whose mod draws the workflow: a band above the prompt (the same lines as the Pi widget) and a pane with the skill selection. It reads `.router/state.json` of the session's working directory and never writes it; choices go to the agent as prompts in the router's selection syntax. Needs a Claude Code with mods (CLI, Code tab of the Desktop app or VS Code extension). A mod runs with your permissions: list what it does first with `claude plugin validate adapters/claude-code`.
+## The panel plugin
+
+`adapters/claude-code/` is a Claude Code plugin, `engineering-router-panel`, whose mod draws the workflow: a band above the prompt (the same lines as the Pi widget) and a pane with the skill selection. It reads `.router/state.json` of the session's working directory and never writes it; choices go to the agent as prompts in the router's selection syntax. It does not contain the router skill: the skills come from the checkout (README step 3). Needs a Claude Code with mods (CLI, Code tab of the Desktop app or VS Code extension). A mod runs with your permissions: list what it does first with `claude plugin validate adapters/claude-code`.
+
+The repo is its own marketplace (`.claude-plugin/marketplace.json`), named `engineering-skills-router`, holding this one plugin; the plugin is installed as `engineering-router-panel@engineering-skills-router`. Added from a local checkout, the marketplace has a `directory` source and Claude Code reads the plugin in place from the checkout, so `git pull` plus `/reload-plugins` updates it; `claude plugin marketplace update` is not needed.
 
 `/router-panel` toggles the pane. In the pane the buttons carry hotkeys: `g` go · `j`/`k` next/previous step · `a`/`b` swap skill · `o` on/off an optional step · `f` full path (light workflow) · `e` edit · `p` pause · `r` resume · `x` stop (press twice).
 
 ## Review 2 on another family
 
-Claude Code's subagents run only Claude models, so the mod adds a tool, `review_other_family`, that runs the review through a local CLI, read-only, and streams it into a **Review 2** pane: `openai-codex/<model>` runs `codex exec --sandbox read-only`, `opencode/<provider>/<model>` runs `opencode run --agent plan`. The router calls it when it is listed (SKILL.md §5).
+Claude Code's subagents run only Claude models, so the mod adds a tool, `review_other_family`, that runs the review through a local CLI, read-only, and streams it into a **Review 2** pane: `openai-codex/<model>` runs `codex exec --sandbox read-only`, `opencode/<provider>/<model>` runs `opencode run --agent plan`. The router calls it when it is listed (SKILL.md §5). Called without a prompt, it only checks that the backend's CLI is installed and reports `available: …` or why not; that is the availability check, and it starts no review. Whether your account can use the chosen model shows only when a review runs.
 
-`/router-models` opens a pane to pick backend, model and effort; left empty (`default`), each is the CLI's own default (`~/.codex/config.toml`, opencode's config). For opencode the model is picked from what `opencode models` lists; when that fails or lists nothing, and for Codex, it is typed. The choice is kept across sessions. New backends, and a backend's model-list command, are one entry in `adapters/claude-code/hooks/backends.ts`.
+`/router-models` opens a pane to pick backend, model and effort; left empty (`default`), each is the CLI's own default (`~/.codex/config.toml`, opencode's config). For opencode the model is picked from what `opencode models` lists; when that fails or lists nothing, and for Codex, it is typed. The choice is kept across sessions in Claude Code's mod storage. Without a choice, the router passes `models.openai` from your `preferences.yaml` ([configuration.md](configuration.md)). New backends, and a backend's model-list command, are one entry in `adapters/claude-code/hooks/backends.ts`.
 
-## Installing the mod alone
+## Other installation routes
 
-The repo is its own marketplace (`.claude-plugin/marketplace.json`) holding this one plugin. Without a clone, the mod can be installed from GitHub:
+Each replaces one part of the README route; mixing them with it is covered in the README's [existing installation](../README.md#an-existing-installation).
 
-```
-/plugin install engineering-router-panel --marketplace marcoax/engineering-skills-router
-```
-
-This installs the mod only, not the router skill: install that as in [Install for other agents](install-other-agents.md). The quick start installs both from one clone, so they stay in step.
-
-To try a local change to the mod for one session, without installing: `claude --plugin-dir /path/to/engineering-skills-router/adapters/claude-code` (not together with the installed one). If something does not show, `claude --debug` logs why a mod hook was skipped.
+- **Plugin from GitHub, without a clone.** `claude plugin marketplace add marcoax/engineering-skills-router`, then `claude plugin install engineering-router-panel@engineering-skills-router` (or, in a session, `/plugin install engineering-router-panel --marketplace marcoax/engineering-skills-router`). Claude Code keeps its own copy and updates it with `claude plugin marketplace update engineering-skills-router` (auto-update is off for third-party marketplaces). The skills still need a checkout; the plugin and the checkout can then be at different revisions. Adding this marketplace while a local one of the same name exists repoints it.
+- **One session, no install.** `claude --plugin-dir "/path/to/checkout/adapters/claude-code"` loads a local copy of the plugin for that session, for trying a change; not together with the installed one. `claude --debug` logs why a mod hook was skipped.
+- **One project only.** Link the skills into that project's `.claude/skills/` instead of `~/.claude/skills/`; install the plugin with `--scope local` (this repository, only you) or `--scope project` (written to the project's shared `.claude/settings.json`, which changes it for collaborators; avoid it unless that is the intent).
+- **`CLAUDE_CONFIG_DIR`.** When you run Claude Code with another configuration directory, the plugin commands write there. Personal skills are expected under that directory's `skills/`; that has not been confirmed in a live session.
+- **A copied skill** (`npx skills add`, or a manual copy) instead of links: it is a bootstrap that finds a checkout through `ENGINEERING_ROUTER_HOME` or the default locations and then follows the checkout's own skill ([checkout resolution](reference.md#checkout-resolution), [other agents](install-other-agents.md)).
 
 ## Differences from the Pi adapter
 

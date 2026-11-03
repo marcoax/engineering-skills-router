@@ -47,6 +47,17 @@ Scripts need Node 22.18+; `scripts/setup` installs their only dependency (`yaml`
 
 Adding a collection: [adding-a-source.md](adding-a-source.md).
 
+## Checkout resolution
+
+Both skills start with `node <skill folder>/resolve-root.js`, which prints the checkout (`root:`) and how it was found (`found:`), taking the first location that holds `catalog/skills.yaml`:
+
+1. `skill-dir`: the checkout the skill folder belongs to, after following symlinks. A skill linked from a checkout (README route, Pi from a local path) always lands here, whatever the environment says.
+2. `env`: `$ENGINEERING_ROUTER_HOME`, for a copied skill that should use a checkout of your own.
+3. `pi`: the Pi package checkout, `${PI_CODING_AGENT_DIR:-~/.pi/agent}/git/github.com/marcoax/engineering-skills-router`, used read-only. Any location that is this checkout reports `found: pi`.
+4. `data-dir`: `$XDG_DATA_HOME/engineering-skills-router`, else `~/.local/share/engineering-skills-router`.
+
+Nothing found prints `missing` and the `data-dir`, where the router offers to clone ([checkout.md](../skills/engineering-router/checkout.md)). A skill running from a copy outside the checkout also prints `skill:` and follows that checkout's own `SKILL.md`. The resolver only reads; `scripts/selftest` covers each case.
+
 ## Vendor updates
 
 The submodule gitlinks pin the vendor revisions that are checked out. `catalog/reviewed.yaml` records, per source, the revision the catalog was last reviewed against; only `scripts/update --approve` writes it. The router offers this flow when its update check is due ([checkout.md](../skills/engineering-router/checkout.md)):
