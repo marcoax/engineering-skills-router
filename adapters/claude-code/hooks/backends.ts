@@ -1,5 +1,5 @@
 // Which command line runs a review on a model outside Claude Code's own family.
-// The router passes the model as `config/preferences.yaml` names it; its first segment
+// The router passes the model as the user's `preferences.yaml` (where `scripts/config` says) names it; its first segment
 // picks the backend, the rest is the backend's own model id. Each backend runs read-only.
 // To add one, add an entry: its prefixes, its executable, and its argument vector.
 // A backend that can list its models names the command; /router-models offers its output.

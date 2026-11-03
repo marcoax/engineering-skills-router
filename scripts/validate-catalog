@@ -24,16 +24,7 @@ config.shadowed.forEach((file) => (config.source === 'explicit' ? warnings : err
   `${Catalog.label(file)}: ignored, the ${config.source} configuration in ${config.dir} is used instead `
   + '(scripts/config migrate moves it there, or remove one of them)'));
 // A malformed file is an error, never read as absent; its settings fall back to the defaults.
-for (const [file, key] of [[config.preferencesFile, 'preferences'], [config.personalFile, 'skills']]) {
-  let doc;
-  try { doc = Catalog.readYaml(file); } catch (e) {
-    errors.push(`${Catalog.label(file)}: malformed YAML: ${e.message.split('\n')[0]}`);
-    continue;
-  }
-  const ok = (v) => v != null && typeof v === 'object' && !Array.isArray(v);
-  if (fs.existsSync(file) && (!ok(doc) || (Object.hasOwn(doc, key) ? doc[key] != null && !ok(doc[key]) : true)))
-    errors.push(`${Catalog.label(file)}: expected a top-level '${key}:' mapping`);
-}
+errors.push(...Catalog.configErrors(config));
 const safe = (fn, fallback = {}) => { try { return fn(); } catch { return fallback; } };
 const prefs = safe(() => Catalog.preferences(config));
 const vendor = Catalog.vendorSkills();

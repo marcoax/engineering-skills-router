@@ -21,7 +21,7 @@ Take each input from the request when given; otherwise settle it here and say so
 
 - **task**: the request; read the issue (`gh issue view`) or spec file it names.
 - **target repo**: the one the task is about, the current repo by default. Inspect it read-only: brownfield or greenfield, the code the task touches, and whether `docs/agents/skills.yaml`, `docs/agents/issue-tracker.md`, `GLOSSARY.md` or `docs/adr/` exist.
-- **classification**: type, risk, complexity (low | medium | high) and properties, each with a one-line reason, using the engineering router's vocabulary (its SKILL.md §1, beside this folder in the checkout).
+- **classification**: type, risk, complexity and properties, each with a one-line reason, by the criteria, facts and minimum risks in `skills/engineering-router/classification.md` under the repo root; when the router passes its checked classification, take it as given.
 - **explicit choices**: `prefer` and `exclude` in the user's `preferences.yaml` (where `scripts/config` says), plus any skill or phase the user named.
 - **harness capabilities**: subagents, isolated output locations for parallel candidates, `gh` logged in, network.
 
@@ -35,7 +35,7 @@ A guide whose file is missing or unreadable is **unavailable**: record it with t
 
 ## 4. Choose phases
 
-Pick the phases this task needs from `catalog/categories.yaml`, starting from the router's default flow (its SKILL.md §2) and keeping the smallest useful set. Each phase gets a task-specific reason. Discovery, code-understanding, clarification and architecture enter when the task's behavior or design is still uncertain: locating the file the task touches leaves that question open. `framework-review` enters only when the target has `docs/agents/skills.yaml` with a fitting skill. Name every default-flow phase you leave out, with its reason. Done when every chosen and every omitted phase has a reason.
+Pick the phases this task needs from `catalog/categories.yaml`, starting from the router's default flow (its SKILL.md §2) and keeping the smallest useful set. Each phase gets a task-specific reason. Discovery, code-understanding, clarification and architecture enter when the task's behavior or design is still uncertain: locating the file the task touches leaves that question open. `framework-review` enters only when the target has `docs/agents/skills.yaml` with a fitting skill. Name every default-flow phase you leave out, with its reason (on a light path: every phase light.md leaves out); `check-selection` refuses a default-flow phase that is neither selected, omitted nor missing. Done when every chosen and every omitted phase has a reason.
 
 ## 5. Select
 
@@ -47,8 +47,9 @@ For each phase:
 2. **Read every shortlisted `SKILL.md` in full** (catalog `path`, or the absolute path printed for personal and project skills) before you recommend it: its process, side effects, prerequisites and cost.
 3. Compare on objective, fit to the classification, `avoid_when`, `complexity`, hard prerequisites (`requires`, target files, harness capabilities), project constraints and cost. A candidate with an unmet hard prerequisite is out, with the reason.
 4. Propose one **default** and at most two **alternatives**, each with a task-specific reason and its source path as evidence. A suitable `preference` is the default; one that does not fit stays an alternative or is dropped, with the reason. `project` skills fill `framework-review` alone and lead the phases they are tagged with when they fit, since they carry project knowledge. A candidate marked `excluded` or `missing` stays out.
-5. When two candidates fit equally, call them a **tie**: name them as equivalent, say what would separate them, and pick the default with that stated reason.
-6. **Arena** (`pstack/arena`) takes an alternative slot only for a high-complexity implementation with meaningful competing designs, when the harness runs subagents with isolated outputs; a single-implementation skill stays the default. Its reason starts **High cost**: runners repeat the same task, then judging, synthesis and verification follow. State the benefit for this task; give a monetary estimate only when models, runner count and prices are known.
+5. On a full path, propose **review 2** as its own `review` entry with `"step": "review-2"`: a default other than review 1's and at most two alternatives, each with its reason. It runs on the other model family, so prefer different axes.
+6. When two candidates fit equally, call them a **tie**: name them as equivalent, say what would separate them, and pick the default with that stated reason.
+7. **Arena** (`pstack/arena`) takes an alternative slot only for a high-complexity implementation with meaningful competing designs, when the harness runs subagents with isolated outputs; a single-implementation skill stays the default. Its reason starts **High cost**: runners repeat the same task, then judging, synthesis and verification follow. State the benefit for this task; give a monetary estimate only when models, runner count and prices are known.
 
 `complexity` informs fit but never empties a phase: when it rules out every candidate that otherwise fits, propose those anyway and say they are sized for other tasks. A phase with no candidate left is a **missing capability**, with the reason. Done when every phase has a default or is missing.
 
@@ -77,7 +78,8 @@ Unregistered: <skill> named by <guide>, not cataloged for <phase>
 {
   "phases": [{ "phase": "<phase>", "reason": "...", "default": { "skill": "<id>", "reason": "...", "evidence": "<path>" },
                "alternatives": [{ "skill": "<id>", "reason": "...", "evidence": "<path>" }],
-               "prerequisites": [], "cost": "...", "tie": [] }],
+               "prerequisites": ["..."], "cost": "..." | null, "tie": "<ids and what separates them>" | null },
+             { "phase": "review", "step": "review-2", "reason": "...", "default": { ... }, "alternatives": [...], ... }],
   "omitted": [{ "phase": "<phase>", "reason": "..." }],
   "missing": [{ "phase": "<phase>", "reason": "..." }],
   "guides": { "read": ["<id>"], "unavailable": [{ "id": "<id>", "reason": "..." }] },

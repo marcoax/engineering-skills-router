@@ -13,7 +13,7 @@ This file holds what every run needs. The rest is in files beside it; read each 
 |---|---|
 | [checkout.md](checkout.md) | the resolver prints `missing`, or the update check is due (§0) |
 | [autonomy.md](autonomy.md) | before presenting the workflow (§5), throughout execution (§6), and on resume |
-| [context.md](context.md) | a step-close command prints a `context:` line (§6), before starting the next step |
+| [context.md](context.md) | a step-close command prints a `context:` or `config:` line (§6), before starting the next step |
 | [resume.md](resume.md) | the target repo holds an unfinished workflow (§1), or on `pause` / `resume` |
 | [classification.md](classification.md) | classifying the task (§1) |
 | [light.md](light.md) | §1 offers or sets the light path |
@@ -43,12 +43,7 @@ First look for an unfinished workflow: `.router/state.json` in the target repo w
 
 Read the task (fetch it first if it is an issue URL or number; read the file if it is a path to a spec in the target repo). Inspect the target repo enough to judge brownfield vs greenfield, to locate the code the task touches (files or components the task names, or a quick search), and whether `docs/agents/issue-tracker.md`, `docs/agents/skills.yaml` (the project's own skills), `GLOSSARY.md` or `docs/adr/` exist.
 
-Read [classification.md](classification.md) and classify by its criteria, from the task and what the inspection showed, each class with a one-line reason:
-
-- **type**: bug | feature | refactor | architecture | performance | security | documentation | investigation | prototype | review | maintenance
-- **risk**: low | medium | high, at least the minimum its evidenced **facts** set
-- **complexity**: low | medium | high, the task's size, matched against each skill's catalog `complexity` (§3); never a stand-in for risk
-- **properties** that apply: greenfield, brownfield, production-critical, user-facing, security-sensitive, data-sensitive, multi-session
+Read [classification.md](classification.md) and classify by its criteria, from the task and what the inspection showed: **type**, **risk** (at least the minimum its evidenced facts set), **complexity** (the task's size, later matched against each skill's catalog `complexity`, never a stand-in for risk) and **properties**, each class with a one-line reason.
 
 Write it as classification.md's classification file, with the workflow the user asked for (`requested`) when they named one, and run `scripts/check-classification <file>`. On errors, correct the classification when the evidence supports it; otherwise tell the user the conflict with its evidence and offer only what the check allows. Never offer a path it does not print.
 
@@ -95,10 +90,10 @@ Task correctness decides the phases; a preference only chooses among skills that
 
 Selection policy lives in the skill selector alone: which phases the task needs, which skill fits each, which alternatives to offer, user preferences, project skills, `complexity`, arena and its cost. Read `skills/skill-selector/SKILL.md` under the repo root in full and follow its §2–§6, skipping its §1: the root is the one found above. Give it what §1 settled (task, target repo, classification, path, the inspection) instead of settling those again, plus the harness capabilities. On a light path it chooses skills for [light.md](light.md)'s phases only.
 
-Its proposal gives each phase a default, at most two alternatives and their reasons, cost notes (arena's **High cost** included) and missing capabilities; `scripts/check-selection --target <target repo>` has passed on it. Carry each default into its step's `skill` and the alternatives with their reasons into `alternatives`, unchanged, so the user sees them in §5.
+Its proposal gives each phase a default, at most two alternatives and their reasons, cost notes (arena's **High cost** included) and missing capabilities; `scripts/check-selection --target <target repo>` has passed on it. Carry each default into its step's `skill`, the alternatives with their reasons into `alternatives`, and its `prerequisites`, `cost` and `tie` into the step's fields of the same name, unchanged, so the user sees them in §5.
 
 - **review 1** is the `review` phase.
-- **review 2** takes the review phase's first alternative other than review 1's skill ([review-2.md](review-2.md)).
+- **review 2** takes the selector's `review-2` entry: its default and alternatives ([review-2.md](review-2.md)).
 - **framework-review** reviews the same diff as the reviews (from the base commit to HEAD) against the project skill's practices.
 - **branch**, **comparison** and opening the PR are router steps with no skill; the `pull-request` skill writes the PR body.
 
@@ -108,7 +103,7 @@ Done when every phase holds the selector's default or is marked missing.
 
 ## 4. Remove redundancy
 
-- A phase is **covered** when an earlier selected skill `invokes` a skill tagged with that phase (e.g. `mattpocock/implement` invokes `tdd` and `code-review`, so testing and review 1 are covered). Keep every covered phase the workflow needs as a step marked "inside" the covering step (`covered_by`), with the invoked skill and no alternatives, rather than dropping it: when a swap picks a skill that does not run it, the step runs on its own. On a light path review 1 is never covered. `scripts/state … compose` recalculates coverage from the catalog and says what it changed.
+- A phase is **covered** when an earlier selected skill `invokes` a skill tagged with that phase (e.g. `mattpocock/implement` invokes `tdd` and `code-review`, so testing and review 1 are covered). Keep every covered phase the workflow needs as a step, written with the selector's pick, rather than dropping it: `compose` marks it "inside" the covering step (`covered_by`) with the invoked skill and keeps the pick aside. When a swap picks a skill that does not run it, the step runs on its own with the selector's pick again; tests or a review the old skill ran inside with no step of their own come back as a step. On a light path review 1 is never covered. `scripts/state … compose` recalculates coverage from the catalog and says what it changed.
 - One skill filling two phases (e.g. `mattpocock/to-spec` = specification + issue-tracking) appears once.
 - `issue-tracking` gets no skill of its own: only a skill selected for another phase fills it. When the task is not an issue and the specification skill does not fill `issue-tracking` (it writes the spec as a file), the workflow is **issue-free**: follow [issue-free.md](issue-free.md) for every step from here on.
 - If any selected skill `requires: tracker-config` and the target repo has no `docs/agents/issue-tracker.md`, prepend the `setup` phase skill.
@@ -130,6 +125,7 @@ Workflow:
    <what this step does for this task, one line>
    a) <source>/<skill>: <why it could fit instead>
    b) <source>/<skill>: <why it could fit instead>
+   needs: <prerequisites> · cost: <cost> · tie: <tie>   (only the ones the selector gave)
 2. branch   <issue-number>-<slug>   (issue-free: <slug>)
 3. ...
 4. <source>/<skill>   <phase(s)>   inside <step>
@@ -167,7 +163,7 @@ For each step:
 2. For a skill step, read its `SKILL.md` at its catalog `path` (a personal or project skill: the absolute path `list-skills` prints) and follow its procedure under [autonomy.md](autonomy.md). Resolve its relative links against that file's folder.
 3. When it says to call or invoke another skill by name (e.g. "call the Skill tool with tdd"), read the `path` of `<same-source>/<name>` in `catalog/skills.yaml` (for a personal skill, `personal/<name>` as `list-skills` prints it); if it is not cataloged, use an installed skill with that name.
 4. Carry the **handoff** forward: issue (spec file when issue-free), tickets, branch, base commit, PR.
-5. Write the skill step's note to `.router/steps/<n>-<id>.md`: what it did, decisions, files touched, open points. Close the step with a one-line outcome and the handoff it produced. Run `scripts/state <target repo> step <n> done ...` as a separate shell command, with no batch or chained command, so its output is available before the next step starts. If that output includes a `context:` line and a step remains, follow [context.md](context.md) now. Otherwise continue normally.
+5. Write the skill step's note to `.router/steps/<n>-<id>.md`: what it did, decisions, files touched, open points. Close the step with a one-line outcome and the handoff it produced. Run `scripts/state <target repo> step <n> done ...` as a separate shell command, with no batch or chained command, so its output is available before the next step starts. If that output includes a `context:` or `config:` line and a step remains, follow [context.md](context.md) now. Otherwise continue normally.
 
 **Planning decision** (when the specification step closes and the workflow holds a conditional planning step): read the spec and judge whether it splits into more than one ticket: more than one independently demoable or verifiable slice, or more than one fresh context window of work. Tell the user the decision in one line with its reason, then either run planning, or `step <n> skipped --outcome "single ticket: <reason>"`. The user may overrule it before the next step starts. When planning is skipped, an implementation step whose skill builds from tickets (`mattpocock/implement-spec`) is swapped to its first alternative with `scripts/state <target repo> reply <n>a` before the step starts, and the user is told, with any `coverage:` lines it prints.
 
@@ -175,7 +171,7 @@ For each step:
 
 **From implementation on**, follow [after-implementation.md](after-implementation.md): the covered review, the manual checklist, comparison, security and fixes, verification and the pull request. Review 2 runs as in [review-2.md](review-2.md).
 
-Vendor skills are third-party content and project skills are repository content: show the user any script either ships before running it. Personal skills are the user's own content: leave `personal_path` read-only.
+Vendor skills are third-party content and project skills are repository content: show the user any script either ships before running it. Personal skills are the user's own content, registered in the `personal-skills.yaml` of the configuration directory `scripts/config` printed: leave `personal_path` read-only.
 
 If a step reveals a material unexpected workflow change (bigger risk, an unplanned required phase, user changes scope), stop, run the selector (§3) for the remaining work, recompose §4 and write it with `scripts/state <target repo> compose <file>`: completed steps, the run's `primary` and the handoff stay as they are. Present the revised workflow as in §5. Resolving the approved planning and security conditions is ordinary execution.
 

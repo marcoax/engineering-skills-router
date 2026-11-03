@@ -12,7 +12,9 @@
 //   workflow <status>        selecting | running | waiting | done | paused | stopped
 //   handoff issue <n> <url> | spec <path> | ticket <n> <url> | branch <name> | base <sha|HEAD> | pr <n> <url>
 //   reply <reply>            a selection reply: go, 2b, 5on, 5off, stop, pause, resume.
-//                            A swap recalculates coverage from the newly selected skill.
+//                            A swap restores, as steps of their own, the tests and reviews the
+//                            old skill ran inside the step, and recalculates coverage from the
+//                            newly selected skill.
 //                            edit and full exit 2: reselect and recompose (SKILL.md §3-§4).
 //   primary [<family>|<n>]   without an answer, the primary question: the two families with
 //                            their models, the run's current one first (1 keeps it); --json
@@ -35,21 +37,21 @@ const path = require('node:path');
 const { spawnSync } = require('node:child_process');
 const ops = require('./lib/state-ops');
 const models = require('./lib/models');
-// The user configuration in effect (scripts/config), never the target repo's. Unreadable ones keep the defaults;
-// scripts/validate-catalog reports them.
-const prefs = (() => {
-  try {
-    return require('./lib/catalog').preferences();
-  } catch {
-    return {};
-  }
-})();
+// The user configuration in effect (scripts/config), never the target repo's, read when a command
+// needs it; an unreadable one stops the command with its errors instead of passing for the defaults.
+let loaded;
+const prefs = () => {
+  const Catalog = require('./lib/catalog');
+  loaded ??= Catalog.preferences(Catalog.requireConfig());
+  return loaded;
+};
 
 // What a selected skill runs internally, for coverage (SKILL.md §4): the skills it `invokes` that
 // are tagged with one of the phases, from the catalog beside this script plus the target's
 // project skills.
 const invokesFor = (target) => {
   const Catalog = require('./lib/catalog');
+  Catalog.requireConfig();
   const skills = Catalog.skills(target);
   return (id, phases) => Catalog.arr(skills[id]?.invokes)
     .filter((inv) => Catalog.arr(skills[inv]?.categories).some((c) => phases.includes(c)));
@@ -93,15 +95,13 @@ function compose() {
   } catch (e) {
     die(`invalid JSON in ${file}: ${e.message}`);
   }
-  const unfinished = previous && ['running', 'waiting', 'paused', 'stopped', 'selecting'].includes(previous.status);
   const errors = [];
-  if (isNew && unfinished && previous.status !== 'selecting')
+  if (isNew && ops.UNFINISHED.includes(previous?.status))
     die(`an unfinished workflow (${previous.status}) is in ${target}: resume it or discard it first (resume.md)`);
   if (!isNew) {
-    if (!unfinished) die(`no workflow to recompose in ${target}: start one with compose --new`);
+    if (![...ops.UNFINISHED, 'selecting'].includes(previous?.status)) die(`no workflow to recompose in ${target}: start one with compose --new`);
     // Completed work stays as it ran; only the remaining work is reconsidered.
-    const ran = (x) => ['done', 'failed'].includes(x.status) || (x.status === 'skipped' && x.outcome !== 'off (optional)');
-    for (const old of previous.steps.filter(ran)) {
+    for (const old of previous.steps.filter(ops.ran)) {
       const i = next.steps.findIndex((x) => x?.id === old.id);
       if (i === -1) errors.push(`${old.id}: a recomposition keeps completed steps (${old.status})`);
       else next.steps[i] = old;
@@ -110,8 +110,8 @@ function compose() {
     next.handoff = previous.handoff;
   }
   const Catalog = require('./lib/catalog');
+  Catalog.requireConfig();
   const skills = Catalog.skills(target);
-  const guides = Catalog.guides();
   const categories = Catalog.categories();
   const done = new Set(isNew ? [] : previous.steps.filter((x) => next.steps.includes(x)).map((x) => x.id));
   for (const step of next.steps) {
@@ -122,21 +122,19 @@ function compose() {
     const picks = [[null, step.skill], ...Catalog.arr(step.alternatives).map((a) => ['alternative', a?.skill])];
     for (const [role, id] of picks) {
       if (id == null) continue;
-      const where = `${step.id}: ${role ? `${role} ` : ''}${id}`;
-      const hint = role ? '' : ` (choose another, or report ${phases.join(', ') || step.id} as missing)`;
-      const candidate = phases.flatMap((p) => Catalog.candidates(p, skills)).find((c) => c.id === id);
-      if (Object.hasOwn(guides, id)) errors.push(`${where}: a guide, not an executable skill`);
-      else if (!Object.hasOwn(skills, id)) errors.push(`${where}: unknown skill${hint}`);
-      else if (!candidate) errors.push(`${where}: not a candidate for ${phases.join(', ') || 'a step without phases'}`);
-      else if (candidate.status !== 'ok') errors.push(`${where}: ${candidate.status}${hint}`);
+      const problem = Catalog.pickProblem(id, phases, skills);
+      if (!problem) continue;
+      // The selector's default for a phase that cannot run: another pick, or a missing capability.
+      const hint = role || !problem.replaceable ? '' : ` (choose another, or report ${phases.join(', ') || step.id} as missing)`;
+      errors.push(`${step.id}: ${role ? `${role} ` : ''}${id}: ${problem.message}${hint}`);
     }
   }
   const classified = classify(next, isNew ? null : previous);
   errors.push(...classified.errors.map((e) => (e.startsWith('classification') ? e : `classification: ${e}`)));
   if (errors.length) die(errors.join('\nerror: '));
-  const recovered = ops.recover({ ...next, status: 'selecting' }, invokesFor(target));
-  write(recovered.state, previous ? JSON.stringify(previous) : null, `compose${isNew ? ' --new' : ''}`,
-    [classified.line, ...recovered.notes.map((n) => `coverage: ${n}`)]);
+  const covered = ops.recalculateCoverage({ ...next, status: 'selecting' }, invokesFor(target));
+  write(covered.state, previous ? JSON.stringify(previous) : null, `compose${isNew ? ' --new' : ''}`,
+    [classified.line, ...covered.notes.map((n) => `coverage: ${n}`)]);
 }
 
 // The classification (classification.md) a composed workflow carries. A recomposition that does not
@@ -158,7 +156,7 @@ function classify(next, previous) {
 // Writes `next` (primary and time filled in), validates it with check-state and restores
 // `before` (null: no file) when it is invalid.
 function write(next, before, label, lines = []) {
-  next.primary ??= models.preferredPrimary(prefs);
+  if (next.primary == null) next.primary = models.preferredPrimary(prefs());
   next.updated_at = new Date().toISOString().replace(/\.\d{3}Z$/, 'Z');
   fs.mkdirSync(path.dirname(file), { recursive: true });
   fs.writeFileSync(file, `${JSON.stringify(next, null, 2)}\n`);
@@ -187,8 +185,12 @@ if (command === 'show') {
     const inside = s.covered_by ? ` inside ${s.covered_by}` : '';
     const model = s.model ? `  on ${s.model}${s.effort ? ` · effort ${s.effort}` : ''}` : '';
     console.log(`${mark[s.status] ?? '?'} ${i + 1}. ${s.id}  ${s.skill ?? '(router)'}${inside}${model}${s.outcome ? ` → ${s.outcome}` : ''}`);
+    // The selector's notes for the step, as SKILL.md §5 shows them.
+    if (s.prerequisites?.length) console.log(`   needs: ${s.prerequisites.join('; ')}`);
+    if (s.cost) console.log(`   cost: ${s.cost}`);
+    if (s.tie) console.log(`   tie: ${s.tie}`);
   });
-  console.log(models.modelsLine(state, prefs));
+  console.log(models.modelsLine(state, prefs()));
   process.exit(0);
 }
 
@@ -198,7 +200,7 @@ if (command === 'primary' && !args.length) {
   } catch (e) {
     die(e.message);
   }
-  console.log('json' in flags ? JSON.stringify(models.primaryOptions(state, prefs)) : models.primaryQuestion(state, prefs));
+  console.log('json' in flags ? JSON.stringify(models.primaryOptions(state, prefs())) : models.primaryQuestion(state, prefs()));
   process.exit(0);
 }
 
@@ -209,7 +211,7 @@ if (command === 'model') {
   } catch (e) {
     die(e.message);
   }
-  console.log(models.stepModel(state, state.steps[i], prefs));
+  console.log(models.stepModel(state, state.steps[i], prefs()));
   process.exit(0);
 }
 
@@ -220,7 +222,7 @@ try {
   if (command === 'step') next = ops.setStep(state, args[0], args[1], flags);
   else if (command === 'workflow') next = ops.setWorkflow(state, args[0]);
   else if (command === 'primary') {
-    const family = models.primaryAnswer(state, prefs, args[0]);
+    const family = models.primaryAnswer(state, prefs(), args[0]);
     if (!family) die(`primary must be ${models.FAMILIES.join(' | ')} or an option number from \`primary\`, got "${args[0]}"`);
     next = ops.setPrimary(state, family);
     logged = [family];
@@ -234,13 +236,10 @@ try {
     }
     next = ops.setHandoff(state, args[0], values);
   } else if (command === 'reply') {
-    next = ops.applyReply(state, args.join(' '));
-    // A swap changes what the step runs internally: recalculate coverage before go.
-    if (/^\d+[a-z]$/.test(args.join(' ').trim().toLowerCase())) {
-      const recovered = ops.recover(next, invokesFor(target));
-      next = recovered.state;
-      notes.push(...recovered.notes);
-    }
+    // A swap changes what the step runs internally: coverage is recalculated before go.
+    const replied = ops.reply(state, args.join(' '), invokesFor(target));
+    next = replied.state;
+    notes.push(...replied.notes);
   }
   else die(`unknown command ${command}`);
 } catch (e) {

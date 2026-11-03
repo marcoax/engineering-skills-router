@@ -29,8 +29,9 @@ if (args.length === 0) {
   console.log(`personal-skills: ${present(cfg.personalFile)}`);
   console.log(`relative personal_path base: ${cfg.base}`);
   cfg.shadowed.forEach((f) => console.log(`ignored: ${f} (the ${cfg.source} configuration is used instead)`));
-  cfg.problems.forEach((p) => console.log(`error: ${p}`));
-  process.exit(cfg.problems.length === 0 ? 0 : 1);
+  const errors = [...cfg.problems, ...Catalog.configErrors(cfg)];
+  errors.forEach((p) => console.log(`error: ${p}`));
+  process.exit(errors.length === 0 ? 0 : 1);
 }
 if (args[0] !== 'migrate' || args.slice(1).some((a) => a !== '--yes')) {
   console.error('usage: scripts/config [migrate [--yes]]');

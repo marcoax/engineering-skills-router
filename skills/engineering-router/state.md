@@ -43,6 +43,9 @@ The router writes this file in the **target repo** during a workflow so that ada
       "alternatives": [
         { "skill": "addyosmani/spec-driven-development", "reason": "spec as a repo document instead of an issue" }
       ],
+      "prerequisites": ["gh logged in, to publish the issue"],
+      "cost": null,
+      "tie": "to-spec and spec-driven-development fit equally; publishing an issue separates them",
       "confirm": false,
       "covered_by": null,
       "model": "claude-opus-5-5",
@@ -87,6 +90,11 @@ The router writes this file in the **target repo** during a workflow so that ada
       "alternatives": [],
       "confirm": false,
       "covered_by": "implementation",
+      "selected": {
+        "skill": "addyosmani/code-review-and-quality",
+        "reason": "five review axes fit a user-facing export",
+        "alternatives": [{ "skill": "mattpocock/code-review", "reason": "standards and spec axes" }]
+      },
       "model": null,
       "effort": null,
       "status": "pending",
@@ -163,9 +171,13 @@ Checked by `scripts/check-classification` and by `scripts/state … compose`. A 
 | `reason` | string | One line: why this skill (or step) was chosen. |
 | `summary` | string | One line: what the step does for this task. |
 | `alternatives` | `{skill, reason}[]` | At most two other `ok` candidates, each with a one-line reason. After a swap, the previous skill takes the swapped alternative's place. |
+| `prerequisites` (optional) | string[] | The selector's hard prerequisites for the step's skill (tools, files, harness capabilities), one line each; may be empty. |
+| `cost` (optional) | string \| null | The selector's cost note for the step (arena's **High cost** included); `null` when it gave none. |
+| `tie` (optional) | string \| null | The selector's tie: the skills it judged equivalent for the step and what separates them; `null` when there is none. |
 | `confirm` | boolean | Whether the router pauses before this step. Defaults to `false`; use `true` for an explicit user checkpoint and record the request in its reason or step note ([autonomy.md](autonomy.md)). |
 | `optional` (optional) | boolean | `true` when the user may switch the step on and off during selection (review 2, comparison, independent-review, verification). An optional step that is off is `skipped` with outcome `off (optional)`; switching it on sets `pending`. |
 | `covered_by` | string \| null | `id` of the step whose skill runs this one internally (e.g. review 1 inside implementation). |
+| `selected` (optional) | Selection \| null | The selector's own pick for a covered step, kept while `skill` holds the skill its covering step runs; restored when a swap leaves the step to run on its own. `null` for a step that is not covered. |
 | `model` | string \| null | The **step model**: the model the step actually ran on, for every step that ran (`running`, `waiting`, `done`, `failed`, or `skipped` after running). Precedence: agent record, then the model passed to the step's subagent (or `review_other_family`'s backend), then the session's model; full rules in [models.md](models.md). Recorded as the source names it (`claude-bridge/claude-opus-5-5` and `claude-opus-5-5` may both appear), no spaces. `null` only for a step that did not run. |
 | `effort` (optional) | `"low"` \| `"medium"` \| `"high"` \| null | The step's effort, from the agent record or the one passed to the step ([models.md](models.md)); `null` when neither names one (the harness default). Never taken from the session. |
 | `status` | string | Step status, see below. |
@@ -181,6 +193,14 @@ Step `status`:
 | `done` | Finished; `outcome` set. |
 | `skipped` | Will not run (user declined, or no longer needed); `outcome` says why. |
 | `failed` | Could not finish; `outcome` says why. |
+
+## Selection
+
+| Field | Type | Meaning |
+|---|---|---|
+| `skill` | string | The selector's default for the step. |
+| `reason` | string | Its one-line reason. |
+| `alternatives` | `{skill, reason}[]` | The selector's alternatives for the step. |
 
 ## Handoff
 

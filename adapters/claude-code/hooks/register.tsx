@@ -3,7 +3,7 @@
 // selection. It never writes the state file; choices go to the agent as prompts in the
 // router's own selection syntax (`go`, `2b`, `5on`, `pause`, ...).
 import { atom, read, update } from 'claude-code'
-import { completedStep, contextLine } from './context-boundary.ts'
+import { completedStep, configLine, contextLine } from './context-boundary.ts'
 import type { EngineInterface, Register, RouterReview } from 'claude-code'
 
 import {
@@ -90,11 +90,14 @@ export const register: Register = on => {
     if (!bridge) return outcome
     try {
       const pref = await $.process.run(['node', bridge], { timeoutMs: 5000 })
-      if (pref.exitCode !== 0) return outcome
-      const threshold = Number(pref.stdout.trim())
-      if (threshold === 0) return outcome
-      const usage = await $.session.usage()
-      const line = contextLine(usage.context.tokens, usage.context.window, threshold)
+      let line: string | undefined
+      if (pref.exitCode !== 0) line = configLine(pref.stderr)
+      else {
+        const threshold = Number(pref.stdout.trim())
+        if (threshold === 0) return outcome
+        const usage = await $.session.usage()
+        line = contextLine(usage.context.tokens, usage.context.window, threshold)
+      }
       if (line) return {
         result: { ...result, stdout: result.stdout + (result.stdout.endsWith('\n') ? '' : '\n') + line + '\n' },
         context: outcome.context,
@@ -156,7 +159,7 @@ export const register: Register = on => {
       description:
         'Runs a prompt on a model outside the Claude family through a local CLI, read-only, ' +
         'and returns its answer; the output streams into a "Review 2" pane. For the engineering ' +
-        "router's review 2. `model` is as config/preferences.yaml names it: `openai-codex/<model>` " +
+        "router's review 2. `model` is as the user's preferences.yaml (scripts/config) names it: `openai-codex/<model>` " +
         'runs Codex, `opencode/<provider>/<model>` runs opencode; `effort` is low, medium or high. ' +
         'What the person picked with /router-models overrides both. Without `prompt` it only ' +
         'checks that the backend is installed and says which backend, model and effort would run.',
@@ -307,7 +310,7 @@ export const register: Register = on => {
     const listed = backend?.modelsArgv ? (await read($, models))[backend.name] : undefined
     const preview =
       c.backend === 'auto'
-        ? `as the router asks (config/preferences.yaml)${c.effort ? `, effort ${c.effort}` : ''}`
+        ? `as the router asks (the user's preferences.yaml)${c.effort ? `, effort ${c.effort}` : ''}`
         : `${c.backend} · ${c.model || 'its default model'} · ${
             backend?.hasEffort ? c.effort || 'its default effort' : 'effort from its config'
           }`

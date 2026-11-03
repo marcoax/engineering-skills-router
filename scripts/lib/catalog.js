@@ -66,6 +66,38 @@ const label = (file) => {
   const rel = path.relative(ROOT, file);
   return rel.startsWith('..') || path.isAbsolute(rel) ? file : rel;
 };
+
+// What makes the configuration files in effect unreadable: malformed YAML, or no top-level
+// `preferences:` / `skills:` mapping. A missing file is the defaults; a broken one is never read as absent.
+function configErrors(cfg = config()) {
+  const errors = [];
+  const isMap = (v) => v != null && typeof v === 'object' && !Array.isArray(v);
+  for (const [file, key] of [[cfg.preferencesFile, 'preferences'], [cfg.personalFile, 'skills']]) {
+    if (!isFile(file)) continue;
+    let doc;
+    try { doc = readYaml(file); } catch (e) {
+      errors.push(`${label(file)}: malformed YAML: ${e.message.split('\n')[0]}`);
+      continue;
+    }
+    if (!isMap(doc) || (Object.hasOwn(doc, key) ? doc[key] != null && !isMap(doc[key]) : true))
+      errors.push(`${label(file)}: expected a top-level '${key}:' mapping`);
+  }
+  return errors;
+}
+
+// For the scripts that act on the configuration: exits 1 naming every problem with it, so a
+// broken configuration is never mistaken for an absent one.
+function requireConfig(cfg = config()) {
+  const errors = [...cfg.problems, ...configErrors(cfg)];
+  if (errors.length === 0) return cfg;
+  errors.forEach((e) => console.error(`error: ${e}`));
+  console.error('The user configuration in effect cannot be read: fix it (scripts/config shows where, scripts/validate-catalog checks it).');
+  process.exit(1);
+}
+// The phases of the router's default flow (skills/engineering-router/SKILL.md §2) a selection must
+// decide on. issue-tracking is left out: only a skill selected for another phase fills it.
+const DEFAULT_FLOW = ['requirements', 'specification', 'planning', 'implementation', 'review', 'framework-review',
+  'security', 'independent-review', 'pull-request'];
 // Phases only project skills fill.
 const PROJECT_PHASES = ['framework-review'];
 
@@ -188,7 +220,18 @@ function candidates(category, allSkills = skills(), prefs = preferences()) {
     .map(([id, origin]) => ({ id, origin, status: status(allSkills[id], id, excluded), skill: allSkills[id] }));
 }
 
+// Why `id` cannot be picked for a step filling `phases` (it must be an `ok` candidate of one of
+// them), or null when it can: { message, replaceable }. `replaceable` problems (unknown, excluded,
+// missing) leave the step needing another pick or a missing capability; the others are misplacements.
+function pickProblem(id, phases, allSkills = skills(), prefs = preferences()) {
+  if (Object.hasOwn(guides(), id)) return { message: 'a guide, not an executable skill', replaceable: false };
+  if (!Object.hasOwn(allSkills, id)) return { message: 'unknown skill', replaceable: true };
+  const candidate = phases.flatMap((p) => candidates(p, allSkills, prefs)).find((c) => c.id === id);
+  if (!candidate) return { message: `not a candidate for ${phases.join(', ') || 'a step without phases'}`, replaceable: false };
+  return candidate.status === 'ok' ? null : { message: candidate.status, replaceable: true };
+}
+
 module.exports = {
-  ROOT, PROJECT_CATALOG, PROJECT_PHASES, CONFIG_ENV, CONFIG_FILES, CLONE_CONFIG, config, label, readYaml, arr, sources, skills, vendorSkills, guides, ownedBy, projectSkills,
-  personalPath, personalSkills, namesake, categories, preferences, available, description, targetArg, upstreamPaths, candidates,
+  ROOT, PROJECT_CATALOG, PROJECT_PHASES, DEFAULT_FLOW, CONFIG_ENV, CONFIG_FILES, CLONE_CONFIG, config, configErrors, requireConfig, label, readYaml, arr, sources, skills, vendorSkills, guides, ownedBy, projectSkills,
+  personalPath, personalSkills, namesake, categories, preferences, available, description, targetArg, upstreamPaths, candidates, pickProblem,
 };

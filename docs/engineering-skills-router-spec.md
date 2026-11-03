@@ -28,7 +28,7 @@ The router must never change what the user installed.
 
 - Vendor collections are git submodules in `vendors/`, pinned and never edited. Project metadata about them lives in `catalog/`, so an upstream change cannot silently change routing.
 - Nothing is written to user-level agent folders (`~/.claude/skills`, `~/.agents/skills`, …). The router reads vendor skills from `vendors/`, never from installed copies, which may be outdated or edited.
-- **Two exceptions, both explicit.** Project skills (`docs/agents/skills.yaml` in the target repo) are the project's own conventions; in v1 they fill only `framework-review`. Personal skills (`config/personal-skills.yaml`) are the user's own: read in place, never written, not pinned, since editing one is the user's choice. Neither may stand in for a vendor skill: a personal skill named like a cataloged vendor skill is skipped.
+- **Two exceptions, both explicit.** Project skills (`docs/agents/skills.yaml` in the target repo) are the project's own conventions; in v1 they fill only `framework-review`. Personal skills (`personal-skills.yaml` in the user configuration directory `scripts/config` reports, [configuration.md](configuration.md)) are the user's own: read in place, never written, not pinned, since editing one is the user's choice. Neither may stand in for a vendor skill: a personal skill named like a cataloged vendor skill is skipped.
 - Vendor and project skills are third-party or repository content: any script they ship is shown before it runs.
 
 ## The catalog is the interface
