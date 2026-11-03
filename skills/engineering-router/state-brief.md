@@ -8,6 +8,7 @@ Read from SKILL.md §5. Write `.router/state.json` like this example, then run `
   "task": "Add CSV export to the reports page",
   "type": "feature", "risk": "medium", "complexity": "medium", "path": "full",
   "properties": ["brownfield", "user-facing"],
+  "primary": "claude",
   "status": "selecting",
   "updated_at": "2026-10-17T09:42:00Z",
   "steps": [
@@ -33,5 +34,6 @@ Read from SKILL.md §5. Write `.router/state.json` like this example, then run `
 - **confirm** `true` where §6 asks before the step (publishing, starting implementation, opening the PR).
 - **optional** `true` for review 2, comparison, independent-review, verification; while off: `status` `skipped`, `outcome` `off (optional)`.
 - **covered_by**: the id of the step whose skill runs this one (review 1 inside implementation); never on a light path.
+- **primary**: `primary` from `config/preferences.yaml` (default `claude`) on the first write; on a recompose, the run's own ([models.md](models.md)).
 - **model** and **effort** `null`: no step has run yet. From §6 on, `scripts/state` sets each step's step model ([models.md](models.md)), recorded as its source names it, when it starts and when it closes; `model` stays `null` only for a step that did not run.
 - **handoff.issue** is `{number, url}` when the task is an issue; everything else starts empty and is set later with `scripts/state … handoff`.

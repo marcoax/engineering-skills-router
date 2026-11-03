@@ -14,7 +14,7 @@ For working on the router itself or its catalog. Install and use: the [README](.
 | `catalog/categories.yaml` | the phases |
 | `config/preferences.example.yaml` | template for personal overrides (`config/preferences.yaml`, git-ignored) |
 | `config/personal-skills.example.yaml` | template for your own skills (`config/personal-skills.yaml`, git-ignored) |
-| `adapters/pi/` | Pi extension: workflow widget and panel from `.router/state.json` |
+| `adapters/pi/` | Pi extension: workflow widget and panel from `.router/state.json`, and the `router_primary` select menu for the primary question |
 | `vendors/` | git submodules, never edited |
 | `adapters/claude-code/` | Claude Code plugin: workflow band and panes, review 2 on another family ([claude-code.md](claude-code.md)) |
 | `.claude-plugin/marketplace.json` | makes the repo a Claude Code marketplace for that plugin |
@@ -30,7 +30,7 @@ For working on the router itself or its catalog. Install and use: the [README](.
 | `scripts/check-state <target-repo>` | checks the target repo's `.router/state.json` against `skills/engineering-router/state.md` |
 | `scripts/selftest` | checks the scripts against a scratch catalog and scratch state files, then runs the Pi adapter tests |
 | `scripts/context-threshold` | read-only adapter bridge: prints this router checkout’s context threshold (150000 by default) |
-| `scripts/state <target-repo> step\|workflow\|handoff\|reply\|show ...` | the router's only way to change `.router/state.json` after writing it: applies the change, validates it with `check-state`, keeps the old file when invalid |
+| `scripts/state <target-repo> step\|workflow\|handoff\|reply\|primary\|show\|model ...` | the router's only way to change `.router/state.json` after writing it: applies the change, validates it with `check-state`, keeps the old file when invalid; `primary` prints the primary question (the current family first; `--json` gives the options to a selector) and `primary <n\|family>` sets the run's `primary`, both only while the workflow is `selecting`; `model <step>` prints the model a step runs on, from the run's `primary` in the state |
 | `scripts/record <target-repo> [--findings f] [--checklist p,a[,ok,ko]] [--pr n] ...` | composes the run record from the state and the findings, and writes it into the PR body |
 | `scripts/stats [--repo <owner/name>] [--limit <n>] [--json]` | adds up the run records in a repo's PRs (via `gh`): per review and model, per skill, per severity, checklists, tokens |
 

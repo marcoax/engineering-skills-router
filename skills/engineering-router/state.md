@@ -19,6 +19,7 @@ The router writes this file in the **target repo** during a workflow so that ada
   "complexity": "medium",
   "path": "full",
   "properties": ["brownfield", "user-facing"],
+  "primary": "claude",
   "status": "running",
   "updated_at": "2026-10-17T09:42:00Z",
   "steps": [
@@ -103,6 +104,7 @@ The router writes this file in the **target repo** during a workflow so that ada
 | `complexity` (optional) | `"low"` \| `"medium"` \| `"high"` | Task size from the classification, matched against each skill's catalog `complexity`. |
 | `path` (optional) | `"light"` \| `"full"` | Light: a ticket of low risk (or medium risk and low complexity) run as branch → implementation → independent review 1 → [security] → [framework-review] → pull request; full: every other workflow. |
 | `properties` | string[] | Task properties from the classification; may be empty. |
+| `primary` (optional) | `"claude"` \| `"openai"` | The run's primary model family ([models.md](models.md)). A state without it gets the preferences' `primary` on its next write by `scripts/state`. |
 | `status` | string | Workflow status, see below. |
 | `updated_at` | string | ISO-8601 UTC time of the last write. |
 | `steps` | Step[] | All steps in execution order, including router steps and covered steps. |

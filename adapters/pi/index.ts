@@ -1,11 +1,14 @@
 // Pi adapter for the engineering router: renders `.router/state.json` of the session's
 // repo as a widget above the editor and a right-hand overlay with the skill selection.
-// It never writes the state file; choices go to the agent as chat messages.
+// It never writes the state file; choices go to the agent as chat messages. The one exception,
+// the primary question's select menu (primary.ts), writes through scripts/state like the router.
 import registerContextBoundary from "./context.ts";
+import registerPrimaryQuestion from "./primary.ts";
 import { execFile } from "node:child_process";
 import * as fs from "node:fs";
 import * as path from "node:path";
 import type { ExtensionAPI, ExtensionContext, Theme } from "@earendil-works/pi-coding-agent";
+import { Type } from "typebox";
 import { type Component, Key, matchesKey, type OverlayHandle, type TUI, truncateToWidth, wrapTextWithAnsi } from "@earendil-works/pi-tui";
 import {
 	type Choice,
@@ -154,6 +157,7 @@ class RouterOverlay implements Component {
 
 export default function (pi: ExtensionAPI) {
 	registerContextBoundary(pi);
+	registerPrimaryQuestion(pi, Type);
 	let file: string | undefined;
 	let root = "";
 	let state: State | undefined;
