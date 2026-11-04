@@ -286,7 +286,31 @@ fs.rmSync(prefsFile);
 }
 fs.rmSync(prefsFile);
 
-// Configuration discovery: user configuration outside the checkout survives a package update.
+// The vendor update check (SKILL.md §0): scripts/config says whether it is due, from
+// update_check_days (default 14, 0 = off) and the date scripts/update records; a due check is a
+// note for the workflow proposal, never a startup question.
+{
+  const lastCheck = path.join(tmp, 'config/.last-update-check');
+  const today = new Date().toISOString().slice(0, 10);
+  const updateLine = () => run('config').out.match(/^update-check: .*$/m)?.[0];
+  for (const [prefs, last, want] of [
+    [null, null, 'update-check: due (last checked never, every 14 days): scripts/update'],
+    [null, '2000-01-01', 'update-check: due (last checked 2000-01-01, every 14 days): scripts/update'],
+    ['  update_check_days: 3\n', '2000-01-01', 'update-check: due (last checked 2000-01-01, every 3 days): scripts/update'],
+    [null, today, `update-check: not due (last checked ${today}, every 14 days)`],
+    ['  update_check_days: 0\n', '2000-01-01', 'update-check: off (update_check_days: 0)'],
+  ]) {
+    if (prefs) fs.writeFileSync(prefsFile, `preferences:\n${prefs}`);
+    else fs.rmSync(prefsFile, { force: true });
+    if (last) fs.writeFileSync(lastCheck, `${last}\n`);
+    else fs.rmSync(lastCheck, { force: true });
+    if (updateLine() !== want) fail(`scripts/config should report ${want}\ngot: ${updateLine()}`);
+  }
+  fs.rmSync(lastCheck, { force: true });
+  fs.rmSync(prefsFile, { force: true });
+}
+
+// Configuration discovery:user configuration outside the checkout survives a package update.
 // A disposable managed checkout, a separate user-configuration root (both with spaces) and a
 // fixture personal skill; behavior is observed through the scripts before and after the update.
 {
@@ -1614,9 +1638,10 @@ ${primary ? `  primary: ${primary}\n` : ''}  effort: medium
   if (!st('workflow', 'selecting').ok || read().primary !== 'claude') fail(`primary should default to claude: ${read().primary}`);
   if (!st('show').out.split('\n').includes(models('claude'))) fail(`show should print the run's Models line\n${st('show').out}`);
 
-  // The primary question: asked on a new run before the workflow is shown, the run's current
-  // family first, so the preselected option and `1` keep it. A family name or its number sets it.
-  prefs('claude');
+  // The primary question: asked on a new run before the workflow is shown when the preferences
+  // name no `primary`, the run's current family first, so the preselected option and `1` keep it.
+  // A family name or its number sets it.
+  prefs(null);
   fs.writeFileSync(stateFile, JSON.stringify(variant((s) => { s.primary = 'openai'; s.status = 'selecting'; })));
   const question = 'Primary model family for this run:\n1. openai (openai-codex/gpt-6-sol)  current\n2. claude (claude-bridge/claude-opus-5-5)\n';
   if (st('primary').out !== question) fail(`primary should ask with the current family first\n${st('primary').out}`);
@@ -1626,7 +1651,21 @@ ${primary ? `  primary: ${primary}\n` : ''}  effort: medium
     { family: 'openai', label: 'openai (openai-codex/gpt-6-sol)', current: true },
     { family: 'claude', label: 'claude (claude-bridge/claude-opus-5-5)', current: false },
   ];
-  if (!json.ok || JSON.stringify(JSON.parse(json.out)) !== JSON.stringify(options)) fail(`primary --json should print the options\n${json.out}`);
+  if (!json.ok || JSON.stringify(JSON.parse(json.out)) !== JSON.stringify({ preferences: null, options }))
+    fail(`primary --json should print the options\n${json.out}`);
+  // preferences.yaml naming `primary` is the answer already: no question, the family to show in the
+  // workflow and the reply that changes it before go.
+  prefs('openai');
+  const preset = 'primary: openai (preferences.yaml sets primary: openai): no question.'
+    + ' Name it in the workflow\'s Models line; the reply "primary claude" changes it before go.\n';
+  if (st('primary').out !== preset) fail(`primary set in the preferences should ask nothing\n${st('primary').out}`);
+  const presetJson = st('primary', '--json');
+  if (!presetJson.ok || JSON.parse(presetJson.out).preferences !== 'openai') fail(`primary --json should name the preset family\n${presetJson.out}`);
+  if (!st('reply', 'primary', 'claude').ok || read().primary !== 'claude') fail(`the reply primary claude should change the run's primary: ${read().primary}`);
+  if (!st('primary').out.startsWith('primary: claude (preferences.yaml sets primary: openai)')) fail(`primary should show the run's family\n${st('primary').out}`);
+  if (st('reply', 'primary', 'gemini').ok || st('reply', 'primary').ok || read().primary !== 'claude') fail('the primary reply should refuse what is not a family');
+  if (!st('reply', 'primary', 'openai').ok || read().primary !== 'openai') fail(`the reply primary openai should change it back: ${read().primary}`);
+  prefs('claude');
   // edit and full recompose the workflow: the run keeps its primary, and the router is told so.
   const recompose = spawnSync(path.join(tmp, 'scripts', 'state'), [repo, 'reply', 'edit'], { encoding: 'utf8' });
   if (recompose.status !== 2 || !recompose.stderr.includes('keep "primary": "openai"') || read().primary !== 'openai') {
@@ -1644,6 +1683,7 @@ ${primary ? `  primary: ${primary}\n` : ''}  effort: medium
   if (st('primary', 'openai').ok || read().primary !== 'claude') fail('primary should be refused once the workflow has started');
   if (st('primary').ok) fail('the primary question should not be asked once the workflow has started');
   if (st('primary', '--json').ok) fail('the primary options should not be offered once the workflow has started');
+  if (st('reply', 'primary', 'openai').ok || read().primary !== 'claude') fail('the primary reply should be refused once the workflow has started');
   fs.rmSync(prefsFile, { force: true });
 }
 

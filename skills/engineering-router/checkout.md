@@ -1,6 +1,6 @@
 # Checkout and updates
 
-Read from SKILL.md when the resolver prints `missing`, or when the update check is due (§0).
+Read from SKILL.md when the resolver prints `missing`, or when the user asks for the vendor update check (§0).
 
 ## Missing checkout
 
@@ -12,7 +12,7 @@ The resolver printed `missing`: this skill was installed without its checkout.
 
 ## Vendor update check
 
-The check is due (SKILL.md §0). Ask whether to check vendor updates now. If yes:
+The user asked for the check (SKILL.md §0 tells them when it is due):
 
 1. Run `scripts/update`. It pulls the vendor submodules and reports, per source, every `SKILL.md` added (`+`), modified at the same path (`~`), removed (`-`) or moved (`>`) since the revision the catalog was last reviewed against (`catalog/reviewed.yaml`), plus upstream skills not cataloged yet (`?`) and cataloged paths gone missing (`!`). Unapproved changes stay listed across repeated updates. A source with no reviewed revision gets an initialization report listing all its skills: review them as for an update. If the update fails, tell the user and stop.
 2. Read every reported `SKILL.md` in full; the `diff:` line shows what changed. Classify from what the skill says it does, never from its name alone.
@@ -20,4 +20,4 @@ The check is due (SKILL.md §0). Ask whether to check vendor updates now. If yes
 4. Show the diff and wait for the user's confirmation. Change nothing before it; on refusal, stop with nothing changed.
 5. On confirmation, save the diff as a patch and run `scripts/update --approve <patch>` (no patch when the catalog needs no change). It applies the patch, runs `scripts/validate-catalog`, requires every upstream skill cataloged, regenerates `docs/skill-index.md`, and only then records the checked-out revisions as reviewed; any failure restores the catalog and records nothing. Report its output, and on failure the reason. Committing the catalog, `catalog/reviewed.yaml`, the index and the vendor pins is the user's call.
 
-Done when the check was declined, the update failed, or the proposal was refused or approved.
+Done when the update failed, or the proposal was refused or approved.

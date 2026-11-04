@@ -11,7 +11,7 @@ This file holds what every run needs. The rest is in files beside it; read each 
 
 | Read | When |
 |---|---|
-| [checkout.md](checkout.md) | the resolver prints `missing`, or the update check is due (§0) |
+| [checkout.md](checkout.md) | the resolver prints `missing`, or the user asks for the vendor update check (§0) |
 | [autonomy.md](autonomy.md) | before presenting the workflow (§5), throughout execution (§6), and on resume |
 | [context.md](context.md) | a step-close command prints a `context:` or `config:` line (§6), before starting the next step |
 | [resume.md](resume.md) | the target repo holds an unfinished workflow (§1), or on `pause` / `resume` |
@@ -33,9 +33,9 @@ Run `scripts/config` and tell the user the configuration source it prints (`sour
 
 Then run `scripts/validate-catalog`. When it prints errors, show them with the file they point at and ask: fix them now, or continue with the defaults for the settings in error. Done when it passes or the user chose.
 
-## 0. Check for updates
+## 0. Update check
 
-Read `update_check_days` from the `preferences:` file `scripts/config` printed (default 14; `0` means never ask) and the date in `config/.last-update-check` (missing file = never checked). If the setting is not 0 and that many days have passed, the check is due: follow [checkout.md](checkout.md). Done when it is not due, or checkout.md's check is done.
+`scripts/config` printed an `update-check:` line. When it says `due`, the run goes on to §1 without asking: the check is maintenance, not part of the task. Carry it as one `Updates:` line in the workflow (§5); when the run ends before a workflow is shown (the task is done directly, or the user stops), tell the user that line then. When the user asks for the check, follow [checkout.md](checkout.md) between steps, never inside a running one. Done when the due note is carried, or the line says `not due` or `off`.
 
 ## 1. Classify
 
@@ -114,7 +114,7 @@ Done when no two steps share a purpose.
 
 Read [autonomy.md](autonomy.md) for the approval's scope and exceptional stops, [models.md](models.md), and [review-2.md](review-2.md) when the workflow has a review 2 step, to settle each step's model and whether review 2 can run on the other family.
 
-Write the composed workflow to a file outside the target repo, as in [state-brief.md](state-brief.md), and run `scripts/state <target repo> compose --new <file>` until it passes: it refuses skills and alternatives that are unknown, guides, excluded, missing or not candidates for their step's phases (choose another from the proposal, or report the phase missing), recalculates coverage, and writes `.router/state.json` with status `selecting`. Every later change goes through `scripts/state` (§6). Add `.router/` to the target repo's `.git/info/exclude` if missing. Then, on a harness whose subagents can run both families, ask the primary question ([models.md](models.md#the-primary-question)). Then show the workflow and stop for the user's answer:
+Write the composed workflow to a file outside the target repo, as in [state-brief.md](state-brief.md), and run `scripts/state <target repo> compose --new <file>` until it passes: it refuses skills and alternatives that are unknown, guides, excluded, missing or not candidates for their step's phases (choose another from the proposal, or report the phase missing), recalculates coverage, and writes `.router/state.json` with status `selecting`. Every later change goes through `scripts/state` (§6). Add `.router/` to the target repo's `.git/info/exclude` if missing. Then, on a harness whose subagents can run both families, settle the run's primary family ([models.md](models.md#the-primary-question)): asked only when `preferences.yaml` names none. Then show the workflow and stop for the user's answer:
 
 ```text
 Task: <one line>
@@ -132,18 +132,20 @@ Workflow:
 5. <source>/<skill>   review-2   on <provider/model-id> | on the current model   [(off)]
 
 Models: claude <id> · openai <id> · primary <family> · effort <effort | harness default>
+        (primary from preferences.yaml: the reply "primary <other family>" changes it)   (only when it was not asked)
 Review 2: <available | unverified | unavailable>: <one-line reason or limitation>
 Skipped: <phase>: <reason>          (only when the reason matters)
 Missing: <phase>: no available skill (only when any)
+Updates: vendor update check due (last checked <date | never>); say "check updates" after this run, or run scripts/update   (only when §0 found it due)
 Execution: go authorizes this workflow through commit, push and the open PR; stops only for exceptions or checkpoints you request. Merge and deployment are separate.
 Security: runs if the diff or task triggers the conditional check (after-implementation.md).
 
-Reply: go | <step><letter> to swap (e.g. 2b) | <step>on / <step>off (e.g. 5on) | edit | full (light path) | stop
+Reply: go | <step><letter> to swap (e.g. 2b) | <step>on / <step>off (e.g. 5on) | primary <family> (when not asked) | edit | full (light path) | stop
 ```
 
 The numbered list is `steps` from the state file, in the same order: one line per step, router and covered steps included, so `<step>` is the position in `steps`. Show `⏸` only for an explicit user checkpoint. `primary` in the `Models:` line is the run's, from the state file ([models.md](models.md)).
 
-Apply every reply with `scripts/state <target repo> reply <reply>`: it swaps (the old skill becomes the alternative) and recalculates coverage from the newly selected skill, printing a `coverage:` line for each step that now runs inside it or on its own; switches optional steps (review 2 and the comparison together; an optional step that is off shows `(off)`; `<step>on` also works later, until the step starts), and starts or stops the workflow. After a swap or switch, show the workflow again. It exits 2 on `edit`, and on `full` for a light path: run the selector again (§3) and recompose §4 (set `path` to `full` for `full`), then write it with `scripts/state <target repo> compose <file>` (no `--new`): it keeps the run's `primary` and handoff, since the primary question belongs to the run's first write only. Done on `go` or `stop`.
+Apply every reply with `scripts/state <target repo> reply <reply>`: it swaps (the old skill becomes the alternative) and recalculates coverage from the newly selected skill, printing a `coverage:` line for each step that now runs inside it or on its own; switches optional steps (review 2 and the comparison together; an optional step that is off shows `(off)`; `<step>on` also works later, until the step starts), sets the run's primary family (`primary <family>`, before `go`), and starts or stops the workflow. After a swap, switch or primary change, show the workflow again. It exits 2 on `edit`, and on `full` for a light path: run the selector again (§3) and recompose §4 (set `path` to `full` for `full`), then write it with `scripts/state <target repo> compose <file>` (no `--new`): it keeps the run's `primary` and handoff, since the primary question belongs to the run's first write only. Done on `go` or `stop`.
 
 ## 6. Execute
 

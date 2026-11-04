@@ -5,7 +5,9 @@ const FAMILIES = ['claude', 'openai'];
 const DEFAULT_MODELS = { claude: 'claude-bridge/claude-opus-5-5', openai: 'openai-codex/gpt-6-sol' };
 
 const other = (family) => FAMILIES.find((f) => f !== family);
-const preferredPrimary = (prefs) => (FAMILIES.includes(prefs.primary) ? prefs.primary : 'claude');
+// The family the user's preferences name as `primary`, or null when they name none.
+const presetPrimary = (prefs) => (FAMILIES.includes(prefs.primary) ? prefs.primary : null);
+const preferredPrimary = (prefs) => presetPrimary(prefs) ?? 'claude';
 // A state written before `primary` existed follows the preferences.
 const runPrimary = (state, prefs) => (FAMILIES.includes(state.primary) ? state.primary : preferredPrimary(prefs));
 const familyModel = (family, prefs) => prefs.models?.[family] ?? DEFAULT_MODELS[family];
@@ -37,10 +39,18 @@ function primaryOptions(state, prefs) {
 const primaryQuestion = (state, prefs) => `Primary model family for this run:\n${primaryOptions(state, prefs)
   .map((o, i) => `${i + 1}. ${o.label}${o.current ? '  current' : ''}`).join('\n')}`;
 
+// When the preferences name `primary`, no question: the run's family, to show in the workflow,
+// and the reply that changes it.
+const primaryPreset = (state, prefs) => {
+  const run = runPrimary(state, prefs);
+  return `primary: ${run} (preferences.yaml sets primary: ${presetPrimary(prefs)}): no question.`
+    + ` Name it in the workflow's Models line; the reply "primary ${other(run)}" changes it before go.`;
+};
+
 // The primary question's answer, as a family name or its option number; null when it is neither.
 function primaryAnswer(state, prefs, answer) {
   const options = primaryOptions(state, prefs);
   return (options.find((o) => o.family === answer) ?? options[Number(answer) - 1])?.family ?? null;
 }
 
-module.exports = { FAMILIES, preferredPrimary, runPrimary, stepFamily, stepModel, modelsLine, primaryOptions, primaryQuestion, primaryAnswer };
+module.exports = { FAMILIES, presetPrimary, preferredPrimary, primaryPreset, runPrimary, stepFamily, stepModel, modelsLine, primaryOptions, primaryQuestion, primaryAnswer };

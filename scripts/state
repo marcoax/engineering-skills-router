@@ -11,15 +11,18 @@
 //        status.
 //   workflow <status>        selecting | running | waiting | done | paused | stopped
 //   handoff issue <n> <url> | spec <path> | ticket <n> <url> | branch <name> | base <sha|HEAD> | pr <n> <url>
-//   reply <reply>            a selection reply: go, 2b, 5on, 5off, stop, pause, resume.
+//   reply <reply>            a selection reply: go, 2b, 5on, 5off, primary <family>, stop, pause, resume.
 //                            A swap restores, as steps of their own, the tests and reviews the
 //                            old skill ran inside the step, and recalculates coverage from the
 //                            newly selected skill.
 //                            edit and full exit 2: reselect and recompose (SKILL.md §3-§4).
 //   primary [<family>|<n>]   without an answer, the primary question: the two families with
-//                            their models, the run's current one first (1 keeps it); --json
-//                            prints the options as [{family, label, current}] for a selector.
-//                            With one, sets the run's primary. Only while the workflow is selecting.
+//                            their models, the run's current one first (1 keeps it). When the
+//                            preferences name `primary`, no question: a `primary:` line with the
+//                            run's family and the reply that changes it. --json prints
+//                            {preferences: <family>|null, options: [{family, label, current}]}
+//                            for a selector. With an answer (or the reply `primary <family>`),
+//                            sets the run's primary. Only while the workflow is selecting.
 //   compose [--new] <file>   writes a composed workflow (SKILL.md §4-§5) as the state, status
 //                            selecting. Every step skill and alternative must be a usable
 //                            candidate (scripts/list-skills) for one of the step's phases; coverage
@@ -209,7 +212,9 @@ if (command === 'primary' && !args.length) {
   } catch (e) {
     die(e.message);
   }
-  console.log('json' in flags ? JSON.stringify(models.primaryOptions(state, prefs())) : models.primaryQuestion(state, prefs()));
+  const preset = models.presetPrimary(prefs());
+  if ('json' in flags) console.log(JSON.stringify({ preferences: preset, options: models.primaryOptions(state, prefs()) }));
+  else console.log(preset ? models.primaryPreset(state, prefs()) : models.primaryQuestion(state, prefs()));
   process.exit(0);
 }
 
@@ -230,11 +235,13 @@ const notes = [];
 try {
   if (command === 'step') next = ops.setStep(state, args[0], args[1], flags);
   else if (command === 'workflow') next = ops.setWorkflow(state, args[0]);
-  else if (command === 'primary') {
-    const family = models.primaryAnswer(state, prefs(), args[0]);
-    if (!family) die(`primary must be ${models.FAMILIES.join(' | ')} or an option number from \`primary\`, got "${args[0]}"`);
+  else if (command === 'primary' || (command === 'reply' && args[0]?.toLowerCase() === 'primary')) {
+    // The primary question's answer, or the workflow reply that changes a preset family.
+    const answer = command === 'primary' ? args[0] : args[1];
+    const family = models.primaryAnswer(state, prefs(), answer);
+    if (!family) die(`primary must be ${models.FAMILIES.join(' | ')} or an option number from \`primary\`, got "${answer ?? ''}"`);
     next = ops.setPrimary(state, family);
-    logged = [family];
+    logged = command === 'primary' ? [family] : ['primary', family];
   }
   else if (command === 'handoff') {
     let values = args.slice(1);

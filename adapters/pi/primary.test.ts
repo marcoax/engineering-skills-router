@@ -13,13 +13,14 @@ process.env.XDG_CONFIG_HOME = path.join(os.tmpdir(), `router-no-user-config-${pr
 const CLAUDE = "claude (claude-bridge/claude-opus-5-5)";
 const OPENAI = "openai (openai-codex/gpt-6-sol)";
 
-// A router checkout with its own preferences, and a target repo with a new run's state.
-const fixture = (status = "selecting") => {
+// A router checkout with its own preferences (no `primary` unless given), and a target repo with
+// a new run's state on claude.
+const fixture = (status = "selecting", preset?: string) => {
 	const router = fs.mkdtempSync(path.join(os.tmpdir(), "router checkout-"));
 	fs.cpSync(path.join(ROOT, "scripts"), path.join(router, "scripts"), { recursive: true });
 	for (const dir of ["skills", "catalog", "node_modules"]) fs.symlinkSync(path.join(ROOT, dir), path.join(router, dir));
 	fs.mkdirSync(path.join(router, "config"));
-	fs.writeFileSync(path.join(router, "config/preferences.yaml"), "preferences:\n  primary: claude\n");
+	fs.writeFileSync(path.join(router, "config/preferences.yaml"), `preferences:\n  update_check_days: 0\n${preset ? `  primary: ${preset}\n` : ""}`);
 	const target = fs.mkdtempSync(path.join(os.tmpdir(), "router-primary-"));
 	fs.mkdirSync(path.join(target, ".router"));
 	const doc = fs.readFileSync(path.join(ROOT, "skills/engineering-router/state.md"), "utf8");
@@ -100,5 +101,19 @@ test("Pi does not ask once the workflow has started", async () => {
 		assert.equal(f.primary(), "claude");
 	} finally {
 		f.cleanup();
+	}
+});
+
+test("Pi asks nothing when preferences.yaml sets primary, and names the family and the reply that changes it", async () => {
+	for (const hasUI of [true, false]) {
+		const f = fixture("selecting", "claude");
+		try {
+			const text = await run(f, { hasUI, ui: { select: async () => assert.fail("asked although preferences.yaml sets primary") } });
+			assert.match(text, /^primary: claude \(preferences\.yaml sets primary: claude\): no question\./);
+			assert.match(text, /"primary openai" changes it/);
+			assert.equal(f.primary(), "claude");
+		} finally {
+			f.cleanup();
+		}
 	}
 });
