@@ -21,6 +21,8 @@ for (const dir of ['vendors', 'node_modules']) fs.symlinkSync(path.join(ROOT, di
 
 const prefsFile = path.join(tmp, 'config/preferences.yaml');
 const fail = (msg) => { console.log(`FAIL: ${msg}`); process.exit(1); };
+const gitEnvTests = spawnSync(process.execPath, ['--test', path.join(ROOT, 'scripts/lib/git-env.test.js')], { encoding: 'utf8' });
+if (gitEnvTests.status !== 0) fail(`Git environment tests\n${gitEnvTests.stdout}${gitEnvTests.stderr}`);
 const run = (script, ...args) => {
   const r = spawnSync(path.join(tmp, 'scripts', script), args, { encoding: 'utf8' });
   return { ok: r.status === 0, out: r.stdout + r.stderr };
@@ -486,8 +488,8 @@ const acmeSkill = (name, text) => {
   fs.mkdirSync(path.join(acmeDir, 'skills', name), { recursive: true });
   fs.writeFileSync(path.join(acmeDir, 'skills', name, 'SKILL.md'), text);
 };
-// Without the GIT_* variables a pre-commit hook exports, which would aim these at the router repo.
-const gitEnv = Object.fromEntries(Object.entries(process.env).filter(([k]) => !k.startsWith('GIT_')));
+// Drop the hook's repository context while preserving Git's runtime helper path.
+const gitEnv = require('./lib/git-env')();
 const git = (...a) => spawnSync('git', ['-C', acmeDir, '-c', 'user.name=t', '-c', 'user.email=t@t', ...a], { encoding: 'utf8', env: gitEnv });
 acmeSkill('one', '---\nname: one\ndescription: Reviews a diff | flags <risky> changes & more.\n---\n# one\n');
 acmeSkill('folded', '---\nname: folded\ndescription: >\n  Folded text\n  across   lines.\n---\n');

@@ -31,7 +31,7 @@ const byId = (entries) => Object.entries(entries).sort(([a], [b]) => a.localeCom
 const plural = (n, word) => `${n} ${word}${n === 1 ? '' : 's'}`;
 
 // A git hook exports GIT_DIR and GIT_INDEX_FILE; they would point git at the router repo.
-const gitEnv = Object.fromEntries(Object.entries(process.env).filter(([k]) => !k.startsWith('GIT_')));
+const gitEnv = require('./lib/git-env')();
 const revisions = {};
 function revision(key) {
   if (revisions[key] === undefined) {
