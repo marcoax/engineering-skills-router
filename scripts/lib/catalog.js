@@ -231,7 +231,29 @@ function pickProblem(id, phases, allSkills = skills(), prefs = preferences()) {
   return candidate.status === 'ok' ? null : { message: candidate.status, replaceable: true };
 }
 
+// Harness capabilities a skill may list under `requires`; a selection states which it has.
+// Other `requires` values (tracker-config) are target-repo prerequisites, met by the workflow.
+const HARNESS_CAPABILITIES = ['subagents', 'isolated-outputs'];
+// The opening a pick's reason needs when the skill's catalog `cost` is high (selector §5.7).
+const HIGH_COST = /^high cost\b/i;
+
+// Why a pick of `id` with `reason` breaks the cost rule, or null: a `cost: high` skill always
+// shows its cost first, wherever it is proposed or selected.
+const costProblem = (id, reason, allSkills = skills()) =>
+  (allSkills[id]?.cost === 'high' && !HIGH_COST.test(String(reason ?? '').trim())
+    ? 'high cost: its reason must start with "High cost"' : null);
+
+// Why `id` cannot run on a harness with `capabilities` (a list, or undefined when not stated), or null.
+function capabilityProblem(id, capabilities, allSkills = skills()) {
+  const needed = arr(allSkills[id]?.requires).filter((r) => HARNESS_CAPABILITIES.includes(r));
+  if (needed.length === 0) return null;
+  if (capabilities === undefined) return `requires ${needed.join(', ')}: the selection states no capabilities`;
+  const lacking = needed.filter((r) => !capabilities.includes(r));
+  return lacking.length ? `requires ${lacking.join(', ')}, which the harness lacks` : null;
+}
+
 module.exports = {
+  HARNESS_CAPABILITIES, costProblem, capabilityProblem,
   ROOT, PROJECT_CATALOG, PROJECT_PHASES, DEFAULT_FLOW, CONFIG_ENV, CONFIG_FILES, CLONE_CONFIG, config, configErrors, requireConfig, label, readYaml, arr, sources, skills, vendorSkills, guides, ownedBy, projectSkills,
   personalPath, personalSkills, namesake, categories, preferences, available, description, targetArg, upstreamPaths, candidates, pickProblem,
 };

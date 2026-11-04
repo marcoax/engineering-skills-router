@@ -61,6 +61,7 @@ function checkSkill(where, id, s, known, rootLabel) {
   if (arr(s.categories).length === 0) errors.push(`${where}: no categories`);
   arr(s.complexity).filter((c) => !['low', 'medium', 'high'].includes(c))
     .forEach((c) => errors.push(`${where}: invalid complexity '${c}'`));
+  if (s.cost !== undefined && s.cost !== 'high') errors.push(`${where}: invalid cost '${s.cost}' (only high)`);
   arr(s.invokes).forEach((ref) => { if (!has(known, ref)) errors.push(`${where}: invokes unknown skill ${ref}`); });
   const isProject = s.source === 'project';
   if (!isProject) arr(s.categories).filter((c) => Catalog.PROJECT_PHASES.includes(c))

@@ -254,4 +254,4 @@ function reply(state, text, invokes) {
   return { state: covered.state, notes: [...restored.notes, ...covered.notes] };
 }
 
-module.exports = { recalculateCoverage, reply, ran, setStep, setWorkflow, checkPrimaryOpen, setPrimary, setHandoff, applyReply, stepIndex, STEP_STATUSES, WORKFLOW_STATUSES, UNFINISHED };
+module.exports = { recalculateCoverage, reply, ran, setStep, setWorkflow, checkPrimaryOpen, setPrimary, setHandoff, applyReply, stepIndex, STEP_STATUSES, WORKFLOW_STATUSES, UNFINISHED, LETTERS };

@@ -279,13 +279,12 @@ skills:
     path: vendors/pstack/skills/arena/SKILL.md
     categories: [architecture, prototype, implementation]
     use_when:
-      - one attempt would lock in the wrong shape and parallel candidates are affordable
-      - a high-complexity implementation has meaningful competing solutions worth building and comparing at high token cost
+      - one attempt would lock in the wrong shape and independent candidates would resolve a meaningful design uncertainty
     avoid_when:
       - the solution is already settled or repeating the implementation would not justify its cost
     complexity: [high]
-    requires:
-      - subagent execution with isolated output locations for competing candidates
+    cost: high
+    requires: [subagents, isolated-outputs]
 
   pstack/figure-it-out:
     source: pstack

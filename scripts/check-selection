@@ -15,8 +15,12 @@
 //                 "prerequisites": ["..."], "cost": "..." | null, "tie": "..." | null },
 //               { "phase": "review", "step": "review-2", ... }],   review 2's own selection
 //   "omitted": [{ "phase": "planning", "reason": "..." }],
-//   "missing": [{ "phase": "release", "reason": "..." }]
+//   "missing": [{ "phase": "release", "reason": "..." }],
+//   "capabilities": ["subagents", "isolated-outputs"]   the harness's, as the selector recorded them
 // }
+// A `cost: high` skill (pstack/arena) needs a reason starting "High cost" wherever it is picked,
+// and is a default only with `"explicit": true` (the user chose it). A pick whose `requires`
+// names a harness capability (HARNESS_CAPABILITIES) needs it in `capabilities`.
 const fs = require('node:fs');
 const Catalog = require('./lib/catalog');
 
@@ -42,15 +46,17 @@ try {
 const errors = [];
 const categories = Catalog.categories();
 const skills = Catalog.skills(target);
+const isStrings = (v) => Array.isArray(v) && v.every((x) => typeof x === 'string');
 const hasReason = (o) => typeof o?.reason === 'string' && o.reason.trim() !== '';
 const phases = Catalog.arr(selection.phases);
 const missing = Catalog.arr(selection.missing);
 const omitted = Catalog.arr(selection.omitted);
+const { capabilities } = selection;
+if (capabilities !== undefined && !isStrings(capabilities)) errors.push('capabilities must be a list of strings');
 
 // Steps that hold a second selection for a phase: review 2 is chosen on its own, so it keeps a
 // default and alternatives (and a swap slot) of its own.
 const STEPS = { 'review-2': 'review' };
-const isStrings = (v) => Array.isArray(v) && v.every((x) => typeof x === 'string');
 const isNote = (v) => v == null || typeof v === 'string';
 const selected = new Set();
 for (const p of phases) {
@@ -81,7 +87,13 @@ for (const p of phases) {
     seen.add(id);
     if (!hasReason(pick)) errors.push(`${where}: needs a reason`);
     const problem = Catalog.pickProblem(id, [name], skills);
-    if (problem) errors.push(`${where}: ${problem.message}`);
+    if (problem) { errors.push(`${where}: ${problem.message}`); continue; }
+    const cost = Catalog.costProblem(id, pick.reason, skills);
+    if (cost && hasReason(pick)) errors.push(`${where}: ${cost}`);
+    if (role === 'default' && skills[id]?.cost === 'high' && pick.explicit !== true)
+      errors.push(`${where}: high cost: keep a single-implementation default unless the user chose it ("explicit": true)`);
+    const unmet = Catalog.capabilityProblem(id, isStrings(capabilities) ? capabilities : undefined, skills);
+    if (unmet && (capabilities === undefined || isStrings(capabilities))) errors.push(`${where}: ${unmet}`);
   }
 }
 for (const [label, list] of [['missing', missing], ['omitted', omitted]]) {
