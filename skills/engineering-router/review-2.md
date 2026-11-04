@@ -2,11 +2,11 @@
 
 Read from SKILL.md when the workflow has a review 2 step: before showing it (§5), and again when review 2 runs (§6).
 
-Review 2 takes the first fitting `ok` `review` candidate other than review 1's skill (§3) and runs on the model family opposite to review 1's ([models.md](models.md)). A different model and different axes are not a duplicate. It is optional and starts off, and switches on and off together with the comparison.
+Review 2 takes the selector's own `review-2` selection, a default other than review 1's with its alternatives (SKILL.md §3), and runs on the model family opposite to review 1's ([models.md](models.md)). A different model and different axes are not a duplicate. It is optional and starts off, and switches on and off together with the comparison.
 
 ## Before showing the workflow
 
-Review 1's family is the one it will actually run on ([models.md](models.md)): in Claude Code that is `claude` even when `primary` is `openai`, so review 2's other family is `openai`. Judge whether this harness can run review 2 on the family opposite to review 1's: it needs subagents that take an explicit model, and a provider configured for that family under the ID in `config/preferences.yaml`. Availability depends on the harness and its configuration, not on the router: Pi with a subagent extension and both providers set up can do it; a harness whose subagents run only its own vendor's models cannot. Decide one of:
+Review 1's family is the one it will actually run on ([models.md](models.md)): in Claude Code that is `claude` even when `primary` is `openai`, so review 2's other family is `openai`. Judge whether this harness can run review 2 on the family opposite to review 1's: it needs subagents that take an explicit model, and a provider configured for that family under the ID in the user's `preferences.yaml`. Availability depends on the harness and its configuration, not on the router: Pi with a subagent extension and both providers set up can do it; a harness whose subagents run only its own vendor's models cannot. Decide one of:
 
 - **available**: the harness can start a subagent on that model.
 - **unverified**: it seems able to, but you cannot confirm the provider ID before a subagent starts. Say so; a failed start is handled below.

@@ -38,3 +38,10 @@ export function contextLine(tokens: number | null | undefined, window: number, t
   // Exact counts keep both the threshold and the 80% recommendation unambiguous.
   return `context: ${tokens} of ${window} window, threshold ${threshold}`
 }
+
+// The bridge exits 1 naming an unreadable user configuration: its first error, as a line the
+// router reports, so the threshold is never silently taken for the default.
+export function configLine(stderr: string | undefined): string | undefined {
+  const error = (stderr ?? '').split('\n').find(line => line.startsWith('error: '))
+  return error ? `config: ${error}` : undefined
+}

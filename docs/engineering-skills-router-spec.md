@@ -4,7 +4,7 @@ Why the router is shaped the way it is. What it does lives elsewhere, and wins w
 
 - behaviour: [`skills/engineering-router/SKILL.md`](../skills/engineering-router/SKILL.md);
 - the state format: [`skills/engineering-router/state.md`](../skills/engineering-router/state.md);
-- skills, phases and rankings: [`catalog/`](../catalog/);
+- skills, guides and phases: [`catalog/`](../catalog/);
 - install and use: the [README](../README.md); open ideas: [`backlog.md`](backlog.md).
 
 The 1240-line V1 spec and its V2 decisions this file replaces are in git history (`git log -- docs/engineering-skills-router-spec.md`).
@@ -20,7 +20,7 @@ Running every fitting skill costs time, tokens and user attention for little ext
 - **Low risk stops.** A small task gets no workflow: the router says so and offers to do it directly. The flow is for medium and high risk, where a spec, an issue and reviews pay for themselves; a user who wants it for a low-risk task gets it as at medium risk.
 - **One default flow, trimmed by type.** Requirements → spec + issue → tickets → implementation → reviews → PR. Task type changes only the front (debugging, code-understanding); the part from branch to PR stays the same, so every workflow ends the same way.
 - **Requirements runs after code-understanding**, so its questions build on what the code shows.
-- **Task correctness decides the phases.** Preferences only rank skills; they never add or remove a phase, so a favourite skill cannot inflate a small task.
+- **Task correctness decides the phases.** Preferences only choose among fitting skills; they never add or remove a phase, so a favourite skill cannot inflate a small task.
 
 ## Isolation
 
@@ -28,7 +28,7 @@ The router must never change what the user installed.
 
 - Vendor collections are git submodules in `vendors/`, pinned and never edited. Project metadata about them lives in `catalog/`, so an upstream change cannot silently change routing.
 - Nothing is written to user-level agent folders (`~/.claude/skills`, `~/.agents/skills`, …). The router reads vendor skills from `vendors/`, never from installed copies, which may be outdated or edited.
-- **Two exceptions, both explicit.** Project skills (`docs/agents/skills.yaml` in the target repo) are the project's own conventions; in v1 they fill only `framework-review`. Personal skills (`config/personal-skills.yaml`) are the user's own: read in place, never written, not pinned, since editing one is the user's choice. Neither may stand in for a vendor skill: a personal skill named like a cataloged vendor skill is skipped.
+- **Two exceptions, both explicit.** Project skills (`docs/agents/skills.yaml` in the target repo) are the project's own conventions; in v1 they fill only `framework-review`. Personal skills (`personal-skills.yaml` in the user configuration directory `scripts/config` reports, [configuration.md](configuration.md)) are the user's own: read in place, never written, not pinned, since editing one is the user's choice. Neither may stand in for a vendor skill: a personal skill named like a cataloged vendor skill is skipped.
 - Vendor and project skills are third-party or repository content: any script they ship is shown before it runs.
 
 ## The catalog is the interface
@@ -36,8 +36,8 @@ The router must never change what the user installed.
 The router reads only the catalog, never the vendor folders' layout. Adding a source is a catalog change with no router change ([adding-a-source.md](adding-a-source.md)).
 
 - `use_when`, `avoid_when` and `complexity` let the agent judge fit; `invokes` records which skills a skill runs itself.
-- A **ranking** names the default and fallbacks per phase. It is not a quality verdict: the router may pick a lower candidate when the task clearly fits it better, and says why.
-- Candidate order is user preference → preferred → fallback → other. A preference wins only when it fits.
+- There is no vendor ranking. Every cataloged skill tagged with a phase is a candidate on equal terms; the skill selector chooses on task fit, consults each vendor's guide, reads the candidates and explains each pick ([vendor-neutral-skill-selection.md](specs/vendor-neutral-skill-selection.md)). The router composes and runs what it selects.
+- Candidates list as user preference → project → personal and vendor skills by name; the order carries no meaning beyond those explicit choices. A preference wins only when it fits.
 - **Verify, don't invent.** A candidate is usable only when its `SKILL.md` exists. With no usable candidate the phase is reported missing; the router never improvises a replacement. `validate-catalog` also checks that every skill a vendor skill calls is cataloged, so a default step never depends on what happens to be installed.
 - **Updates are proposals.** `scripts/update` only reports upstream changes. The agent proposes a catalog diff and applies it after the user confirms.
 
@@ -62,7 +62,7 @@ Each skill step runs in its own subagent when the harness has them, so the main 
 
 ## State as the seam
 
-The router writes `.router/state.json` in the target repo, a versioned format with one writer. Adapters only read it and send user choices back as chat messages in the router's own syntax. So the skill stays agent-neutral, any UI is optional, and a workflow can resume in a new session. `scripts/check-state` validates the file against `state.md`, because a model-written file drifts.
+The router writes `.router/state.json` in the target repo, a versioned format with one writer. Adapters only read it and send user choices back as chat messages in the router's own syntax. So the skill stays agent-neutral, any UI is optional, and a workflow can resume in a new session. `scripts/check-state` validates the file against `state.md`, because a model-written file drifts; `scripts/state … compose` writes a composed workflow only when every skill is a usable candidate, and recalculates which steps run inside another from the catalog's `invokes`, again after every swap.
 
 ## Agent-neutral core
 

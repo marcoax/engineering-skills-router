@@ -12,6 +12,10 @@ export type Step = {
 	reason: string;
 	summary: string;
 	alternatives: Alternative[];
+	// The selector's notes; empty or null in a state written before the fields.
+	prerequisites: string[];
+	cost: string | null;
+	tie: string | null;
 	confirm: boolean;
 	optional: boolean;
 	covered_by: string | null;
@@ -77,6 +81,9 @@ export function parseState(text: string): Parsed {
 			alternatives: Array.isArray(s.alternatives)
 				? s.alternatives.filter(isObj).map((a) => ({ skill: str(a.skill), reason: str(a.reason) }))
 				: [],
+			prerequisites: strings(s.prerequisites),
+			cost: strOrNull(s.cost),
+			tie: strOrNull(s.tie),
 			confirm: s.confirm === true,
 			optional: s.optional === true,
 			covered_by: strOrNull(s.covered_by),
@@ -256,6 +263,10 @@ export function detailLines(state: State, marked = -1, paint: Paint = plain, wid
 		if (s.summary) detail(s.summary);
 		if (s.reason) detail(`why: ${s.reason}`, "muted");
 		s.alternatives.forEach((a, j) => detail(`${LETTERS[j]}) ${a.skill}: ${a.reason}`, "dim"));
+		// A pane may still hold a state parsed before the field existed.
+		if (s.prerequisites?.length) detail(`needs: ${s.prerequisites.join("; ")}`, "muted");
+		if (s.cost) detail(`cost: ${s.cost}`, "muted");
+		if (s.tie) detail(`tie: ${s.tie}`, "muted");
 		if (s.confirm) detail("asks before starting", "muted");
 		if (s.model) detail(`model: ${s.model}`, "muted");
 		if (s.optional) {

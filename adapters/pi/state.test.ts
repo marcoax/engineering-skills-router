@@ -130,7 +130,7 @@ test("optional steps: read, drawn as skipped, switched on and off", () => {
 test("details include every step field and the handoff", () => {
 	const { lines, stepStart } = detailLines(parsed(example()), 0);
 	const text = lines.join("\n");
-	for (const part of ["▸ ✓ 1. specification", "why: decisions already settled", "a) addyosmani/spec-driven-development", "→ Published #42", "branch   42-csv-export", "#42 https://github.com/acme/app/issues/42"]) {
+	for (const part of ["▸ ✓ 1. specification", "why: decisions already settled", "a) addyosmani/spec-driven-development", "→ Published #42", "branch   42-csv-export", "#42 https://github.com/acme/app/issues/42", "needs: gh logged in, to publish the issue", "tie: to-spec and spec-driven-development fit equally; publishing an issue separates them"]) {
 		assert.ok(text.includes(part), part);
 	}
 	assert.ok(!text.includes("asks before starting"), "routine steps need no further confirmation");

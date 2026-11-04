@@ -179,15 +179,6 @@ skills:
     use_when:
       - target repo has no docs/agents/issue-tracker.md and a tracker-config skill is selected
 
-  mattpocock/ask-matt:
-    source: mattpocock
-    path: vendors/mattpocock/skills/engineering/ask-matt/SKILL.md
-    categories: [workflow-selection]
-    use_when:
-      - "the user asks which Matt Pocock skill or flow fits their situation"
-    avoid_when:
-      - "the router has already selected a workflow and no vendor-specific guidance was requested"
-
   mattpocock/retro:
     source: mattpocock
     path: vendors/mattpocock/skills/engineering/retro/SKILL.md
@@ -456,15 +447,6 @@ skills:
       - "the user wants scoped comment cleanup with a fresh reviewer and root-cause fixes for accepted findings"
     avoid_when:
       - "the request is a read-only review without authorization to edit comments or code"
-
-  pstack/poteto-help:
-    source: pstack
-    path: vendors/pstack/skills/poteto-help/SKILL.md
-    categories: [workflow-selection]
-    use_when:
-      - "the user asks how to set up pstack, choose its skills or recover a pstack run"
-    avoid_when:
-      - "the user asked to execute work rather than explain pstack"
 
   pstack/poteto-mode:
     source: pstack
@@ -934,12 +916,3 @@ skills:
       - "framework-specific implementation decisions need verification and citations from the official documentation for the installed versions"
     avoid_when:
       - "the task is version-independent logic or the user explicitly prioritizes speed over documentation verification"
-
-  addyosmani/using-agent-skills:
-    source: addyosmani
-    path: vendors/addyosmani/skills/using-agent-skills/SKILL.md
-    categories: [workflow-selection]
-    use_when:
-      - "the user asks to discover or apply the Addy Osmani skill collection and its development workflow"
-    avoid_when:
-      - "the router already selected the workflow and no vendor-specific routing was requested"

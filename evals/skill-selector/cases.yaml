@@ -1,0 +1,182 @@
+# Behavioral evaluation cases for skills/skill-selector. Proposal only: a run invokes the selector
+# on a case and grades its proposal; it never executes a proposed skill, an implementation or a
+# multi-runner arena. No case has been run yet (see `runs`).
+#
+# How to run one case
+#   1. Work in a scratch copy of this checkout (`cp -R`, vendors included) and a scratch target repo
+#      (`git init`, one commit) shaped as `setup` says; apply the case's scratch edits there only.
+#   2. Start a fresh session on `evaluation.model` at `evaluation.effort`, invoke the selector with
+#      `task`, the target path and `capabilities`, and save its full answer.
+#   3. Grade: `scripts/check-selection --target <target> <answer>` passes; each `expect` holds; the
+#      target's `git status --porcelain --ignored`, HEAD and branch list are unchanged and it has
+#      no `.router/`. Assert behavior and reasons, never exact prose or per-vendor counts.
+#   4. Append a `runs` entry. Several runs of one case may legitimately differ where the case says so.
+#
+# Case fields
+#   task          what the user asks
+#   setup         target repo shape and scratch edits to the checkout copy (catalog, preferences, guides)
+#   capabilities  harness capabilities stated to the selector
+#   clear_fit     the case has one clearly best vendor skill; selftest requires one per vendor
+#   expect        assertions, each about one `phase` unless it has none:
+#     default_any_of   the phase's default is one of these
+#     proposed_any_of  one of these is the default or an alternative
+#     not_proposed     none of these appears for the phase
+#     included         the phase has a default (true) or none, being missing or omitted (false)
+#     reason           what the relevant reason must establish
+#   ambiguity     where more than one answer is acceptable, and why
+#
+# selftest checks that every id under default_any_of and proposed_any_of is an `ok` candidate
+# of `list-skills` for its phase, and that every source has a clear_fit case.
+
+evaluation:
+  model: claude-opus-5-5          # proposed; record the model actually used in each run
+  effort: medium
+  harness: Claude Code, fresh session per case, subagents as `capabilities` says
+
+cases:
+
+  - id: clear-fit-mattpocock
+    task: Split the approved spec docs/specs/offline-sync.md into tracer-bullet tickets with blocking edges and publish them to GitHub issues.
+    setup: brownfield target with docs/specs/offline-sync.md (four separable slices) and docs/agents/issue-tracker.md naming GitHub
+    capabilities: [subagents, gh]
+    clear_fit: true
+    expect:
+      - phase: planning
+        default_any_of: [mattpocock/to-tickets]
+        reason: names tracer-bullet tickets with blocking edges published to the tracker
+
+  - id: clear-fit-pstack
+    task: Before merging, find what renaming the config key `retryLimit` to `maxRetries` could break outside this diff.
+    setup: brownfield target where `retryLimit` is read in several modules and one YAML fixture; a branch holding the rename diff
+    capabilities: [subagents]
+    clear_fit: true
+    expect:
+      - phase: independent-review
+        default_any_of: [pstack/blast-radius]
+        reason: ties the choice to effects beyond the diff, proven by running code
+
+  - id: clear-fit-addyosmani
+    task: Our product page's Largest Contentful Paint regressed from 1.8 s to 3.9 s since last release; measure and fix it.
+    setup: brownfield web app target with a Lighthouse report showing the regression
+    capabilities: [subagents, browser]
+    clear_fit: true
+    expect:
+      - phase: performance
+        default_any_of: [addyosmani/performance-optimization]
+        reason: cites the Core Web Vitals regression and measure-first optimization
+
+  - id: tie-review
+    task: Review my branch implementing CSV export for the reports page against issue #12.
+    setup: brownfield TypeScript target; branch with a medium diff; issue #12 states the behavior
+    capabilities: [subagents, gh]
+    expect:
+      - phase: review
+        default_any_of: [mattpocock/code-review, addyosmani/code-review-and-quality]
+        proposed_any_of: [mattpocock/code-review, addyosmani/code-review-and-quality]
+        reason: when both are judged to fit equally, they are named as a tie with what separates them; the default's reason is task-specific, never vendor, listing order or ranking
+    ambiguity: either general review skill may be the default; run-to-run variation between them is acceptable
+
+  - id: shuffled-vendor-order
+    task: Review my branch implementing CSV export for the reports page against issue #12.
+    setup: as tie-review; in the checkout copy, reverse the order of entries in catalog/skills.yaml and the order of sources in catalog/sources.yaml
+    capabilities: [subagents, gh]
+    expect:
+      - phase: review
+        default_any_of: [mattpocock/code-review, addyosmani/code-review-and-quality]
+        reason: no reason refers to vendor, catalog or listing order
+    ambiguity: compare against tie-review runs; the same candidates should be in play, not necessarily the same default
+
+  - id: changed-legacy-rankings
+    task: Review my branch implementing CSV export for the reports page against issue #12.
+    setup: as tie-review; in the checkout copy, add a legacy catalog/rankings.yaml with review.preferred [pstack/typescript-best-practices] and fallback []
+    capabilities: [subagents, gh]
+    expect:
+      - phase: review
+        default_any_of: [mattpocock/code-review, addyosmani/code-review-and-quality]
+        reason: the default is chosen on fit; rankings are not cited and do not promote typescript-best-practices to default for a general review
+
+  - id: suitable-preference
+    task: Review my branch implementing CSV export for the reports page against issue #12.
+    setup: as tie-review; config/preferences.yaml in the checkout copy has review.prefer [addyosmani/code-review-and-quality]
+    capabilities: [subagents, gh]
+    expect:
+      - phase: review
+        default_any_of: [addyosmani/code-review-and-quality]
+        reason: names the user's preference and why it fits this task
+
+  - id: unsuitable-preference
+    task: Review my branch fixing a race in the Python job scheduler against issue #31.
+    setup: brownfield Python target; config/preferences.yaml in the checkout copy has review.prefer [pstack/typescript-best-practices]
+    capabilities: [subagents, gh]
+    expect:
+      - phase: review
+        default_any_of: [mattpocock/code-review, addyosmani/code-review-and-quality, pstack/interrogate]
+        reason: says the preferred skill does not fit a Python change, and keeps it out of the default
+
+  - id: missing-guide
+    task: Before merging, find what renaming the config key `retryLimit` to `maxRetries` could break outside this diff.
+    setup: as clear-fit-pstack; in the checkout copy, point catalog/guides.yaml pstack/poteto-help at a path that does not exist
+    capabilities: [subagents]
+    expect:
+      - reason: reports pstack/poteto-help as unavailable with the reason and states the reduced evidence
+      - phase: independent-review
+        proposed_any_of: [pstack/blast-radius]
+        reason: still selects from the catalog and the remaining guides
+
+  - id: no-usable-candidate
+    task: Audit the new file-upload endpoint for vulnerabilities before release.
+    setup: brownfield web API target; config/preferences.yaml in the checkout copy excludes [addyosmani/security-and-hardening]
+    capabilities: [subagents]
+    expect:
+      - phase: security
+        included: false
+        reason: reports security as a missing capability with its reason; the excluded skill is not proposed
+
+  - id: guide-names-unregistered-skill
+    task: Split the approved spec docs/specs/offline-sync.md into tracer-bullet tickets with blocking edges and publish them to GitHub issues.
+    setup: as clear-fit-mattpocock; in the checkout copy, delete the mattpocock/to-tickets entry from catalog/skills.yaml
+    capabilities: [subagents, gh]
+    expect:
+      - phase: planning
+        not_proposed: [mattpocock/to-tickets]
+        reason: lists to-tickets as named by mattpocock/ask-matt but unregistered, and proposes only cataloged candidates or reports planning missing
+
+  - id: understanding-before-change
+    task: Change the cache in src/cache.ts so expired entries are refreshed in the background instead of on read.
+    setup: brownfield target; src/cache.ts exists, several callers rely on read-through semantics, no docs on them
+    capabilities: [subagents]
+    expect:
+      - phase: code-understanding
+        proposed_any_of: [pstack/how, pstack/why]
+        reason: locating src/cache.ts alone is not taken as understanding the callers' reliance on read-through behavior
+    ambiguity: discovery instead of code-understanding is acceptable when its reason is the same
+
+  - id: arena-complex
+    task: Design and implement conflict resolution for offline edits; CRDT and last-writer-wins with server merge are both plausible and we have not chosen.
+    setup: brownfield target with a sync module and tests; high complexity
+    capabilities: [subagents, isolated-outputs]
+    expect:
+      - phase: implementation
+        proposed_any_of: [pstack/arena]
+        reason: arena is an alternative, not the default, and its reason starts High cost, naming repeated runs plus judging, synthesis and verification, and the benefit of comparing the two designs
+
+  - id: arena-without-subagents
+    task: Design and implement conflict resolution for offline edits; CRDT and last-writer-wins with server merge are both plausible and we have not chosen.
+    setup: as arena-complex
+    capabilities: []
+    expect:
+      - phase: implementation
+        not_proposed: [pstack/arena]
+        reason: arena is left out because the harness cannot run isolated candidates
+
+  - id: arena-simple
+    task: Add a `--json` flag to the `report` command that prints the same fields as JSON.
+    setup: brownfield CLI target; low complexity
+    capabilities: [subagents, isolated-outputs]
+    expect:
+      - phase: implementation
+        not_proposed: [pstack/arena]
+        reason: a settled, simple change gets a single implementation
+
+# One entry per run: { case, date, model, effort, harness, result: pass | fail, notes }.
+runs: []

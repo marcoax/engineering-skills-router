@@ -1,9 +1,11 @@
-# Copy to config/preferences.yaml (git-ignored) to customise routing.
+# Copy to ~/.config/engineering-skills-router/preferences.yaml (or $ENGINEERING_ROUTER_CONFIG/;
+# config/preferences.yaml in a clone also works) to customise routing. docs/configuration.md;
+# scripts/config prints which file is in effect.
 # Preferences pick WHICH suitable skill fills a phase; they never add or remove phases.
 
 preferences:
 
-  # Per-phase preferred skills, tried before the catalog ranking.
+  # Per-phase preferred skills: the selector picks one when it fits the task.
   review:
     prefer: [addyosmani/code-review-and-quality]
 
@@ -17,9 +19,9 @@ preferences:
   # Skills never to select.
   exclude: []
 
-  # Folder holding your own skills, listed in config/personal-skills.yaml
-  # (see config/personal-skills.example.yaml). A leading ~ is your home dir;
-  # a relative path resolves against this checkout.
+  # Folder holding your own skills, listed in personal-skills.yaml beside this file
+  # (see config/personal-skills.example.yaml). A leading ~ is your home dir; a relative
+  # path resolves against this file's directory (the checkout for config/preferences.yaml).
   # personal_path: ~/my-skills
 
   # Days between update-check prompts at startup (default 14, 0 = never ask).

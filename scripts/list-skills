@@ -1,16 +1,36 @@
 #!/usr/bin/env node
 // Usage: scripts/list-skills [--target <repo>] [phase ...]
-//   no args  one line per phase with its ranked candidates
-//   phases   full detail (use_when, avoid_when, invokes, requires) for each candidate
+//        scripts/list-skills --guides
+//   no args  one line per phase with its candidates
+//   phases   full detail for each candidate: the source description, read from its SKILL.md
+//            frontmatter, then the catalog's use_when, avoid_when, complexity, invokes, requires
+//   --guides the vendor guides (catalog/guides.yaml), with their source descriptions; guides are
+//            consulted for selection and are never phase candidates
+// Candidates stand on equal terms: an explicit preference first, then the target's project
+// skills, then personal and vendor skills by skill name. The order is not a ranking; the origin
+// is preference | project | personal | vendor.
 //   --target adds the target repo's own skills (docs/agents/skills.yaml) as project/<name>,
 //            the only candidates for framework-review
-// Personal skills (config/personal-skills.yaml, under preferences.personal_path) are listed as
+// Personal skills (personal-skills.yaml, see scripts/config; under preferences.personal_path) are listed as
 // personal/<name> with their absolute path; one named like a vendor skill is skipped.
 // Status: ok | missing (file not found, or a personal or project path outside its folder)
 //   | excluded (user preference) | unknown (not cataloged)
 const Catalog = require('./lib/catalog');
 
 const { target, args } = Catalog.targetArg(process.argv.slice(2));
+Catalog.requireConfig();
+const describe = (skill) => {
+  const { text, error } = Catalog.description(skill);
+  return `   description: ${text ?? `(unavailable: ${error})`}`;
+};
+
+if (args.includes('--guides')) {
+  console.log('## guides');
+  Object.entries(Catalog.guides()).forEach(([id, guide], i) => {
+    console.log(`${i + 1}. ${id}\n   path: ${guide.path}\n${describe(guide)}`);
+  });
+  process.exit(0);
+}
 const categories = Catalog.categories();
 const skills = Catalog.skills(target);
 const known = Object.keys(categories);
@@ -32,6 +52,7 @@ for (const phase of phases) {
     console.log(`${i + 1}. ${c.id}  [${c.origin}, ${c.status}]`);
     if (!c.skill) return;
     console.log(`   path: ${c.skill.path}`);
+    console.log(describe(c.skill));
     for (const key of ['use_when', 'avoid_when', 'complexity', 'invokes', 'requires']) {
       const values = Catalog.arr(c.skill[key]);
       if (values.length > 0) console.log(`   ${key}: ${values.join('; ')}`);

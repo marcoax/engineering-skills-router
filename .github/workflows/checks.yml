@@ -1,0 +1,65 @@
+# Runs the router's existing checks on a clean runner: catalog validation, the scratch-repository
+# selftest (which also runs the Pi adapter tests) and the Claude Code adapter tests.
+# No provider credentials, user preferences, personal skills or vendor refresh are involved.
+name: checks
+
+on:
+  pull_request:
+  push:
+    branches: [master]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: checks-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  # Claude Code version whose `claude plugin test` runs the adapter tests. Bump deliberately.
+  CLAUDE_CODE_VERSION: 2.1.317
+  DISABLE_AUTOUPDATER: '1'
+  CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC: '1'
+
+jobs:
+  checks:
+    name: catalog, selftest, adapters
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Check out with vendor submodules at their recorded revisions
+        uses: actions/checkout@v7
+        with:
+          submodules: recursive
+          persist-credentials: false
+
+      - name: Verify vendor submodules match the recorded revisions
+        run: |
+          git submodule status --recursive
+          if git submodule status --recursive | grep -qv '^ '; then
+            echo "::error::a vendor submodule is missing or not at the revision recorded by this commit"
+            exit 1
+          fi
+
+      - name: Set up Node 22 (scripts need 22.18+)
+        uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install script dependencies from package-lock.json
+        run: npm ci --no-audit --no-fund
+
+      - name: Validate catalog
+        run: scripts/validate-catalog
+
+      - name: Selftest (scratch repositories + Pi adapter tests)
+        run: scripts/selftest
+
+      - name: Install Claude Code ${{ env.CLAUDE_CODE_VERSION }} (adapter test harness)
+        run: npm install --global --no-audit --no-fund "@anthropic-ai/claude-code@${CLAUDE_CODE_VERSION}"
+
+      - name: Claude Code adapter tests
+        run: |
+          claude --version
+          claude plugin test adapters/claude-code

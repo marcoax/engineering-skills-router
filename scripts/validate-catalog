@@ -2,7 +2,8 @@
 // Validates the catalog against itself and the vendor checkouts. Exits 1 on errors.
 // Uncataloged upstream skills are reported as info only (listed with --verbose).
 // --target <repo> also checks that repo's project catalog (docs/agents/skills.yaml).
-// The personal catalog (config/personal-skills.yaml) is checked when present; a personal skill
+// The user configuration (preferences.yaml, personal-skills.yaml) is read from the directory
+// scripts/config reports; the personal catalog is checked when present, and a personal skill
 // named like a vendor skill is skipped with a warning.
 const fs = require('node:fs');
 const path = require('node:path');
@@ -15,16 +16,25 @@ const verbose = args.includes('--verbose');
 const errors = [];
 const warnings = [];
 const sources = Catalog.sources();
-const prefs = Catalog.preferences();
+const config = Catalog.config();
+const PERSONAL_CATALOG = Catalog.label(config.personalFile);
+errors.push(...config.problems);
+// Clone-local files a higher source hides: a deliberate ENGINEERING_ROUTER_CONFIG only warns.
+config.shadowed.forEach((file) => (config.source === 'explicit' ? warnings : errors).push(
+  `${Catalog.label(file)}: ignored, the ${config.source} configuration in ${config.dir} is used instead `
+  + '(scripts/config migrate moves it there, or remove one of them)'));
+// A malformed file is an error, never read as absent; its settings fall back to the defaults.
+errors.push(...Catalog.configErrors(config));
+const safe = (fn, fallback = {}) => { try { return fn(); } catch { return fallback; } };
+const prefs = safe(() => Catalog.preferences(config));
 const vendor = Catalog.vendorSkills();
-const personalPath = Catalog.personalPath(prefs);
-const personal = Catalog.personalSkills(personalPath);
-const personalFile = path.join(Catalog.ROOT, Catalog.PERSONAL_CATALOG);
+const personalPath = Catalog.personalPath(prefs, config.base);
+const personal = safe(() => Catalog.personalSkills(personalPath, config.personalFile));
+const personalFile = config.personalFile;
 const hasPersonalCatalog = fs.existsSync(personalFile);
-const skills = Catalog.skills();
+const skills = safe(() => Catalog.skills(), vendor);
 const project = Catalog.projectSkills(target);
 const categories = Catalog.categories();
-const rankings = Catalog.rankings();
 const has = (obj, key) => Object.hasOwn(obj, key);
 // Personal ids left out for a vendor namesake, each mapped to that namesake.
 const skipped = Object.fromEntries(Object.keys(personal).filter((id) => id.startsWith('personal/'))
@@ -38,7 +48,7 @@ function checkDuplicateIds(file, prefix = '') {
 }
 checkDuplicateIds(path.join(Catalog.ROOT, 'catalog/skills.yaml'));
 if (target) checkDuplicateIds(path.join(target, Catalog.PROJECT_CATALOG), `${Catalog.PROJECT_CATALOG}: `);
-checkDuplicateIds(personalFile, `${Catalog.PERSONAL_CATALOG}: `);
+checkDuplicateIds(personalFile, `${PERSONAL_CATALOG}: `);
 
 // Checks every skill gets, vendor, personal or project. Only project skills fill the project
 // phases. `known` holds the ids `invokes` may name; `rootLabel` names what a personal
@@ -67,6 +77,28 @@ for (const [id, s] of Object.entries(vendor)) {
   checkSkill(id, id, s, vendor);
 }
 
+// Guides: owned by their source, readable, and never also an executable skill.
+const guides = Catalog.guides();
+for (const [id, g] of Object.entries(guides)) {
+  const where = `guides: ${id}`;
+  if (!has(sources, g.source)) { errors.push(`${where}: unknown source '${g.source}'`); continue; }
+  if (!id.startsWith(`${g.source}/`)) errors.push(`${where}: id must start with '${g.source}/'`);
+  if (has(vendor, id)) errors.push(`${where}: also cataloged as an executable skill`);
+  if (!Catalog.ownedBy(g.path, sources[g.source]))
+    errors.push(`${where}: path outside source ${g.source} (${sources[g.source].local_path}): ${g.path}`);
+  else if (!Catalog.available(g)) errors.push(`${where}: path not found ${g.path}`);
+  else {
+    const { error } = Catalog.description(g);
+    if (error) warnings.push(`${where}: description unavailable: ${error}`);
+  }
+}
+
+// A description that cannot be read is reported, never replaced: the selector reads the source.
+for (const [id, s] of Object.entries(vendor)) {
+  const { error } = Catalog.available(s) ? Catalog.description(s) : {};
+  if (error) warnings.push(`${id}: description unavailable: ${error}`);
+}
+
 // The router resolves "Call the Skill tool with \"<name>\"" to <same-source>/<name>.
 for (const [id, s] of Object.entries(vendor)) {
   if (!Catalog.available(s)) continue;
@@ -85,24 +117,16 @@ if (has(prefs, 'personal_path') && !personalPath)
   errors.push(`preferences.personal_path: must be a non-empty string, got ${JSON.stringify(prefs.personal_path)}`);
 else if (personalPath && !fs.statSync(personalPath, { throwIfNoEntry: false })?.isDirectory())
   errors.push(`preferences.personal_path: not a directory: ${prefs.personal_path}`);
-if (hasPersonalCatalog && !personalPath) errors.push(`${Catalog.PERSONAL_CATALOG}: needs preferences.personal_path`);
+if (hasPersonalCatalog && !personalPath) errors.push(`${PERSONAL_CATALOG}: needs preferences.personal_path`);
 for (const [id, s] of Object.entries(personal)) {
-  const where = `${Catalog.PERSONAL_CATALOG}: ${id}`;
+  const where = `${PERSONAL_CATALOG}: ${id}`;
   if (has(skipped, id)) warnings.push(`${where}: skipped, same name as ${skipped[id]}`);
   else checkSkill(where, id, s, skills, 'personal_path');
 }
 
-Object.keys(rankings).filter((c) => !has(categories, c)).forEach((c) => errors.push(`rankings: unknown category '${c}'`));
-Object.keys(categories).filter((c) => !has(rankings, c)).forEach((c) => warnings.push(`rankings: no entry for category '${c}'`));
-for (const [cat, r] of Object.entries(rankings)) {
-  for (const kind of ['preferred', 'fallback']) {
-    for (const id of arr((r || {})[kind])) {
-      if (!has(vendor, id)) errors.push(`rankings.${cat}.${kind}: unknown skill ${id}`);
-      else if (!arr(vendor[id].categories).includes(cat))
-        warnings.push(`rankings.${cat}.${kind}: ${id} is not tagged with category '${cat}'`);
-    }
-  }
-}
+// Vendor rankings are retired: candidates stand on equal terms and selection explains its picks.
+if (fs.existsSync(path.join(Catalog.ROOT, 'catalog/rankings.yaml')))
+  warnings.push('catalog/rankings.yaml: no longer read; candidates stand on equal terms (delete the file)');
 
 const isModel = (v) => typeof v === 'string' && /^[^\s/]+\/\S+$/.test(v);
 const isFamily = (v) => FAMILIES.includes(v);
@@ -140,7 +164,7 @@ for (const [key, value] of Object.entries(prefs)) {
   });
 }
 
-const cataloged = Object.values(vendor).map((s) => s.path);
+const cataloged = [...Object.values(vendor), ...Object.values(guides)].map((s) => path.normalize(String(s.path)));
 const uncataloged = Object.values(sources).flatMap(Catalog.upstreamPaths).filter((p) => !cataloged.includes(p));
 
 warnings.forEach((w) => console.log(`warning: ${w}`));
@@ -152,5 +176,5 @@ if (uncataloged.length > 0) {
 const counts = [`${Object.keys(vendor).length} skills`];
 if (hasPersonalCatalog) counts.push(`${Object.keys(personal).filter((id) => has(skills, id)).length} personal`);
 if (target) counts.push(`${Object.keys(project).length} project`);
-console.log(errors.length === 0 ? `catalog OK (${counts.join(' + ')}, ${warnings.length} warning(s))` : `${errors.length} error(s)`);
+console.log(errors.length === 0 ? `catalog OK (${counts.join(' + ')}, ${Object.keys(guides).length} guides, ${warnings.length} warning(s))` : `${errors.length} error(s)`);
 process.exit(errors.length === 0 ? 0 : 1);

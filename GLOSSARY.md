@@ -4,6 +4,14 @@ The router composes a workflow of skills for an engineering task, runs it step b
 
 ## Language
 
+**Classification fact**:
+A property of the change itself, recorded with evidence from the task or an inspected file, that sets a minimum risk under the classification policy (an authorization, payment or destructive change, sensitive data, a public contract). A word in the task is not a fact.
+_Avoid_: keyword, trigger, risk signal
+
+**Classification policy**:
+The versioned criteria for type, risk and complexity and the minimum risk each fact sets ([classification.md](skills/engineering-router/classification.md)). A run keeps the revision it was classified under.
+_Avoid_: rules, risk score
+
 **Standalone skill execution**:
 The execution of one chosen primary skill for a task without composing a router workflow, including any calls to other skills required by its instructions. The primary skill can be named explicitly or chosen through a recommendation.
 _Avoid_: direct work (which already means work without a vendor skill)
@@ -21,7 +29,7 @@ The moment after one step has closed and before the next one starts. The step's 
 _Avoid_: checkpoint, mid-step pause
 
 **Primary family**:
-The model family (`claude` or `openai`) a run's steps run on unless their phase sets its own. Each run keeps its own in `.router/state.json`, starting from `primary` in `config/preferences.yaml`.
+The model family (`claude` or `openai`) a run's steps run on unless their phase sets its own. Each run keeps its own in `.router/state.json`, starting from `primary` in the user's `preferences.yaml`.
 _Avoid_: default model, main model
 
 **Primary question**:

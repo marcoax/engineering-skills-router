@@ -1,6 +1,6 @@
 # Run record — format v1
 
-At the pull request (§6) the router appends one **run record** to the PR body: what ran, on which models, what the reviews found and what was done with it. `scripts/stats` reads the records back from a repo's PRs with `gh` and adds them up, so the catalog, the rankings and this skill can be judged on results rather than impressions. This document is the only definition of the format.
+At the pull request (§6) the router appends one **run record** to the PR body: what ran, on which models, what the reviews found and what was done with it. `scripts/stats` reads the records back from a repo's PRs with `gh` and adds them up, so the catalog, the selection and this skill can be judged on results rather than impressions. This document is the only definition of the format.
 
 - **Writer**: only the router, once, when it opens the PR. A record already in the body (a resumed workflow) is replaced, never duplicated.
 - **Where**: the end of the PR body, inside an HTML comment, so GitHub does not show it:
@@ -26,11 +26,16 @@ At the pull request (§6) the router appends one **run record** to the PR body: 
   "risk": "medium",
   "complexity": "medium",
   "path": "full",
+  "classification": {
+    "policy": 1,
+    "rationale": { "type": "a new capability on an existing page", "risk": "no fact applies; contained and reversible", "complexity": "three files" },
+    "facts": []
+  },
   "steps": [
     { "id": "specification", "skill": "mattpocock/to-spec", "model": "claude-opus-5-5", "effort": null, "status": "done", "tokens": null },
     { "id": "implementation", "skill": "mattpocock/implement", "model": "claude-sonnet-5-5", "effort": "high", "status": "done", "tokens": 182000 },
     { "id": "review-1", "skill": "mattpocock/code-review", "model": "claude-opus-5-5", "effort": null, "status": "done", "tokens": null },
-    { "id": "review-2", "skill": "addyosmani/code-review", "model": "openai-codex/gpt-6-sol", "effort": "high", "status": "done", "tokens": null },
+    { "id": "review-2", "skill": "addyosmani/code-review-and-quality", "model": "openai-codex/gpt-6-sol", "effort": "high", "status": "done", "tokens": null },
     { "id": "comparison", "skill": null, "model": "claude-opus-5-5", "effort": null, "status": "done", "tokens": null }
   ],
   "session_model": "claude-opus-5-5",
@@ -51,6 +56,7 @@ At the pull request (§6) the router appends one **run record** to the PR body: 
 | `version` | integer | Format version, `1`. |
 | `router` | `{commit}` | `commit`: short `git rev-parse HEAD` of the router checkout that ran, or `null`. Ties results to a version of this skill and the catalog. |
 | `task`, `type`, `risk`, `complexity`, `path` | string \| null | As in `.router/state.json`. `path` tells whether a light run's review found what a light path should not have missed. |
+| `classification` | `{policy, rationale, facts}` \| null | As in `.router/state.json`: the policy revision the run was classified under, the one-line rationale per class and the facts with their evidence. `null` when the state has none; absent in records written before it. |
 | `steps` | Step[] | Every step of the workflow, in order, as it ended. |
 | `session_model` | string \| null | The main session's model, as the harness names it. In a record from before the step model contract, a step that ran with `model` `null` ran on this; `scripts/stats` reads it so. |
 | `findings` | Finding[] | Every finding of the reviews that ran (review 1, review 2, framework-review, security, independent-review), merged: one entry per distinct problem. Empty when no review ran. |

@@ -52,3 +52,12 @@ test('Claude keeps a successful step when measurement fails', async ($, on) => {
   const result: any = await $.tool.call({tool: 'Bash', command} as any)
   expect(result.result.stdout).toBe(stdout)
 })
+
+// A configuration the bridge cannot read is reported after the step, never taken for the default.
+test('Claude reports an unreadable configuration after a completed step', async ($, on) => {
+  on('tool.call', {tool: 'Bash'}, () => ({result: {stdout, stderr: '', interrupted: false}}) as any)
+  on('process.run', () => ({value: {exitCode: 1, stdout: '', stderr: 'error: /cfg/preferences.yaml: malformed YAML: x\nThe user configuration in effect cannot be read: fix it.\n'}}))
+  on('session.usage', () => ({value: {context: {tokens: 190000, window: 200000}}}) as any)
+  const result: any = await $.tool.call({tool: 'Bash', command} as any)
+  expect(result.result.stdout).toBe(stdout + 'config: error: /cfg/preferences.yaml: malformed YAML: x\n')
+})
