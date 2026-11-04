@@ -1,0 +1,53 @@
+#!/usr/bin/env node
+// Installs from this checkout. Tests use a temporary HOME, never the user's installation.
+const fs = require('node:fs');
+const os = require('node:os');
+const path = require('node:path');
+const { spawnSync } = require('node:child_process');
+
+const ROOT = path.resolve(__dirname, '..');
+const args = process.argv.slice(2);
+if (args.includes('--help')) {
+  console.log('Usage: scripts/install-claude [--no-panel]\nPrepares this checkout, links both skills and installs the Claude Code panel.\n--no-panel  Install the skills without the optional panel.\nExisting skill entries are never replaced. Preferences keep their defaults.');
+  process.exit(0);
+}
+if (args.some((arg) => arg !== '--no-panel')) {
+  console.error('Unknown option. Use --help for usage.');
+  process.exit(1);
+}
+const panel = !args.includes('--no-panel');
+const skillsDir = path.join(process.env.CLAUDE_CONFIG_DIR || path.join(os.homedir(), '.claude'), 'skills');
+const links = ['engineering-router', 'skill-selector'].map((name) => ({
+  source: path.join(ROOT, 'skills', name),
+  target: path.join(skillsDir, name),
+}));
+function alreadyLinked({ source, target }) {
+  return fs.lstatSync(target).isSymbolicLink() &&
+    path.resolve(path.dirname(target), fs.readlinkSync(target)) === source;
+}
+function run(command, commandArgs) {
+  const result = spawnSync(command, commandArgs, { cwd: ROOT, stdio: 'inherit' });
+  if (result.error) console.error(`${command}: ${result.error.message}`);
+  if (result.status !== 0) process.exit(1);
+}
+// Check conflicts and prerequisites before changing anything.
+for (const link of links) {
+  if (fs.existsSync(link.target) || fs.lstatSync(link.target, { throwIfNoEntry: false })) {
+    if (!alreadyLinked(link)) {
+      console.error(`Left unchanged: ${link.target}\nAn existing skill occupies this path. See docs/claude-code.md before retrying.`);
+      process.exit(1);
+    }
+  }
+}
+if (panel) run('claude', ['--version']);
+run(path.join(ROOT, 'scripts/setup'), []);
+fs.mkdirSync(skillsDir, { recursive: true });
+for (const link of links) {
+  if (!fs.existsSync(link.target)) fs.symlinkSync(link.source, link.target, 'dir');
+  console.log(`Linked: ${link.target}`);
+}
+if (panel) {
+  run('claude', ['plugin', 'marketplace', 'add', ROOT]);
+  run('claude', ['plugin', 'install', 'engineering-router-panel@engineering-skills-router']);
+}
+console.log(`\nReady. Open Claude Code in your project and run /engineering-router <task>.${panel ? '\nIn an existing session, run /reload-plugins first.' : ''}`);
