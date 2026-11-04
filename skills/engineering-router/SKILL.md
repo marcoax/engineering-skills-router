@@ -49,7 +49,7 @@ Write it as classification.md's classification file, with the workflow the user 
 
 Tell the user the classes with their reasons and any `uncertain:` lines, then follow the `offer:` it prints; a routine classification needs no approval of its own:
 
-- `direct` in the offer (**low risk**): stop here. Say the task is low risk and offer: do it directly, without a workflow (no vendor skills, no issue); the **light** path, when offered; or the full workflow, which runs as at medium risk with risk kept `low`.
+- `direct` in the offer (**low risk**): stop here. Say the task is low risk and offer: do it directly, without a workflow (no vendor skills, no issue, no state or run record; a branch and PR when the user wants them); the **light** path, when offered; or the full workflow, which runs as at medium risk with risk kept `low`. With `propose: direct` (a ticket that settles the work), list direct first as the recommendation and give the printed `reason:` in one line: the workflow's overhead is not repaid here. Wait for the user's choice either way.
 - `propose: light` (a medium-risk ticket of low complexity): take **light** and say how to ask for `full`.
 - `full` alone: take **full**.
 

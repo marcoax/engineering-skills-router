@@ -20,7 +20,7 @@ The router writes this file in the **target repo** during a workflow so that ada
   "path": "full",
   "properties": ["brownfield", "user-facing"],
   "classification": {
-    "policy": 1,
+    "policy": 2,
     "ticket": false,
     "facts": [],
     "rationale": {

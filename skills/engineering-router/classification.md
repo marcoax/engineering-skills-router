@@ -1,4 +1,4 @@
-# Classification — policy 1
+# Classification — policy 2
 
 Read from SKILL.md §1. These are the criteria the router classifies a task by, and the constraints `scripts/check-classification` enforces on the result. The policy revision is the number in the title: change it when a criterion, a fact or a minimum changes meaning, never for wording.
 
@@ -7,7 +7,7 @@ Read from SKILL.md §1. These are the criteria the router classifies a task by, 
 Three independent judgments, each with a one-line reason that cites what was read (the task, the spec, an inspected file):
 
 - **type**: what kind of work it is: `bug`, `feature`, `refactor`, `architecture`, `performance`, `security`, `documentation`, `investigation`, `prototype`, `review`, `maintenance`. It names the work, not its danger.
-- **risk**: what a mistake would cost once merged. `low`: a mistake is harmless or obvious and cheap to undo (wording, docs, an isolated dev script); `medium`: a mistake reaches users or other code but stays contained and reversible; `high`: a mistake can lose data or money, open access, or break something others depend on, or is hard to undo.
+- **risk**: what a mistake would cost once merged. `low`: a mistake is harmless or obvious and cheap to undo: wording, docs, an isolated dev script, or a bounded code change a ticket fully settles, with no fact below, whose effect the ticket's tests can show and a revert undoes (an added option that leaves existing behavior as it is, a contained fix with a test); `medium`: a mistake reaches users or other code but stays contained and reversible; `high`: a mistake can lose data or money, open access, or break something others depend on, or is hard to undo.
 - **complexity**: how much work it is: files and components touched, unknowns, sessions needed. `low`: one bounded change; `medium`: several coordinated changes; `high`: a design is needed first or the route is foggy.
 
 Record the **properties** that apply, without a reason of their own: greenfield, brownfield, production-critical, user-facing, security-sensitive, data-sensitive, multi-session.
@@ -24,7 +24,7 @@ A **fact** is a property of the change itself that sets a minimum risk. Record o
 | `payment` | high | alters how money is charged, refunded, priced, paid out or recorded |
 | `destructive` | high | deletes or irreversibly overwrites data, history or infrastructure, or runs something that does: dropping migrations, bulk deletes, force pushes, teardown |
 | `sensitive-data` | medium | reads, stores, logs or exposes personal data, credentials or secrets in a new way |
-| `public-contract` | medium | changes an interface others depend on: a public API, schema, CLI, file format or configuration key |
+| `public-contract` | medium | changes an interface others depend on: a public API, schema, CLI, file format or configuration key. Adding an optional element that leaves every existing use working as before is not this fact |
 
 Risk is at least the highest minimum among the facts; judgment may raise it further, never lower it.
 
@@ -34,12 +34,12 @@ What §1 may offer, from the checked classification: the first row that matches 
 
 | Risk | Complexity | Ticket | Offer |
 |---|---|---|---|
-| low | any | yes | direct, light or full |
+| low | any | yes | direct (proposed), light or full |
 | low | any | no | direct or full |
 | medium | low | yes | light (proposed) or full |
 | any other | | | full |
 
-Full is always available: the user may ask for it at any risk. A user's explicit request outside the offer is not silently followed: report the constraint and its evidence, and let the user correct the facts or choose an offered path.
+A proposed `direct` is a recommendation, not a choice: the router still waits for the user (SKILL.md §1). Full is always available: the user may ask for it at any risk. A user's explicit request outside the offer is not silently followed: report the constraint and its evidence, and let the user correct the facts or choose an offered path.
 
 ## Uncertainty
 
@@ -55,7 +55,7 @@ Write the classification to a file outside the target repo and run `scripts/chec
   "risk": "high",
   "complexity": "low",
   "classification": {
-    "policy": 1,
+    "policy": 2,
     "ticket": true,
     "facts": [
       { "fact": "authorization", "where": "src/auth/guard.ts", "evidence": "the fix changes which roles pass canEditInvoice" }
@@ -71,4 +71,4 @@ Write the classification to a file outside the target repo and run `scripts/chec
 }
 ```
 
-`requested` is the workflow the user asked for (`direct`, `light`, `full`), or `null`; `path` is set once chosen. The check prints the minimum risk with the facts behind it and the offer, or the errors to correct.
+`requested` is the workflow the user asked for (`direct`, `light`, `full`), or `null`; `path` is set once chosen. The check prints the minimum risk with the facts behind it, the offer with its `reason:` (the risk, complexity, ticket and facts that chose it), or the errors to correct.

@@ -42,7 +42,7 @@ const rank = (risk) => RISKS.indexOf(risk);
 
 // What the policy allows for a classification `c` (type, risk, complexity, path, requested and
 // classification: {policy, ticket, facts, rationale, uncertain}):
-// { errors, minimum, because: facts setting it, offer: paths, proposed, uncertain }.
+// { errors, minimum, because: facts setting it, offer: paths, proposed, reason: what chose the offer, uncertain }.
 // `kept` skips the revision check: a run keeps the policy it was classified under.
 function evaluate(c, { kept = false } = {}) {
   const { revision, types, facts: known, offers } = policy();
@@ -80,7 +80,9 @@ function evaluate(c, { kept = false } = {}) {
   else if (c.requested != null && !offer.includes(c.requested)) errors.push(`requested ${c.requested} is not offered (${why}): offer ${offer.join(', ')}`);
   if (c.path != null && !(offer.includes(c.path) && c.path !== 'direct')) errors.push(`path ${c.path} is not offered (${why}): offer ${offer.join(', ')}`);
   const uncertain = Array.isArray(k.uncertain) ? k.uncertain.filter(isStr) : [];
-  return { errors, revision, minimum, because, offer, proposed, uncertain };
+  const recorded = [...new Set(facts.map((f) => f.fact))];
+  const reason = `${why}, ${recorded.length ? `facts ${recorded.join(', ')}` : 'no recorded facts'}`;
+  return { errors, revision, minimum, because, offer, proposed, reason, uncertain };
 }
 
 module.exports = { policy, evaluate };

@@ -4,7 +4,8 @@
 // policy before SKILL.md §1 offers direct work, a light path or a full workflow: every fact has
 // evidence, risk is at least the minimum its facts set, and a requested path or chosen `path` is
 // one the policy offers. Prints the policy revision, the minimum risk with the facts behind it,
-// the offer and any uncertainty; exits 1 with the errors to correct. Reads only.
+// the offer with the reason that chose it and any uncertainty; exits 1 with the errors to
+// correct. Reads only.
 const fs = require('node:fs');
 const { evaluate } = require('./lib/classification');
 
@@ -33,5 +34,6 @@ if (r.errors.length) {
 }
 console.log(`offer: ${r.offer.join(', ')}`);
 if (r.proposed) console.log(`propose: ${r.proposed}`);
+console.log(`reason: ${r.reason}`);
 for (const u of r.uncertain) console.log(`uncertain: ${u}`);
 console.log('classification OK');
