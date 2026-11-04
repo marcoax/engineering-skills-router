@@ -8,7 +8,10 @@
 #   avoid_when  signals that make it a bad fit (optional)
 #   complexity  task sizes it suits: low | medium | high (optional, default: any)
 #   invokes     skills it already calls internally; their phases count as covered (optional)
-#   requires    preconditions in the target repo (optional)
+#   cost        high when a run repeats the work (parallel candidates); proposed with "High cost" first,
+#               never as a default the user did not choose (optional)
+#   requires    hard prerequisites (optional): target-repo ones (tracker-config, or prose) and harness
+#               capabilities (subagents, isolated-outputs), which check-selection matches to the harness
 
 skills:
 
@@ -279,13 +282,12 @@ skills:
     path: vendors/pstack/skills/arena/SKILL.md
     categories: [architecture, prototype, implementation]
     use_when:
-      - one attempt would lock in the wrong shape and parallel candidates are affordable
-      - a high-complexity implementation has meaningful competing solutions worth building and comparing at high token cost
+      - one attempt would lock in the wrong shape and independent candidates would resolve a meaningful design uncertainty
     avoid_when:
       - the solution is already settled or repeating the implementation would not justify its cost
     complexity: [high]
-    requires:
-      - subagent execution with isolated output locations for competing candidates
+    cost: high
+    requires: [subagents, isolated-outputs]
 
   pstack/figure-it-out:
     source: pstack
@@ -698,8 +700,7 @@ skills:
       - "the user explicitly requests parallel coverage, worker races or a swarm with one consolidated report"
     avoid_when:
       - "no subagent tool is available or deterministic processing can cover every unit more cheaply"
-    requires:
-      - "a subagent tool and isolated write targets for workers"
+    requires: [subagents, isolated-outputs]
 
   pstack/teach:
     source: pstack
@@ -888,6 +889,7 @@ skills:
       - "the step must run inside a subagent; this skill requires the main-session orchestrator to spawn reviewers"
     complexity: [medium, high]
     requires:
+      - subagents
       - "main-session execution with a fresh-context reviewer tool"
 
   addyosmani/frontend-ui-engineering:

@@ -35,7 +35,7 @@ The router must never change what the user installed.
 
 The router reads only the catalog, never the vendor folders' layout. Adding a source is a catalog change with no router change ([adding-a-source.md](adding-a-source.md)).
 
-- `use_when`, `avoid_when` and `complexity` let the agent judge fit; `invokes` records which skills a skill runs itself.
+- `use_when`, `avoid_when` and `complexity` let the agent judge fit; `invokes` records which skills a skill runs itself; `requires` lists hard prerequisites (for example `tracker-config`, or the harness capabilities `subagents` and `isolated-outputs`); `cost: high` marks a skill whose run repeats work (`pstack/arena`), so it is proposed with its cost first and never as an unchosen default.
 - There is no vendor ranking. Every cataloged skill tagged with a phase is a candidate on equal terms; the skill selector chooses on task fit, consults each vendor's guide, reads the candidates and explains each pick ([vendor-neutral-skill-selection.md](specs/vendor-neutral-skill-selection.md)). The router composes and runs what it selects.
 - Candidates list as user preference → project → personal and vendor skills by name; the order carries no meaning beyond those explicit choices. A preference wins only when it fits.
 - **Verify, don't invent.** A candidate is usable only when its `SKILL.md` exists. With no usable candidate the phase is reported missing; the router never improvises a replacement. `validate-catalog` also checks that every skill a vendor skill calls is cataloged, so a default step never depends on what happens to be installed.

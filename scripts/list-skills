@@ -3,7 +3,7 @@
 //        scripts/list-skills --guides
 //   no args  one line per phase with its candidates
 //   phases   full detail for each candidate: the source description, read from its SKILL.md
-//            frontmatter, then the catalog's use_when, avoid_when, complexity, invokes, requires
+//            frontmatter, then the catalog's use_when, avoid_when, complexity, cost, invokes, requires
 //   --guides the vendor guides (catalog/guides.yaml), with their source descriptions; guides are
 //            consulted for selection and are never phase candidates
 // Candidates stand on equal terms: an explicit preference first, then the target's project
@@ -53,7 +53,7 @@ for (const phase of phases) {
     if (!c.skill) return;
     console.log(`   path: ${c.skill.path}`);
     console.log(describe(c.skill));
-    for (const key of ['use_when', 'avoid_when', 'complexity', 'invokes', 'requires']) {
+    for (const key of ['use_when', 'avoid_when', 'complexity', 'cost', 'invokes', 'requires']) {
       const values = Catalog.arr(c.skill[key]);
       if (values.length > 0) console.log(`   ${key}: ${values.join('; ')}`);
     }

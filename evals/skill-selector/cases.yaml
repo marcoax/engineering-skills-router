@@ -158,7 +158,7 @@ cases:
     expect:
       - phase: implementation
         proposed_any_of: [pstack/arena]
-        reason: arena is an alternative, not the default, and its reason starts High cost, naming repeated runs plus judging, synthesis and verification, and the benefit of comparing the two designs
+        reason: arena is an alternative, not the default, and its reason starts High cost, naming repeated runs plus judging, synthesis and verification, and the benefit of comparing the two designs; no monetary figure is quoted, since runner count and prices are unknown
 
   - id: arena-without-subagents
     task: Design and implement conflict resolution for offline edits; CRDT and last-writer-wins with server merge are both plausible and we have not chosen.
@@ -177,6 +177,42 @@ cases:
       - phase: implementation
         not_proposed: [pstack/arena]
         reason: a settled, simple change gets a single implementation
+
+  - id: arena-settled
+    task: Implement conflict resolution for offline edits as last-writer-wins with server merge, as decided in docs/adr/0007-offline-conflicts.md.
+    setup: as arena-complex, plus docs/adr/0007-offline-conflicts.md recording the chosen design and the rejected CRDT option
+    capabilities: [subagents, isolated-outputs]
+    expect:
+      - phase: implementation
+        not_proposed: [pstack/arena]
+        reason: a high-complexity change whose design is settled gets a single implementation; complexity alone does not bring arena in
+
+  - id: arena-excluded
+    task: Design and implement conflict resolution for offline edits; CRDT and last-writer-wins with server merge are both plausible and we have not chosen.
+    setup: as arena-complex; config/preferences.yaml in the checkout copy excludes [pstack/arena]
+    capabilities: [subagents, isolated-outputs]
+    expect:
+      - phase: implementation
+        not_proposed: [pstack/arena]
+        reason: arena stays out because the user excluded it; the competing designs are handled by an ordinary implementation (or an architecture step) instead
+
+  - id: arena-missing
+    task: Design and implement conflict resolution for offline edits; CRDT and last-writer-wins with server merge are both plausible and we have not chosen.
+    setup: as arena-complex; in the checkout copy, point catalog/skills.yaml pstack/arena at a path that does not exist
+    capabilities: [subagents, isolated-outputs]
+    expect:
+      - phase: implementation
+        not_proposed: [pstack/arena]
+        reason: arena is reported unavailable (its skill file is missing) and is not proposed
+
+  - id: arena-explicit
+    task: Arena this - build conflict resolution for offline edits both as a CRDT and as last-writer-wins with server merge, and keep the stronger one.
+    setup: as arena-complex
+    capabilities: [subagents, isolated-outputs]
+    expect:
+      - phase: implementation
+        default_any_of: [pstack/arena]
+        reason: the user explicitly chose arena, so it is the default marked explicit; its reason still starts High cost with repeated runs, judging, synthesis and verification, and an ordinary implementation stays an alternative
 
 # One entry per run: { case, date, model, effort, harness, result: pass | fail, notes }.
 runs:

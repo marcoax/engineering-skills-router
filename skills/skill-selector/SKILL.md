@@ -23,7 +23,7 @@ Take each input from the request when given; otherwise settle it here and say so
 - **target repo**: the one the task is about, the current repo by default. Inspect it read-only: brownfield or greenfield, the code the task touches, and whether `docs/agents/skills.yaml`, `docs/agents/issue-tracker.md`, `GLOSSARY.md` or `docs/adr/` exist.
 - **classification**: type, risk, complexity and properties, each with a one-line reason, by the criteria, facts and minimum risks in `skills/engineering-router/classification.md` under the repo root; when the router passes its checked classification, take it as given.
 - **explicit choices**: `prefer` and `exclude` in the user's `preferences.yaml` (where `scripts/config` says), plus any skill or phase the user named.
-- **harness capabilities**: subagents, isolated output locations for parallel candidates, `gh` logged in, network.
+- **harness capabilities**: `subagents`, `isolated-outputs` (separate output locations for parallel candidates), `gh` logged in, network. Record each by these names: a `requires` naming a harness capability is checked against them.
 
 Done when all five are recorded.
 
@@ -39,7 +39,7 @@ Pick the phases this task needs from `catalog/categories.yaml`, starting from th
 
 ## 5. Select
 
-Run `scripts/list-skills --target <target repo> <phase> ...`. It lists each phase's candidates as `[origin, status]`: `preference` and `project` are explicit choices, `personal` the user's own skills, `vendor` everything else; the order within `vendor` is by name and carries no meaning. Usage signals (`use_when`, `avoid_when`, `complexity`, `invokes`, `requires`) are the router's own metadata; `description` is the vendor's text. Quote them as such.
+Run `scripts/list-skills --target <target repo> <phase> ...`. It lists each phase's candidates as `[origin, status]`: `preference` and `project` are explicit choices, `personal` the user's own skills, `vendor` everything else; the order within `vendor` is by name and carries no meaning. Usage signals (`use_when`, `avoid_when`, `complexity`, `cost`, `invokes`, `requires`) are the router's own metadata; `description` is the vendor's text. Quote them as such.
 
 For each phase:
 
@@ -49,7 +49,7 @@ For each phase:
 4. Propose one **default** and at most two **alternatives**, each with a task-specific reason and its source path as evidence. A suitable `preference` is the default; one that does not fit stays an alternative or is dropped, with the reason. `project` skills fill `framework-review` alone and lead the phases they are tagged with when they fit, since they carry project knowledge. A candidate marked `excluded` or `missing` stays out.
 5. On a full path, propose **review 2** as its own `review` entry with `"step": "review-2"`: a default other than review 1's and at most two alternatives, each with its reason. It runs on the other model family, so prefer different axes.
 6. When two candidates fit equally, call them a **tie**: name them as equivalent, say what would separate them, and pick the default with that stated reason.
-7. **Arena** (`pstack/arena`) takes an alternative slot only for a high-complexity implementation with meaningful competing designs, when the harness runs subagents with isolated outputs; a single-implementation skill stays the default. Its reason starts **High cost**: runners repeat the same task, then judging, synthesis and verification follow. State the benefit for this task; give a monetary estimate only when models, runner count and prices are known.
+7. **High cost** (`cost: high`, today `pstack/arena`). Reserve one of the two alternative slots for arena when independent implementations would resolve a meaningful design uncertainty in a high-complexity implementation and arena is `ok` with its `requires` met. Complexity alone is not enough: a simple task, a settled design, or work whose repetition would not pay off gets no arena. Missing, excluded or with unmet prerequisites, it stays out with the reason. A single-implementation skill stays the default unless the user explicitly chose arena (named it in the request, or a fitting `prefer`): then it is the default, marked `"explicit": true`. Wherever arena is proposed, its reason starts **High cost**: runners repeat the same task, then judging, synthesis and verification follow; then the benefit for this task. Add its prerequisites to the phase's `prerequisites` and its cost to the phase's `cost`, so they stay visible whichever pick runs. Give a monetary estimate only when models, runner count and prices are known; otherwise none.
 
 `complexity` informs fit but never empties a phase: when it rules out every candidate that otherwise fits, propose those anyway and say they are sized for other tasks. A phase with no candidate left is a **missing capability**, with the reason. Done when every phase has a default or is missing.
 
@@ -61,7 +61,7 @@ Show the proposal, then the same selection as one ` ```json ` block:
 Task: <one line>
 Classification: <type> · risk <risk> · complexity <complexity> · <properties>   (<given | inferred>: <reason>)
 Evidence: guides read <ids>; unavailable <id>: <reason>; catalog <OK | n errors>   [reduced evidence: <what is missing>]
-Capabilities: <subagents, isolated outputs, gh, ...>
+Capabilities: <subagents, isolated-outputs, gh, ...>
 
 1. <phase>: <why this task needs it>
    default  <id>: <reason>   (<source path>)
@@ -76,15 +76,16 @@ Unregistered: <skill> named by <guide>, not cataloged for <phase>
 
 ```json
 {
-  "phases": [{ "phase": "<phase>", "reason": "...", "default": { "skill": "<id>", "reason": "...", "evidence": "<path>" },
+  "phases": [{ "phase": "<phase>", "reason": "...", "default": { "skill": "<id>", "reason": "...", "evidence": "<path>", "explicit": true },
                "alternatives": [{ "skill": "<id>", "reason": "...", "evidence": "<path>" }],
                "prerequisites": ["..."], "cost": "..." | null, "tie": "<ids and what separates them>" | null },
              { "phase": "review", "step": "review-2", "reason": "...", "default": { ... }, "alternatives": [...], ... }],
   "omitted": [{ "phase": "<phase>", "reason": "..." }],
   "missing": [{ "phase": "<phase>", "reason": "..." }],
+  "capabilities": ["subagents", "isolated-outputs", "..."],
   "guides": { "read": ["<id>"], "unavailable": [{ "id": "<id>", "reason": "..." }] },
   "unregistered": [{ "skill": "<name>", "guide": "<id>" }]
 }
 ```
 
-Save the JSON block to a file in the system temp directory and run `scripts/check-selection --target <target repo> <file>`. When it reports an error, correct that pick from the listing and show the corrected proposal. Done when `check-selection` prints `selection OK` and the proposal is shown; to run a workflow, the user invokes the engineering router.
+`explicit` appears only on a default the user chose. Save the JSON block to a file in the system temp directory and run `scripts/check-selection --target <target repo> <file>`. When it reports an error, correct that pick from the listing and show the corrected proposal. Done when `check-selection` prints `selection OK` and the proposal is shown; to run a workflow, the user invokes the engineering router.

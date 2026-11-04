@@ -173,6 +173,9 @@ for (const [skill, msg] of [
   [{ id: 'acme/fw' }, "docs/agents/skills.yaml: acme/fw: id must start with 'project/'"],
   [{ extra: '    complexity: [huge]\n' }, "docs/agents/skills.yaml: project/fw: invalid complexity 'huge'"],
   [{ extra: '    invokes: [nobody/nothing]\n' }, 'docs/agents/skills.yaml: project/fw: invokes unknown skill nobody/nothing'],
+  [{ extra: '    cost: steep\n' }, "docs/agents/skills.yaml: project/fw: invalid cost 'steep' (only high)"],
+  // A one-word requires is a known token: a typo would silently skip the capability check.
+  [{ extra: '    requires: [subagent]\n' }, "docs/agents/skills.yaml: project/fw: unknown requires 'subagent' (known: tracker-config, subagents, isolated-outputs; or a prose prerequisite)"],
   [[{}, {}], 'docs/agents/skills.yaml: duplicate skill id: project/fw'],
 ]) {
   const r = run('validate-catalog', '--target', targetRepo([skill].flat().map(projectSkill).join('')));
@@ -811,7 +814,8 @@ ${['one', 'folded', 'plain', 'nodesc', 'broken', 'nofm'].map((n) => `  acme/${n}
       alternatives: [pick('pstack/interrogate')] },
   ], { missing: [{ phase: 'release', reason: 'no shipping skill fits' }],
     omitted: ['requirements', 'specification', 'planning', 'security', 'independent-review', 'pull-request']
-      .map((phase) => ({ phase, reason: 'not needed for this task' })) });
+      .map((phase) => ({ phase, reason: 'not needed for this task' })),
+    capabilities: ['subagents', 'isolated-outputs'] });
   let r = check(good);
   if (!r.ok || !r.out.includes('selection OK')) fail(`a usable selection should pass check-selection\n${r.out}`);
   const mutate = (fn) => { const s = JSON.parse(JSON.stringify(good)); fn(s); return s; };
@@ -842,10 +846,30 @@ ${['one', 'folded', 'plain', 'nodesc', 'broken', 'nofm'].map((n) => `  acme/${n}
     [mutate((s) => { s.phases = s.phases.filter((x) => x.phase !== 'review'); }), 'review: a default-flow phase must be selected, omitted with a reason, or missing'],
     [mutate((s) => { s.omitted[0].reason = ' '; }), 'omitted requirements: needs a reason'],
     [mutate((s) => { s.omitted.push({ phase: 'review', reason: 'x' }); }), 'review: both selected and omitted'],
+    // A `cost: high` skill (arena) is proposed with its cost up front, as an alternative unless
+    // the user chose it, and only when the harness meets its prerequisites.
+    [mutate((s) => { s.phases[2].alternatives[1].reason = 'competing designs'; }),
+      'implementation: alternative pstack/arena: high cost: its reason must start with "High cost"'],
+    [mutate((s) => { s.phases[2].alternatives[1] = s.phases[2].default; s.phases[2].default = pick('pstack/arena', 'High cost: competing designs'); }),
+      'implementation: default pstack/arena: high cost: keep a single-implementation default unless the user chose it ("explicit": true)'],
+    [mutate((s) => { s.capabilities = ['subagents']; }),
+      'implementation: alternative pstack/arena: requires isolated-outputs, which the harness lacks'],
+    [mutate((s) => { delete s.capabilities; }),
+      'implementation: alternative pstack/arena: requires subagents, isolated-outputs: the selection states no capabilities'],
+    [mutate((s) => { s.capabilities = 'subagents'; }), 'capabilities must be a list of strings'],
+    // Every skill needing parallel workers is checked the same way, not only arena.
+    [mutate((s) => { s.phases[2].alternatives[0] = pick('pstack/swarm'); s.capabilities = ['isolated-outputs']; }),
+      'implementation: alternative pstack/swarm: requires subagents, which the harness lacks'],
   ]) {
     r = check(sel);
     if (r.ok || !r.out.includes(`error: ${msg}`)) fail(`check-selection, expected: ${msg}\ngot:\n${r.out}`);
   }
+  // The user's explicit choice makes arena the default, still with its cost up front.
+  r = check(mutate((s) => {
+    s.phases[2].alternatives[1] = s.phases[2].default;
+    s.phases[2].default = { ...pick('pstack/arena', 'High cost: the user asked to arena the two designs'), explicit: true };
+  }));
+  if (!r.ok) fail(`an explicitly chosen arena default should pass check-selection\n${r.out}`);
   // Without the target, its project skills are unknown.
   fs.writeFileSync(selectionFile, JSON.stringify(good));
   r = run('check-selection', selectionFile);
@@ -1254,9 +1278,11 @@ expectStateOk('unknown fields', variant((s) => { s.extra = 1; s.steps[0].extra =
   if (!shown.includes('✓ 3. implementation  mattpocock/implement  on claude-sonnet-5-5 · effort high → Built')) fail(`show should print the step model and effort\n${shown.join('\n')}`);
   if (!shown.includes('✓ 4. review-1  mattpocock/code-review inside implementation  on claude-sonnet-5-5 · effort high → ran inside implementation')) fail(`show should print a covered step's model\n${shown.join('\n')}`);
   if (!shown.includes('– 5. review-2  (router) → off (optional)')) fail(`show should print nothing extra for a step without a model\n${shown.join('\n')}`);
-  // The selector's prerequisites, cost note and tie stay visible with their step.
+  // The step's reason and alternatives, then the selector's prerequisites, cost note and tie, stay visible with their step.
   const notes = shown.slice(shown.findIndex((l) => l.includes(' 1. specification')) + 1, shown.findIndex((l) => l.includes(' 2. branch')));
-  if (JSON.stringify(notes) !== JSON.stringify(['   needs: gh logged in, to publish the issue',
+  if (JSON.stringify(notes) !== JSON.stringify(['   why: decisions already settled in the conversation',
+    '   a) addyosmani/spec-driven-development: spec as a repo document instead of an issue',
+    '   needs: gh logged in, to publish the issue',
     '   tie: to-spec and spec-driven-development fit equally; publishing an issue separates them']))
     fail(`show should print a step's prerequisites and tie\n${shown.join('\n')}`);
   expectOk('step pending', st('step', 'review-2', 'pending'));
@@ -1347,6 +1373,9 @@ expectStateOk('unknown fields', variant((s) => { s.extra = 1; s.steps[0].extra =
   fs.writeFileSync(stateFile, JSON.stringify(integrated()));
   let r = expectOk('reply 3a (to arena)', st('reply', '3a'));
   if (byId('implementation').skill !== 'pstack/arena') fail(`swap to arena: ${JSON.stringify(byId('implementation'))}`);
+  // The swap carries arena's cost explanation into the step, so the workflow shown keeps it.
+  if (!/^High cost/.test(byId('implementation').reason) || !st('show').out.includes('High cost: competing designs'))
+    fail(`a swap to arena should carry its High cost reason: ${JSON.stringify(byId('implementation'))}\n${st('show').out}`);
   for (const id of ['testing', 'review-1']) {
     if (byId(id).covered_by !== null) fail(`after a swap to arena, ${id} should run on its own: ${JSON.stringify(byId(id))}`);
     if (!r.out.includes(`${id} runs on its own`)) fail(`the swap should say ${id} runs on its own\n${r.out}`);
@@ -1402,6 +1431,12 @@ expectStateOk('unknown fields', variant((s) => { s.extra = 1; s.steps[0].extra =
     s.steps.splice(3, 1);
     Object.assign(s.steps[3], { covered_by: null, ...selectorPick });
   })));
+  // A high-cost alternative without its cost up front is refused, so no control can pick it unexplained.
+  const unexplained = path.join(tmp, 'swap-unexplained.json');
+  fs.writeFileSync(unexplained, JSON.stringify(integrated((s) => { s.steps[2].alternatives[0].reason = 'competing designs'; })));
+  r = run('state', repo, 'compose', '--new', unexplained);
+  if (r.ok || !r.out.includes('error: implementation: alternative pstack/arena: high cost: its reason must start with "High cost"'))
+    fail(`compose should refuse arena without its High cost reason\n${r.out}`);
   expectOk('compose --new', run('state', repo, 'compose', '--new', composedFile));
   const covered = byId('review-1');
   if (covered.covered_by !== 'implementation' || covered.skill !== 'mattpocock/code-review' || covered.alternatives.length !== 0)

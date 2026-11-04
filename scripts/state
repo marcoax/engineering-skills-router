@@ -119,14 +119,20 @@ function compose() {
     const phases = Catalog.arr(step.phases);
     const unknown = phases.filter((p) => !Object.hasOwn(categories, p));
     if (unknown.length) { errors.push(`${step.id}: unknown phase ${unknown.join(', ')}`); continue; }
-    const picks = [[null, step.skill], ...Catalog.arr(step.alternatives).map((a) => ['alternative', a?.skill])];
-    for (const [role, id] of picks) {
+    const picks = [[null, step.skill, step.reason], ...Catalog.arr(step.alternatives).map((a) => ['alternative', a?.skill, a?.reason])];
+    for (const [role, id, reason] of picks) {
       if (id == null) continue;
+      const where = `${step.id}: ${role ? `${role} ` : ''}${id}`;
       const problem = Catalog.pickProblem(id, phases, skills);
-      if (!problem) continue;
+      if (!problem) {
+        // A high-cost pick keeps its cost up front, so a swap control never selects it unexplained.
+        const cost = Catalog.costProblem(id, reason, skills);
+        if (cost) errors.push(`${where}: ${cost}`);
+        continue;
+      }
       // The selector's default for a phase that cannot run: another pick, or a missing capability.
       const hint = role || !problem.replaceable ? '' : ` (choose another, or report ${phases.join(', ') || step.id} as missing)`;
-      errors.push(`${step.id}: ${role ? `${role} ` : ''}${id}: ${problem.message}${hint}`);
+      errors.push(`${where}: ${problem.message}${hint}`);
     }
   }
   const classified = classify(next, isNew ? null : previous);
@@ -185,7 +191,10 @@ if (command === 'show') {
     const inside = s.covered_by ? ` inside ${s.covered_by}` : '';
     const model = s.model ? `  on ${s.model}${s.effort ? ` · effort ${s.effort}` : ''}` : '';
     console.log(`${mark[s.status] ?? '?'} ${i + 1}. ${s.id}  ${s.skill ?? '(router)'}${inside}${model}${s.outcome ? ` → ${s.outcome}` : ''}`);
-    // The selector's notes for the step, as SKILL.md §5 shows them.
+    // The step's reason and alternatives (a high-cost pick's cost comes first in its reason),
+    // then the selector's notes for the step, as SKILL.md §5 shows them.
+    if (s.reason) console.log(`   why: ${s.reason}`);
+    (s.alternatives ?? []).forEach((a, j) => console.log(`   ${ops.LETTERS[j]}) ${a.skill}: ${a.reason}`));
     if (s.prerequisites?.length) console.log(`   needs: ${s.prerequisites.join('; ')}`);
     if (s.cost) console.log(`   cost: ${s.cost}`);
     if (s.tie) console.log(`   tie: ${s.tie}`);
