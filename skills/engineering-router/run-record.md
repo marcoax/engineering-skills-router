@@ -27,7 +27,7 @@ At the pull request (§6) the router appends one **run record** to the PR body: 
   "complexity": "medium",
   "path": "full",
   "classification": {
-    "policy": 1,
+    "policy": 2,
     "rationale": { "type": "a new capability on an existing page", "risk": "no fact applies; contained and reversible", "complexity": "three files" },
     "facts": []
   },

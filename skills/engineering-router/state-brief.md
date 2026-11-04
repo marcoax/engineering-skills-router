@@ -8,7 +8,7 @@ Read from SKILL.md §5. Write the composed workflow like this example to a file 
   "task": "Add CSV export to the reports page",
   "type": "feature", "risk": "medium", "complexity": "medium", "path": "full",
   "properties": ["brownfield", "user-facing"],
-  "classification": { "policy": 1, "ticket": false, "facts": [],
+  "classification": { "policy": 2, "ticket": false, "facts": [],
     "rationale": { "type": "new capability on an existing page", "risk": "no fact applies; contained and reversible", "complexity": "three files" },
     "uncertain": [] },
   "primary": "claude",
