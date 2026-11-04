@@ -36,7 +36,7 @@ Your agent already runs skills, subagents and git. The router adds:
 - **Optional review on another model family** (Claude Code: through your own Codex or opencode CLI), switched off unless you turn it on.
 - **Run records** in each PR, which `scripts/stats` adds up across PRs.
 
-Limitations: it does not make code better or work faster by itself, and no measurement of either has been recorded. Whether its picks are balanced across vendors is designed for (equal standing, no rankings) but not yet measured: the [selector evaluation cases](evals/skill-selector/cases.yaml) have not been run. It covers the three collections above plus your personal and project skills. Review 2 on another family needs that provider's CLI and account on your machine.
+Limitations: it does not make code better or work faster by itself. One [live comparison](evals/live/2026-11-04-ticket-to-pr.md) on a small, low-risk ticket found the same result as a direct prompt naming the same skills, at several times the time and cost; work where review 2 and conditional checks apply has not been measured. Vendor neutrality is designed for (equal standing, no rankings) and checked on a small sample: the 15 [selector evaluation cases](evals/skill-selector/cases.yaml) passed once each on Claude Opus 5.5 (2026-11-04), which shows each collection can be picked when it fits, not that picks are balanced in general. It covers the three collections above plus your personal and project skills. Review 2 on another family needs that provider's CLI and account on your machine.
 
 ## Install (Claude Code)
 

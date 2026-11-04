@@ -1309,6 +1309,9 @@ expectStateOk('unknown fields', variant((s) => { s.extra = 1; s.steps[0].extra =
   if (!rec.ok || back.kind !== 'ok' || back.record.findings.length !== 1 || back.record.steps.length !== 7 || back.record.checklist.passed !== null) {
     fail(`scripts/record\n${rec.out}`);
   }
+  // Writing the record is the pull-request step's last act, so the record shows that step done.
+  const prStep = back.record.steps.find((s) => s.id === 'pull-request');
+  if (prStep?.status !== 'done') fail(`scripts/record should record the running pull-request step as done: ${JSON.stringify(prStep)}`);
   // The record carries the classification's provenance: its policy revision, rationale and facts.
   const cls = back.record.classification;
   if (cls?.policy !== 1 || !cls.rationale?.risk || !Array.isArray(cls.facts)) fail(`scripts/record should carry the classification\n${rec.out}`);
