@@ -40,7 +40,7 @@ Limitations: it does not make code better or work faster by itself. One [live co
 
 ## Install (Claude Code)
 
-One checkout on your disk serves both the skills and the panel plugin, so they always match. Walked through with the Claude Code 2.1.318 CLI on macOS; which parts ran in a live session is in [what has been verified](#what-has-been-verified).
+One checkout on your disk serves both the skills and the panel plugin, so they always match. Walked through with the Claude Code 2.1.318 CLI on macOS ([what ran live](evals/live/2026-11-04-claude-code-install.md)).
 
 **Components**
 
@@ -129,31 +129,9 @@ git -C "$ROUTER" pull --ff-only
 
 This updates the router, the catalog and the plugin together (`--ff-only` stops, changing nothing, when the checkout has commits of its own: merge or rebase them as in any clone), and `scripts/setup` puts the vendor submodules back at the commits the checkout pins. Then run `/reload-plugins` in open sessions (new sessions load the new version anyway); the linked skills follow the checkout immediately. Your preferences are outside the checkout and stay as they are. Pulling newer vendor revisions than the checkout pins is a separate, reviewed step: `scripts/update` reports what changed upstream and changes the catalog only after you approve its proposal ([vendor updates](docs/reference.md#vendor-updates)); the router offers it every `update_check_days`.
 
-### An existing installation
+### More
 
-- **Skill links:** step 3 leaves anything already at `~/.claude/skills/engineering-router` or `skill-selector` alone. If it is a link to an older clone, or a copy from `npx skills add`, decide which to keep; remove a link with `rm ~/.claude/skills/engineering-router` (no `-r`: this removes the link only) and rerun step 3.
-- **Marketplace from another clone or from GitHub:** adding `$ROUTER` repoints the existing `engineering-skills-router` marketplace to it (Claude Code says so), and the installed plugin then loads from `$ROUTER`; there is still one copy. Adding the previous source again undoes it. Rerunning step 4 against the same checkout changes nothing.
-- **`ENGINEERING_ROUTER_HOME` in your shell profile:** not used by linked skills (the link wins); remove it unless you use a copied skill elsewhere.
-- **Preferences in the checkout's `config/`:** `scripts/config` reports them; `scripts/config migrate` shows how to move them out ([configuration.md](docs/configuration.md#moving-clone-local-configuration-out)).
-
-### Uninstall
-
-```sh
-claude plugin uninstall engineering-router-panel@engineering-skills-router
-claude plugin marketplace remove engineering-skills-router
-ls -l ~/.claude/skills/engineering-router ~/.claude/skills/skill-selector    # confirm both point into $ROUTER
-rm ~/.claude/skills/engineering-router ~/.claude/skills/skill-selector       # removes the links only
-```
-
-Claude Code may leave a copy of the plugin in `~/.claude/plugins/cache/engineering-skills-router/`, marked orphaned for its own cleanup; that folder belongs to this installation too. Then delete `$ROUTER` if you no longer want it. `~/.config/engineering-skills-router/` is yours to keep or delete; a target repo's `.router/` belongs to its runs.
-
-### Alternatives
-
-Plugin from GitHub without a clone, one-session `--plugin-dir`, `CLAUDE_CONFIG_DIR`, `npx skills add`: [Claude Code reference](docs/claude-code.md#other-installation-routes). Other agents: [install for other agents](docs/install-other-agents.md).
-
-### What has been verified
-
-Recorded in the [installation walkthrough](evals/live/2026-11-04-claude-code-install.md) (Claude Code 2.1.318 CLI, Node 25.2.1, git 2.30.1, macOS): the commands above in a disposable `HOME` with a checkout path containing spaces, including reruns, conflicting entries, marketplace repointing, restoring pinned vendor commits, and removal. Live `claude -p` sessions then confirmed discovery of both skills and of the plugin's commands and tool, a proposal-only run that stopped at the workflow (no branch, commit or PR), and a paused workflow left intact by a new task. Those sessions used project-scoped skill links and a one-session `--plugin-dir` instead of steps 3–4, because a fresh configuration has no login; the record lists what was not exercised, notably the user-scope links and the panel drawn in an interactive session. CI covers the scripts and the adapters' automated tests ([CI](docs/reference.md#ci)).
+Pre-existing installations, uninstalling, and other routes (plugin from GitHub, one-session `--plugin-dir`, one project only, `npx skills add`): [Claude Code reference](docs/claude-code.md). Other agents: [install for other agents](docs/install-other-agents.md). What has been exercised, and what has not: [installation walkthrough](evals/live/2026-11-04-claude-code-install.md) (Claude Code 2.1.318 CLI, macOS).
 
 ## Install (Pi)
 
@@ -167,19 +145,8 @@ Pi clones it into `~/.pi/agent/git/`, and `npm install` fetches the vendor submo
 
 **Update** with `pi update git:github.com/marcoax/engineering-skills-router` (plain `pi update` updates Pi itself). An update resets the installed clone (`git clean -fdx`), so keep preferences in `~/.config/engineering-skills-router/`: step 2 above with `ROUTER="$HOME/.pi/agent/git/github.com/marcoax/engineering-skills-router"`. To edit the catalog, install from your own checkout instead (Pi loads a local path without copying or cleaning it): `pi install "$ROUTER"` after step 1 above; update it as in [Update](#update).
 
-### The workflow widget
+The workflow widget, its keys and the primary-family menu: [Pi adapter](docs/pi.md).
 
-The extension reads `.router/state.json` in the session's repo and shows the steps above the editor. `ctrl+alt+w` (or `/router-panel`, for keyboard layouts where the shortcut arrives as another key) toggles a details panel on the right half. While a workflow is open, the panel takes the keyboard: during the skill selection `↑`/`↓` step, `enter` go, `a`/`b` swap the step's skill, `e` edit; `p` pauses (a running step finishes first); on a paused workflow `r` resumes; `x x` stops; `esc` goes back to the editor. At session start, a stopped workflow, or a done one with no PR or a merged/closed PR (checked with `gh`), is not shown. Choices are sent as chat messages; the extension never writes the state file itself.
+## More
 
-On a new run, before the workflow is shown, the router asks which model family is primary for that run: the extension's `router_primary` tool shows it as a select menu, both families with their model IDs and the current one preselected (`enter` keeps it). The answer goes through `scripts/state <target> primary`, the same command the router uses for the numbered text question where there is no selector; it is not asked again on resume.
-
-## Scripts
-
-| Script | Does |
-|---|---|
-| `scripts/stats [--repo <owner/name>] [--limit <n>] [--json]` | adds up the run records in a repo's PRs (via `gh`): per review and model, per skill, per severity, checklists, tokens |
-| `scripts/validate-catalog [--target <repo>]` | checks the catalog, your preferences and personal skills; `--target` also checks a repo's project skills (`docs/agents/skills.yaml`) |
-| `scripts/config [migrate [--yes]]` | prints the configuration in effect; `migrate` moves clone-local preferences out of the checkout |
-| `scripts/update [--check \| --approve [patch]]` | pulls vendor submodules and reports skills added, modified, removed or moved since the last reviewed revision, plus uncataloged ones; after you confirm the proposed catalog change, `--approve` applies it, validates and records the reviewed revisions ([vendor updates](docs/reference.md#vendor-updates)) |
-
-Repo layout, every script, adding a collection: [reference](docs/reference.md).
+Repo layout, every script (`scripts/stats` adds up run records across PRs), adding a collection: [reference](docs/reference.md). Configuration: [configuration.md](docs/configuration.md).

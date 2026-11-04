@@ -1,6 +1,24 @@
 # Claude Code reference
 
-The recommended installation, its checks, update and removal are in the README's [Install (Claude Code)](../README.md#install-claude-code). This page describes the panel plugin and the other ways to install, for when that route does not fit.
+The recommended installation, its checks and update are in the README's [Install (Claude Code)](../README.md#install-claude-code). This page covers a pre-existing installation, removal, the panel plugin and the other ways to install, for when that route does not fit.
+
+## An existing installation
+
+- **Skill links:** README step 3 leaves anything already at `~/.claude/skills/engineering-router` or `skill-selector` alone. If it is a link to an older clone, or a copy from `npx skills add`, decide which to keep; remove a link with `rm ~/.claude/skills/engineering-router` (no `-r`: this removes the link only) and rerun README step 3.
+- **Marketplace from another clone or from GitHub:** adding `$ROUTER` repoints the existing `engineering-skills-router` marketplace to it (Claude Code says so), and the installed plugin then loads from `$ROUTER`; there is still one copy. Adding the previous source again undoes it. Rerunning README step 4 against the same checkout changes nothing.
+- **`ENGINEERING_ROUTER_HOME` in your shell profile:** not used by linked skills (the link wins); remove it unless you use a copied skill elsewhere.
+- **Preferences in the checkout's `config/`:** `scripts/config` reports them; `scripts/config migrate` shows how to move them out ([configuration.md](configuration.md#moving-clone-local-configuration-out)).
+
+## Uninstall
+
+```sh
+claude plugin uninstall engineering-router-panel@engineering-skills-router
+claude plugin marketplace remove engineering-skills-router
+ls -l ~/.claude/skills/engineering-router ~/.claude/skills/skill-selector    # confirm both point into $ROUTER
+rm ~/.claude/skills/engineering-router ~/.claude/skills/skill-selector       # removes the links only
+```
+
+Claude Code may leave a copy of the plugin in `~/.claude/plugins/cache/engineering-skills-router/`, marked orphaned for its own cleanup; that folder belongs to this installation too. Then delete `$ROUTER` if you no longer want it. `~/.config/engineering-skills-router/` is yours to keep or delete; a target repo's `.router/` belongs to its runs.
 
 ## The panel plugin
 
@@ -18,7 +36,7 @@ Claude Code's subagents run only Claude models, so the mod adds a tool, `review_
 
 ## Other installation routes
 
-Each replaces one part of the README route; mixing them with it is covered in the README's [existing installation](../README.md#an-existing-installation).
+Each replaces one part of the README route; mixing them with it is covered in [an existing installation](#an-existing-installation).
 
 - **Plugin from GitHub, without a clone.** `claude plugin marketplace add marcoax/engineering-skills-router`, then `claude plugin install engineering-router-panel@engineering-skills-router` (or, in a session, `/plugin install engineering-router-panel --marketplace marcoax/engineering-skills-router`). Claude Code keeps its own copy and updates it with `claude plugin marketplace update engineering-skills-router` (auto-update is off for third-party marketplaces). The skills still need a checkout; the plugin and the checkout can then be at different revisions. Adding this marketplace while a local one of the same name exists repoints it.
 - **One session, no install.** `claude --plugin-dir "/path/to/checkout/adapters/claude-code"` loads a local copy of the plugin for that session, for trying a change; not together with the installed one. `claude --debug` logs why a mod hook was skipped.
