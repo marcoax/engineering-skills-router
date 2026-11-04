@@ -38,18 +38,32 @@ Your agent already runs skills, subagents and git. The router adds:
 
 Limitations: it does not make code better or work faster by itself. One [live comparison](evals/live/2026-11-04-ticket-to-pr.md) on a small, low-risk ticket found the same result as a direct prompt naming the same skills, at several times the time and cost; work where review 2 and conditional checks apply has not been measured. Vendor neutrality is designed for (equal standing, no rankings) and checked on a small sample: the 15 [selector evaluation cases](evals/skill-selector/cases.yaml) passed once each on Claude Opus 5.5 (2026-11-04), which shows each collection can be picked when it fits, not that picks are balanced in general. It covers the three collections above plus your personal and project skills. Review 2 on another family needs that provider's CLI and account on your machine.
 
+## Install (Pi)
+
+The repo is a Pi package: both skills plus the workflow widget. Needs Node 22.18+ and git; `gh`, logged in, publishes issues and lets the widget see merged PRs.
+
+```sh
+pi install git:github.com/marcoax/engineering-skills-router
+```
+
+Pi clones it into `~/.pi/agent/git/`, and `npm install` fetches the vendor submodules (`postinstall`). Only this package's skills are loaded, not the vendor skills. Then, in Pi, `/reload` and `/skill:engineering-router <task>` (or `/skill:skill-selector <task>`); run it with no task to resume. To try it for one session without installing: `pi -e git:github.com/marcoax/engineering-skills-router`.
+
+**Update** with `pi update git:github.com/marcoax/engineering-skills-router` (plain `pi update` updates Pi itself). An update resets the installed clone (`git clean -fdx`), so keep preferences in `~/.config/engineering-skills-router/`: step 2 above with `ROUTER="$HOME/.pi/agent/git/github.com/marcoax/engineering-skills-router"`. To edit the catalog, install from your own checkout instead (Pi loads a local path without copying or cleaning it): `pi install "$ROUTER"` after step 1 above; update it as in [Update](#update).
+
+The workflow widget, its keys and the primary-family menu: [Pi adapter](docs/pi.md).
+
 ## Install (Claude Code)
 
 One checkout on your disk serves both the skills and the panel plugin, so they always match. Walked through with the Claude Code 2.1.318 CLI on macOS ([what ran live](evals/live/2026-11-04-claude-code-install.md)).
 
 **Components**
 
-| Component | What it is | Needed |
-|---|---|---|
-| checkout | this repo: catalog, scripts, pinned vendor skills | yes |
-| `engineering-router` skill | the router, invoked as `/engineering-router` | yes |
-| `skill-selector` skill | the read-only selector, `/skill-selector <task>` | optional (the router reads it from the checkout either way) |
-| `engineering-router-panel` plugin | a mod: workflow band and pane, `/router-panel`, `/router-models`, the `review_other_family` tool | optional |
+| Component                         | What it is                                                                                       | Needed                                                      |
+| --------------------------------- | ------------------------------------------------------------------------------------------------ | ----------------------------------------------------------- |
+| checkout                          | this repo: catalog, scripts, pinned vendor skills                                                | yes                                                         |
+| `engineering-router` skill        | the router, invoked as `/engineering-router`                                                     | yes                                                         |
+| `skill-selector` skill            | the read-only selector, `/skill-selector <task>`                                                 | optional (the router reads it from the checkout either way) |
+| `engineering-router-panel` plugin | a mod: workflow band and pane, `/router-panel`, `/router-models`, the `review_other_family` tool | optional                                                    |
 
 **Prerequisites:** git, Node 22.18 or later with npm, Claude Code (CLI; the panel also runs in the Desktop app's Code tab and the VS Code extension, not verified here). Optional: `gh`, logged in, to publish issues and open PRs; Codex or opencode, logged in with a model you can use, for the cross-family reviews. Without either the router still works, but it asks once per run to run the reviews as same-family reviews, marked as not independent.
 
@@ -132,20 +146,6 @@ This updates the router, the catalog and the plugin together (`--ff-only` stops,
 ### More
 
 Pre-existing installations, uninstalling, and other routes (plugin from GitHub, one-session `--plugin-dir`, one project only, `npx skills add`): [Claude Code reference](docs/claude-code.md). Other agents: [install for other agents](docs/install-other-agents.md). What has been exercised, and what has not: [installation walkthrough](evals/live/2026-11-04-claude-code-install.md) (Claude Code 2.1.318 CLI, macOS).
-
-## Install (Pi)
-
-The repo is a Pi package: both skills plus the workflow widget. Needs Node 22.18+ and git; `gh`, logged in, publishes issues and lets the widget see merged PRs.
-
-```sh
-pi install git:github.com/marcoax/engineering-skills-router
-```
-
-Pi clones it into `~/.pi/agent/git/`, and `npm install` fetches the vendor submodules (`postinstall`). Only this package's skills are loaded, not the vendor skills. Then, in Pi, `/reload` and `/skill:engineering-router <task>` (or `/skill:skill-selector <task>`); run it with no task to resume. To try it for one session without installing: `pi -e git:github.com/marcoax/engineering-skills-router`.
-
-**Update** with `pi update git:github.com/marcoax/engineering-skills-router` (plain `pi update` updates Pi itself). An update resets the installed clone (`git clean -fdx`), so keep preferences in `~/.config/engineering-skills-router/`: step 2 above with `ROUTER="$HOME/.pi/agent/git/github.com/marcoax/engineering-skills-router"`. To edit the catalog, install from your own checkout instead (Pi loads a local path without copying or cleaning it): `pi install "$ROUTER"` after step 1 above; update it as in [Update](#update).
-
-The workflow widget, its keys and the primary-family menu: [Pi adapter](docs/pi.md).
 
 ## More
 
