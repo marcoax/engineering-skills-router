@@ -122,16 +122,17 @@ function compose() {
     const picks = [[null, step.skill, step.reason], ...Catalog.arr(step.alternatives).map((a) => ['alternative', a?.skill, a?.reason])];
     for (const [role, id, reason] of picks) {
       if (id == null) continue;
+      const where = `${step.id}: ${role ? `${role} ` : ''}${id}`;
       const problem = Catalog.pickProblem(id, phases, skills);
       if (!problem) {
         // A high-cost pick keeps its cost up front, so a swap control never selects it unexplained.
         const cost = Catalog.costProblem(id, reason, skills);
-        if (cost) errors.push(`${step.id}: ${role ? `${role} ` : ''}${id}: ${cost}`);
+        if (cost) errors.push(`${where}: ${cost}`);
         continue;
       }
       // The selector's default for a phase that cannot run: another pick, or a missing capability.
       const hint = role || !problem.replaceable ? '' : ` (choose another, or report ${phases.join(', ') || step.id} as missing)`;
-      errors.push(`${step.id}: ${role ? `${role} ` : ''}${id}: ${problem.message}${hint}`);
+      errors.push(`${where}: ${problem.message}${hint}`);
     }
   }
   const classified = classify(next, isNew ? null : previous);

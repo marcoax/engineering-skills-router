@@ -8,7 +8,10 @@
 #   avoid_when  signals that make it a bad fit (optional)
 #   complexity  task sizes it suits: low | medium | high (optional, default: any)
 #   invokes     skills it already calls internally; their phases count as covered (optional)
-#   requires    preconditions in the target repo (optional)
+#   cost        high when a run repeats the work (parallel candidates); proposed with "High cost" first,
+#               never as a default the user did not choose (optional)
+#   requires    hard prerequisites (optional): target-repo ones (tracker-config, or prose) and harness
+#               capabilities (subagents, isolated-outputs), which check-selection matches to the harness
 
 skills:
 

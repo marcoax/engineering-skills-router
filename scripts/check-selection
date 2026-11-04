@@ -88,12 +88,16 @@ for (const p of phases) {
     if (!hasReason(pick)) errors.push(`${where}: needs a reason`);
     const problem = Catalog.pickProblem(id, [name], skills);
     if (problem) { errors.push(`${where}: ${problem.message}`); continue; }
-    const cost = Catalog.costProblem(id, pick.reason, skills);
-    if (cost && hasReason(pick)) errors.push(`${where}: ${cost}`);
-    if (role === 'default' && skills[id]?.cost === 'high' && pick.explicit !== true)
-      errors.push(`${where}: high cost: keep a single-implementation default unless the user chose it ("explicit": true)`);
-    const unmet = Catalog.capabilityProblem(id, isStrings(capabilities) ? capabilities : undefined, skills);
-    if (unmet && (capabilities === undefined || isStrings(capabilities))) errors.push(`${where}: ${unmet}`);
+    if (skills[id]?.cost === 'high') {
+      const cost = Catalog.costProblem(id, pick.reason, skills);
+      if (cost && hasReason(pick)) errors.push(`${where}: ${cost}`);
+      if (role === 'default' && pick.explicit !== true)
+        errors.push(`${where}: high cost: keep a single-implementation default unless the user chose it ("explicit": true)`);
+    }
+    // Invalid capabilities are reported once, above; they prove nothing about a pick.
+    if (capabilities !== undefined && !isStrings(capabilities)) continue;
+    const unmet = Catalog.capabilityProblem(id, capabilities, skills);
+    if (unmet) errors.push(`${where}: ${unmet}`);
   }
 }
 for (const [label, list] of [['missing', missing], ['omitted', omitted]]) {
