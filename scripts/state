@@ -33,8 +33,9 @@
 //   show                     the workflow, one line per step, with the step model when set,
 //                            then the run's Models line (primary from the state)
 //   model <n|id>             the model a step's subagent runs on: its first phase's `model` in
-//                            config/preferences.yaml, else the run's primary; review 2 the
-//                            family opposite to review 1's
+//                            config/preferences.yaml, else the run's primary; a review step
+//                            (review, framework-review, security, independent-review) the
+//                            family opposite to the step that wrote the code
 const fs = require('node:fs');
 const path = require('node:path');
 const { spawnSync } = require('node:child_process');

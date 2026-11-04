@@ -3,7 +3,8 @@
 const MARK = /<!--\s*engineering-router:run\s*([\s\S]*?)-->/;
 const SEVERITIES = ['critical', 'high', 'medium', 'low'];
 const DECISIONS = ['fixed', 'declined', 'deferred'];
-const REVIEWS = ['review-1', 'review-2', 'framework-review', 'security', 'independent-review'];
+// `review-1` and `review-2` are the ids of records written before ADR 0001's single review.
+const REVIEWS = ['review', 'review-1', 'review-2', 'framework-review', 'security', 'independent-review'];
 
 // The record in a PR body, or a reason it has none usable.
 function parseRecord(body) {

@@ -10,6 +10,6 @@ Read from SKILL.md when the task is an existing spec file (§2), or when the tas
 - **specification** follows [autonomy.md](autonomy.md), including the selected skill's routine gates. With a spec file given as the task there is no specification step: requirements runs only when the file leaves decisions open (SKILL.md §2).
 - **branch** is `<slug>`, created once the spec is approved (a spec file given as the task: at the start). Commit the spec file on it first when it is not already committed, so the PR's link resolves.
 - **planning** with `to-tickets`: pass it the spec file's path as its reference. There is no parent issue, so the tickets are standalone (no sub-issues), each naming the spec file. Publish under the workflow authorization. Record each published ticket with `handoff ticket <n> <url>` (local tickets: the file path as `<url>`).
-- **review 2** checks the diff against the spec file.
+- **every review step** checks the diff against the spec file.
 - **pull request**: the body links the spec file on the branch (`<repo url>/blob/<branch>/<path>`; the bare path when there is no remote), with no `Closes` for the spec. Tickets published on a tracker that closes work through PRs get one `Closes #<n>` each; local tickets get none.
 - A later run resumes the workflow when the task names its `handoff.branch` or `handoff.spec` ([resume.md](resume.md)).

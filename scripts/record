@@ -11,6 +11,7 @@ const os = require('node:os');
 const path = require('node:path');
 const { spawnSync } = require('node:child_process');
 const { parseRecord, SEVERITIES, DECISIONS } = require('./lib/runs');
+const { crossFamily } = require('./lib/models');
 
 const ROOT = path.resolve(__dirname, '..');
 const argv = process.argv.slice(2);
@@ -80,6 +81,8 @@ const record = {
     skill: s.skill ?? null,
     model: s.model ?? null,
     effort: s.effort ?? null,
+    // A review on the family that wrote the code says so (ADR 0001); the model IDs decide.
+    cross_family: crossFamily(state, s, {}),
     // The record is written as the pull-request step's last act, before the step is closed.
     status: s.id === 'pull-request' && s.status === 'running' ? 'done' : s.status,
     tokens: null,

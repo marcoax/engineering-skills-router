@@ -9,15 +9,16 @@ const CLOSED = ['done', 'skipped', 'failed'];
 // A started workflow that has not ended: resumed (resume.md), never replaced by a new run.
 const UNFINISHED = ['running', 'waiting', 'paused', 'stopped'];
 const LETTERS = 'abcdefghijklmnopqrstuvwxyz';
-// Optional steps that switch together (state.md, SKILL.md §5).
-const SWITCH_TOGETHER = ['review-2', 'comparison'];
 const OFF = 'off (optional)';
 
 // A step that ran: it stays as it ran when the workflow is recomposed. An optional step that is
 // off never ran.
 const ran = (step) => ['done', 'failed'].includes(step.status) || (step.status === 'skipped' && step.outcome !== OFF);
 // Phases whose checks a swap restores as a step of their own when the old skill ran them inside.
-const RESTORED_PHASES = ['testing', 'review'];
+// A review never runs inside another step (ADR 0001), so it has nothing to restore.
+const RESTORED_PHASES = ['testing'];
+// Phases a step never runs inside another step for: a review is a cross-family review of its own.
+const NEVER_COVERED = ['review', 'framework-review', 'security', 'independent-review'];
 
 const clone = (s) => JSON.parse(JSON.stringify(s));
 const fail = (msg) => {
@@ -143,14 +144,14 @@ function swap(state, i, letter) {
 // step, itself not covered, whose skill invokes one for its phases; it then takes that invoked
 // skill and has no alternatives, and keeps the selector's own pick in `selected`. A covered step
 // no such step runs any more runs on its own again, with the selector's pick restored, so a swap
-// never leaves a check covered by a skill that does not run it. A light path never covers
-// review 1. Returns { state, notes }: one line per changed step.
+// never leaves a check covered by a skill that does not run it. A review is never covered: it runs
+// on its own, on the other family. Returns { state, notes }: one line per changed step.
 function recalculateCoverage(state, invokes) {
   const s = clone(state);
   const notes = [];
   s.steps.forEach((step, k) => {
     if (step.status !== 'pending' || step.optional || step.skill == null || !(step.phases ?? []).length) return;
-    const phases = s.path === 'light' ? step.phases.filter((p) => p !== 'review') : step.phases;
+    const phases = step.phases.filter((p) => !NEVER_COVERED.includes(p));
     const cover = phases.length === 0 ? undefined : s.steps.slice(0, k)
       .find((x) => x.skill && x.covered_by == null && OPEN.includes(x.status) && invokes(x.skill, phases).length > 0);
     if (cover) {
@@ -203,14 +204,9 @@ function toggle(state, i, on) {
   const step = s.steps[i];
   if (!step.optional) fail(`step ${i + 1} (${step.id}) is not optional`);
   if (s.status === 'done' || s.status === 'stopped') fail(`the workflow is ${s.status}: nothing switches`);
-  const ids = SWITCH_TOGETHER.includes(step.id) ? SWITCH_TOGETHER : [step.id];
-  const group = s.steps.filter((x) => ids.includes(x.id) && x.optional);
-  const started = group.find((x) => !['pending', 'skipped'].includes(x.status));
-  if (started) fail(`step ${started.id} is ${started.status}: it can no longer be switched`);
-  for (const t of group) {
-    t.status = on ? 'pending' : 'skipped';
-    t.outcome = on ? null : OFF;
-  }
+  if (!['pending', 'skipped'].includes(step.status)) fail(`step ${step.id} is ${step.status}: it can no longer be switched`);
+  step.status = on ? 'pending' : 'skipped';
+  step.outcome = on ? null : OFF;
   return s;
 }
 

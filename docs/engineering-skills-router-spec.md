@@ -43,10 +43,10 @@ The router reads only the catalog, never the vendor folders' layout. Adding a so
 
 ## No duplicate work
 
-- A phase covered by a skill that `invokes` another (e.g. `implement` runs `tdd` and `code-review`) is not run again.
+- A phase covered by a skill that `invokes` another (e.g. `implement` runs `tdd`) is not run again. A review is the exception: it always runs as its own step, and the implementation is told to skip the review it would run inside.
 - A skill that fills two phases (e.g. spec + issue) is one step.
-- **Two reviews are not a duplicate** when they differ in model and axes: review 2 runs a different review skill on the other model family, and a comparison step merges both into found by both, by one only, and disagreements. Framework-review and the independent review at high risk add different purposes, not repeats. Still, one review is the default: review 2, the comparison and the independent review start off, and the user adds each. Security runs as a conditional check when the task or diff warrants it.
-- **Cross-family review depends on the harness.** Reaching the other family needs subagents that take an explicit model and a provider configured for it (Pi so set up is one example), which the router cannot provide. So it states before the workflow starts whether review 2 can run there, and when not the user skips it or runs it on the current model, where it counts as a second review, not an independent one.
+- **One review, cross-family**: the review runs on the family opposite to the one that wrote the code ([ADR 0001](adr/0001-single-cross-family-review.md)). Framework-review and the independent review at high risk add different purposes, not repeats, and run on that family too. The independent review starts off, and the user adds it. Security runs as a conditional check when the task or diff warrants it.
+- **Cross-family review depends on the harness.** Reaching the other family needs subagents that take an explicit model and a provider configured for it (Pi so set up is one example), which the router cannot provide. So it states before the workflow starts whether the reviews can run there. When not, the user chooses once: same-family reviews, marked as such, or stop.
 
 ## Approval through the open PR
 

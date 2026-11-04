@@ -1,10 +1,10 @@
 # From implementation to pull request
 
-Read from SKILL.md §6 when the implementation step is about to start. It holds everything from there to the open PR: the covered review, the manual checklist, the comparison, security and fixes, verification, and the pull request with its run record. Execution and exceptional stops follow [autonomy.md](autonomy.md). Review 2's own run is in [review-2.md](review-2.md).
+Read from SKILL.md §6 when the implementation step is about to start. It holds everything from there to the open PR: the implementation's own review, the manual checklist, the reviews, security and fixes, verification, and the pull request with its run record. Execution and exceptional stops follow [autonomy.md](autonomy.md). How every review step runs, on the other family, is in [cross-family-review.md](cross-family-review.md).
 
-## Covered review
+## The implementation's own review
 
-When review 1 runs inside the implementation step (e.g. `mattpocock/implement` calls `code-review`), tell that step to commit its work before the review starts and to pass the base commit as the review's fixed point, then to commit the review's fixes. The covered step ends with it: `scripts/state <target repo> step <implementation> done --outcome "..."` closes both. The review reads `git diff <base commit>...HEAD`, so a skill that says to review and then commit would otherwise review uncommitted work. (On a light path review 1 is never covered: [light.md](light.md).)
+When the implementation skill calls a review itself (e.g. `mattpocock/implement` calls `code-review`), tell that step to skip it: the review is a step of its own, on the other family. Tell it too to commit its work before the step ends, since the review reads `git diff <base commit>...HEAD`. Say in the step note that its internal review was skipped (`code-review: skipped, the review runs cross-family`).
 
 ## Manual checklist
 
@@ -17,19 +17,17 @@ What the change really does, as points to check: built from `git diff <base comm
 
 ## Implementation outcome
 
-When the implementation step ends, show a concise outcome with the files changed since the base commit and the manual checklist, then start the next review. Leave `[you]` points for the PR; they do not block its creation or count as passed. If the user explicitly requested a check here, wait on the next unfinished step, fix and commit what they report, then resume under [autonomy.md](autonomy.md). The check is a pause, not an extra step.
+When the implementation step ends, show a concise outcome with the files changed since the base commit and the manual checklist, then start the review. Leave `[you]` points for the PR; they do not block its creation or count as passed. If the user explicitly requested a check here, wait on the next unfinished step, fix and commit what they report, then resume under [autonomy.md](autonomy.md). The check is a pause, not an extra step.
 
-## Comparison, security and fixes
+## Reviews, security and fixes
 
-**Comparison** (when on): merge both reviews, plus framework-review's findings when it ran, into three lists: found by both, found by one only (say which), disagreements. Name each review by the model it ran on.
+The review, then framework-review when it runs, the security check, and independent-review when on, each in its own fresh subagent on the reviewers' family ([cross-family-review.md](cross-family-review.md)).
 
-**Findings.** Give each finding a severity and keep which reviews reported it (their step ids). Severity: `critical` wrong results, data loss or a security hole; `high` a bug or risk a user will meet; `medium` a real but contained problem; `low` style, naming, small clean-ups. Validate findings against the code and approved spec. Fix confirmed problems within scope automatically; record false positives as `declined` with evidence, and unrelated improvements as `deferred` with the reason. A finding that requires a material decision or scope change follows [autonomy.md](autonomy.md); severity alone is no reason to ask which findings to fix. Keep every finding and its disposition for the run record.
+**Findings.** Consolidate the findings of every review that ran into one list: one entry per distinct problem, with the step ids that reported it, and give each a severity: `critical` wrong results, data loss or a security hole; `high` a bug or risk a user will meet; `medium` a real but contained problem; `low` style, naming, small clean-ups. Validate findings against the code and approved spec. Fix confirmed problems within scope automatically; record false positives as `declined` with evidence, and unrelated improvements as `deferred` with the reason. A finding that requires a material decision or scope change follows [autonomy.md](autonomy.md); severity alone is no reason to ask which findings to fix. Keep every finding and its disposition for the run record.
 
 **Conditional security check.** Inspect the diff for auth, user input, queries, secrets, new dependencies, config and permissions (the `use_when` of the `security` candidate). When any appear, or the task is security- or data-sensitive or the user explicitly requested security, announce why and run its preselected skill. Otherwise close that conditional step as `skipped` with the reason. A triggered check with no usable candidate is a missing-capability exception. Security is review-only; changes it proposes follow the findings policy.
 
-**When the comparison is off**, evaluate security right after review 1, or after framework-review when it runs. Consolidate findings from the reviews that ran and the security check, then apply the fixes policy.
-
-**Fixes.** In-scope fixes run like a skill step, in a new subagent on the implementation step's model (without subagents, in the main session): it gets the findings, approved scope, execution policy, handoff and step notes, fixes them (test-first where a test can show the problem), runs the affected checks, commits, and writes its note to `.router/steps/<n>-fixes.md`, with `n` the coordinating step's position. That step stays `running` until the fixes and checks finish, so a pause or resume does not drop them. Have a fresh reviewer check materially changed behavior when the fix invalidates earlier review evidence. Continue to the next step once the findings are resolved or explicitly accounted for; an unresolved correctness requirement is a blocker, not a deferred improvement.
+**Fixes.** In-scope fixes run like a skill step, in a new subagent on the implementation step's model (without subagents, in the main session): it gets the findings, approved scope, execution policy, handoff and step notes, fixes them (test-first where a test can show the problem), runs the affected checks, commits, and writes its note to `.router/steps/<n>-fixes.md`, with `n` the coordinating step's position. That step stays `running` until the fixes and checks finish, so a pause or resume does not drop them. When a fix materially changes behavior and invalidates earlier review evidence, have a fresh reviewer check it: a cross-family review too, since the fixes ran on the implementation's family ([cross-family-review.md](cross-family-review.md)). Continue to the next step once the findings are resolved or explicitly accounted for; an unresolved correctness requirement is a blocker, not a deferred improvement.
 
 ## Verification (when on)
 

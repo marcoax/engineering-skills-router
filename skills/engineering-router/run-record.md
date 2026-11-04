@@ -32,17 +32,16 @@ At the pull request (§6) the router appends one **run record** to the PR body: 
     "facts": []
   },
   "steps": [
-    { "id": "specification", "skill": "mattpocock/to-spec", "model": "claude-opus-5-5", "effort": null, "status": "done", "tokens": null },
-    { "id": "implementation", "skill": "mattpocock/implement", "model": "claude-sonnet-5-5", "effort": "high", "status": "done", "tokens": 182000 },
-    { "id": "review-1", "skill": "mattpocock/code-review", "model": "claude-opus-5-5", "effort": null, "status": "done", "tokens": null },
-    { "id": "review-2", "skill": "addyosmani/code-review-and-quality", "model": "openai-codex/gpt-6-sol", "effort": "high", "status": "done", "tokens": null },
-    { "id": "comparison", "skill": null, "model": "claude-opus-5-5", "effort": null, "status": "done", "tokens": null }
+    { "id": "specification", "skill": "mattpocock/to-spec", "model": "claude-opus-5-5", "effort": null, "cross_family": null, "status": "done", "tokens": null },
+    { "id": "implementation", "skill": "mattpocock/implement", "model": "claude-sonnet-5-5", "effort": "high", "cross_family": null, "status": "done", "tokens": 182000 },
+    { "id": "review", "skill": "addyosmani/code-review-and-quality", "model": "openai-codex/gpt-6-sol", "effort": "high", "cross_family": true, "status": "done", "tokens": null },
+    { "id": "security", "skill": "addyosmani/security-and-hardening", "model": "openai-codex/gpt-6-sol", "effort": null, "cross_family": true, "status": "done", "tokens": null }
   ],
   "session_model": "claude-opus-5-5",
   "findings": [
-    { "title": "CSV cells starting with = are not escaped", "severity": "high", "found_by": ["review-1", "review-2"], "decision": "fixed" },
-    { "title": "Export loads every row into memory", "severity": "medium", "found_by": ["review-2"], "decision": "fixed" },
-    { "title": "Rename exportRows to buildCsvRows", "severity": "low", "found_by": ["review-1"], "decision": "declined" }
+    { "title": "CSV cells starting with = are not escaped", "severity": "high", "found_by": ["review", "security"], "decision": "fixed" },
+    { "title": "Export loads every row into memory", "severity": "medium", "found_by": ["review"], "decision": "fixed" },
+    { "title": "Rate-limit the export endpoint", "severity": "low", "found_by": ["security"], "decision": "declined" }
   ],
   "checklist": { "points": 9, "agent": 5, "passed": 4, "failed": 1 },
   "usage": { "tokens": null, "cost_usd": null }
@@ -59,7 +58,7 @@ At the pull request (§6) the router appends one **run record** to the PR body: 
 | `classification` | `{policy, rationale, facts}` \| null | As in `.router/state.json`: the policy revision the run was classified under, the one-line rationale per class and the facts with their evidence. `null` when the state has none; absent in records written before it. |
 | `steps` | Step[] | Every step of the workflow, in order, as it ended. |
 | `session_model` | string \| null | The main session's model, as the harness names it. In a record from before the step model contract, a step that ran with `model` `null` ran on this; `scripts/stats` reads it so. |
-| `findings` | Finding[] | Every finding of the reviews that ran (review 1, review 2, framework-review, security, independent-review), merged: one entry per distinct problem. Empty when no review ran. |
+| `findings` | Finding[] | Every finding of the reviews that ran (review, framework-review, security, independent-review; `review-1` and `review-2` in records written before [ADR 0001](../../docs/adr/0001-single-cross-family-review.md)), merged: one entry per distinct problem. Empty when no review ran. |
 | `checklist` | `{points, agent, passed, failed}` \| null | The manual checklist in the PR: how many points, how many tagged `[agent]`, and, when verification ran, how many of those passed and failed (`null` each when it did not run). `null` when the PR has no checklist. |
 | `usage` | `{tokens, cost_usd}` | Whole-workflow totals when the harness reports them, else `null`. |
 
@@ -71,6 +70,7 @@ At the pull request (§6) the router appends one **run record** to the PR body: 
 | `skill` | string \| null | Catalog id that ran, after any swap; `null` for a router step. |
 | `model` | string \| null | The step model: what the step actually ran on, for every step that ran, Precedence: agent record, then the model passed to its subagent (or `review_other_family`'s backend, e.g. `openai-codex/gpt-6-sol`), then `session_model`; full rules in [models.md](models.md). As the source names it: IDs are not normalized, so `claude-bridge/claude-opus-5-5` and `claude-opus-5-5` count as different models. `null` only for a step that did not run. |
 | `effort` | string \| null | `low`, `medium` or `high` from the agent record or the one passed to the step; `null` for the default. |
+| `cross_family` | boolean \| null | For a review step that ran (review, framework-review, security, independent-review): `true` when its model is of the other family than the last step that wrote the code, `false` for a **same-family review**. `null` for any other step, or when either model's family cannot be told from its ID. `scripts/record` sets it from the step models. Absent in records written before it. |
 | `status` | string | The step's final status: `done`, `skipped`, `failed`. |
 | `tokens` | integer \| null | Tokens the step used, when reported. |
 
@@ -79,6 +79,6 @@ At the pull request (§6) the router appends one **run record** to the PR body: 
 | Field | Type | Meaning |
 |---|---|---|
 | `title` | string | One line naming the problem. |
-| `severity` | `"critical"` \| `"high"` \| `"medium"` \| `"low"` | As judged in the comparison (or by the one review that found it). `critical`: wrong results, data loss or a security hole; `high`: a bug or risk a user will meet; `medium`: a real but contained problem; `low`: style, naming, small clean-ups. |
+| `severity` | `"critical"` \| `"high"` \| `"medium"` \| `"low"` | As judged when the findings are consolidated. `critical`: wrong results, data loss or a security hole; `high`: a bug or risk a user will meet; `medium`: a real but contained problem; `low`: style, naming, small clean-ups. |
 | `found_by` | string[] | Step ids that reported it, at least one. A finding two reviews describe differently is still one entry. |
 | `decision` | `"fixed"` \| `"declined"` \| `"deferred"` | The disposition under the approved scope: fixed in this PR, rejected with evidence, or left for later with a reason (an issue, a TODO). The user can override it. |

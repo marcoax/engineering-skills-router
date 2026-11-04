@@ -1,7 +1,7 @@
 {
   "name": "engineering-router-panel",
   "version": "0.2.0",
-  "description": "Workflow band and pane for the engineering-router skill, plus review 2 through Codex or opencode",
+  "description": "Workflow band and pane for the engineering-router skill, plus cross-family code review through Codex or opencode",
   "types": "./types/index.d.ts",
   "author": {
     "name": "Marco Asperti",

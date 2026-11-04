@@ -158,8 +158,8 @@ export const register: Register = on => {
       isDeferred: false,
       description:
         'Runs a prompt on a model outside the Claude family through a local CLI, read-only, ' +
-        'and returns its answer; the output streams into a "Review 2" pane. For the engineering ' +
-        "router's review 2. `model` is as the user's preferences.yaml (scripts/config) names it: `openai-codex/<model>` " +
+        'and returns its answer; the output streams into a "Cross-family review" pane. For the engineering ' +
+        "router's cross-family reviews. `model` is as the user's preferences.yaml (scripts/config) names it: `openai-codex/<model>` " +
         'runs Codex, `opencode/<provider>/<model>` runs opencode; `effort` is low, medium or high. ' +
         'What the person picked with /router-models overrides both. Without `prompt` it only ' +
         'checks that the backend is installed and says which backend, model and effort would run.',
@@ -175,7 +175,7 @@ export const register: Register = on => {
     })
     await $.command.register({
       name: 'router-models',
-      description: 'Pick the backend, model and effort of the router review 2 on another family',
+      description: 'Pick the backend, model and effort of the router cross-family reviews',
     })
     await update($, choice, () => asChoice(undefined))
     try {
@@ -188,7 +188,7 @@ export const register: Register = on => {
     return next(e)
   })
 
-  // Review 2 on another model family: one CLI run, streamed into the review pane.
+  // A cross-family review: one CLI run, streamed into the review pane.
   on('tool.call', { tool: REVIEW_TOOL }, async ($, e, next) => {
     const input = e as unknown as { model?: unknown; effort?: unknown; prompt?: unknown; cwd?: unknown }
     const asked = {
@@ -219,7 +219,7 @@ export const register: Register = on => {
     await update($, review, () => ({ model: label, backend: backend.name, status: 'running', text: '' }))
     void $.ui.open({
       id: REVIEW_PANE,
-      title: `Review 2 · ${backend.name}`,
+      title: `Cross-family review · ${backend.name}`,
       columns: paneColumns(terminalColumns),
       rows: PANE_ROWS,
     })
@@ -282,18 +282,18 @@ export const register: Register = on => {
   })
 
   on('command.run', { command: 'router-models' }, async $ => {
-    await $.ui.open({ id: MODELS_PANE, title: 'Review 2 model', focus: true, closeOnEscape: true })
+    await $.ui.open({ id: MODELS_PANE, title: 'Cross-family review model', focus: true, closeOnEscape: true })
     // In the background: a hung list command must not hold the command up.
     void listModels($, (await read($, choice)).backend)
-    return { text: 'Review 2 model pane opened.' }
+    return { text: 'Cross-family review model pane opened.' }
   })
 
-  // Backend, model and effort of review 2; empty means the CLI's own default.
+  // Backend, model and effort of the cross-family reviews; empty means the CLI's own default.
   on('ui.render', { component: 'Pane', requestId: MODELS_PANE }, async ($, e) => {
     const c = await read($, choice)
     if (e.surface === 'mobile') {
       const { Text } = $.ui.resolve(e)
-      return <Text>Review 2: {c.backend} · {shownAs(c.model)} · {shownAs(c.effort)} (change it from a computer)</Text>
+      return <Text>Cross-family review: {c.backend} · {shownAs(c.model)} · {shownAs(c.effort)} (change it from a computer)</Text>
     }
     const { Box, Button, Input, Select, Text } = $.ui.resolve(e)
     const save = async (fn: (c: ReviewChoice) => ReviewChoice) => {
