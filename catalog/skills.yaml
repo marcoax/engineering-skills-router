@@ -700,8 +700,7 @@ skills:
       - "the user explicitly requests parallel coverage, worker races or a swarm with one consolidated report"
     avoid_when:
       - "no subagent tool is available or deterministic processing can cover every unit more cheaply"
-    requires:
-      - "a subagent tool and isolated write targets for workers"
+    requires: [subagents, isolated-outputs]
 
   pstack/teach:
     source: pstack
@@ -890,6 +889,7 @@ skills:
       - "the step must run inside a subagent; this skill requires the main-session orchestrator to spawn reviewers"
     complexity: [medium, high]
     requires:
+      - subagents
       - "main-session execution with a fresh-context reviewer tool"
 
   addyosmani/frontend-ui-engineering:

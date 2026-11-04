@@ -174,6 +174,8 @@ for (const [skill, msg] of [
   [{ extra: '    complexity: [huge]\n' }, "docs/agents/skills.yaml: project/fw: invalid complexity 'huge'"],
   [{ extra: '    invokes: [nobody/nothing]\n' }, 'docs/agents/skills.yaml: project/fw: invokes unknown skill nobody/nothing'],
   [{ extra: '    cost: steep\n' }, "docs/agents/skills.yaml: project/fw: invalid cost 'steep' (only high)"],
+  // A one-word requires is a known token: a typo would silently skip the capability check.
+  [{ extra: '    requires: [subagent]\n' }, "docs/agents/skills.yaml: project/fw: unknown requires 'subagent' (known: tracker-config, subagents, isolated-outputs; or a prose prerequisite)"],
   [[{}, {}], 'docs/agents/skills.yaml: duplicate skill id: project/fw'],
 ]) {
   const r = run('validate-catalog', '--target', targetRepo([skill].flat().map(projectSkill).join('')));
@@ -855,6 +857,9 @@ ${['one', 'folded', 'plain', 'nodesc', 'broken', 'nofm'].map((n) => `  acme/${n}
     [mutate((s) => { delete s.capabilities; }),
       'implementation: alternative pstack/arena: requires subagents, isolated-outputs: the selection states no capabilities'],
     [mutate((s) => { s.capabilities = 'subagents'; }), 'capabilities must be a list of strings'],
+    // Every skill needing parallel workers is checked the same way, not only arena.
+    [mutate((s) => { s.phases[2].alternatives[0] = pick('pstack/swarm'); s.capabilities = ['isolated-outputs']; }),
+      'implementation: alternative pstack/swarm: requires subagents, which the harness lacks'],
   ]) {
     r = check(sel);
     if (r.ok || !r.out.includes(`error: ${msg}`)) fail(`check-selection, expected: ${msg}\ngot:\n${r.out}`);

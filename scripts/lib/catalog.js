@@ -234,6 +234,8 @@ function pickProblem(id, phases, allSkills = skills(), prefs = preferences()) {
 // Harness capabilities a skill may list under `requires`; a selection states which it has.
 // Other `requires` values (tracker-config) are target-repo prerequisites, met by the workflow.
 const HARNESS_CAPABILITIES = ['subagents', 'isolated-outputs'];
+// One-word `requires` values the router acts on; anything else is a prose prerequisite.
+const REQUIRES_TOKENS = ['tracker-config', ...HARNESS_CAPABILITIES];
 // The opening a pick's reason needs when the skill's catalog `cost` is high (selector §5.7).
 const HIGH_COST = /^high cost\b/i;
 
@@ -253,7 +255,7 @@ function capabilityProblem(id, capabilities, allSkills = skills()) {
 }
 
 module.exports = {
-  HARNESS_CAPABILITIES, costProblem, capabilityProblem,
+  HARNESS_CAPABILITIES, REQUIRES_TOKENS, costProblem, capabilityProblem,
   ROOT, PROJECT_CATALOG, PROJECT_PHASES, DEFAULT_FLOW, CONFIG_ENV, CONFIG_FILES, CLONE_CONFIG, config, configErrors, requireConfig, label, readYaml, arr, sources, skills, vendorSkills, guides, ownedBy, projectSkills,
   personalPath, personalSkills, namesake, categories, preferences, available, description, targetArg, upstreamPaths, candidates, pickProblem,
 };
