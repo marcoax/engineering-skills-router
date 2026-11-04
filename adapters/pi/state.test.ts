@@ -4,7 +4,7 @@ import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
 import { test } from "node:test";
-import { currentStep, detailLines, findRepoRoot, hiddenAtStart, keysFor, parseState, readState, replyFor, symbol, widgetLines, type State } from "./state.ts";
+import { currentStep, detailLines, findRepoRoot, foreignLine, hiddenAtStart, invokesRouter, isForeignAtStart, runsStateScript, keysFor, parseState, readState, replyFor, symbol, widgetLines, type State } from "./state.ts";
 
 // The documented example is the fixture, so the test follows the contract.
 const ROOT = path.resolve(import.meta.dirname, "../..");
@@ -94,6 +94,22 @@ test("at session start only finished workflows are hidden", () => {
 	assert.equal(hiddenAtStart(done, "MERGED"), true);
 	assert.equal(hiddenAtStart(done, "CLOSED"), true);
 	assert.equal(symbol("paused"), "⏸");
+});
+
+test("an unfinished workflow at session start is another session's until taken up", () => {
+	const withStatus = (status: string) => parsed({ ...example(), status, task: "#956 Admin SEO" });
+	for (const status of ["selecting", "running", "waiting", "paused"]) assert.equal(isForeignAtStart(withStatus(status)), true, status);
+	for (const status of ["done", "stopped"]) assert.equal(isForeignAtStart(withStatus(status)), false, status);
+	assert.equal(
+		foreignLine(withStatus("running"), "/skill:engineering-router"),
+		"router · running elsewhere · #956 Admin SEO — /skill:engineering-router to resume",
+	);
+	for (const text of ["/engineering-router", "/skill:engineering-router", "/skill:engineering-router #956", " /engineering-skills-router:engineering-router go"])
+		assert.equal(invokesRouter(text), true, text);
+	for (const text of ["engineering-router", "/engineering-router-panel", "/router-panel", "resume /engineering-router"]) assert.equal(invokesRouter(text), false, text);
+	for (const command of ["scripts/state . show", "node scripts/state /repo reply resume", "/opt/router/scripts/state /repo step 3 done", '"$ROUTER/scripts/state" .'])
+		assert.equal(runsStateScript(command), true, command);
+	for (const command of ["cat .router/state.json", "scripts/statefile", "git status", "scripts/state-ops.js"]) assert.equal(runsStateScript(command), false, command);
 });
 
 test("replies use the selection syntax with positions in steps", () => {

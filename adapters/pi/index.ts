@@ -15,13 +15,17 @@ import {
 	currentStep,
 	detailLines,
 	findRepoRoot,
+	foreignLine,
 	hiddenAtStart,
+	invokesRouter,
 	isClosed,
+	isForeignAtStart,
 	KEYS,
 	keysFor,
 	type Paint,
 	readState,
 	replyFor,
+	runsStateScript,
 	STATE_FILE,
 	type State,
 	widgetLines,
@@ -29,6 +33,7 @@ import {
 
 const SHORTCUT = Key.ctrlAlt("w");
 const WIDGET = "engineering-router";
+const INVOCATION = "/skill:engineering-router";
 
 const paintWith = (theme: Theme): Paint => (style, text) => theme.fg(style, text);
 
@@ -166,6 +171,14 @@ export default function (pi: ExtensionAPI) {
 	let ui: ExtensionContext["ui"] | undefined;
 	// A finished workflow found at session start (hiddenAtStart) stays hidden until a new one begins.
 	let hideClosed = false;
+	// The frozen line shown in place of an unfinished workflow found at session start, which may
+	// be another session's, until this session takes it up (takeUp); undefined otherwise.
+	let foreign: string | undefined;
+	const takeUp = () => {
+		if (foreign === undefined) return;
+		foreign = undefined;
+		reload();
+	};
 
 	const reload = () => {
 		if (!ui) return;
@@ -179,10 +192,15 @@ export default function (pi: ExtensionAPI) {
 		}
 		state = parsed.kind === "ok" ? parsed.state : undefined;
 		if (state && !isClosed(state)) hideClosed = false;
+		// A workflow removed (discarded) frees the next one from the start-of-session line.
+		if (foreign !== undefined && file && !fs.existsSync(file)) foreign = undefined;
 		const shown = state && !(hideClosed && isClosed(state)) ? state : undefined;
+		const frozen = foreign;
 		ui.setWidget(
 			WIDGET,
-			shown
+			frozen !== undefined
+				? (_tui, theme) => ({ render: (width: number) => [truncateToWidth(theme.fg("dim", frozen), width)], invalidate() {} })
+				: shown
 				? (_tui, theme) => ({
 						render: (width: number) =>
 							[
@@ -194,7 +212,7 @@ export default function (pi: ExtensionAPI) {
 					})
 				: undefined,
 		);
-		if (state) overlay?.update(state);
+		if (state && foreign === undefined) overlay?.update(state);
 		else overlay?.close();
 	};
 
@@ -215,6 +233,7 @@ export default function (pi: ExtensionAPI) {
 		file = path.join(root, STATE_FILE);
 		const initial = readState(root);
 		hideClosed = initial.kind === "ok" && hiddenAtStart(initial.state);
+		foreign = initial.kind === "ok" && isForeignAtStart(initial.state) ? foreignLine(initial.state, INVOCATION) : undefined;
 		const pr = initial.kind === "ok" && initial.state.status === "done" ? initial.state.handoff.pr : null;
 		if (pr) {
 			// Shown while gh answers; hidden only once gh says merged/closed and the same workflow is still there.
@@ -231,10 +250,19 @@ export default function (pi: ExtensionAPI) {
 		reload();
 	});
 	pi.on("session_shutdown", stop);
+	pi.on("input", (event) => {
+		if (invokesRouter(event.text)) takeUp();
+		return { action: "continue" };
+	});
+	pi.on("tool_call", (event) => {
+		const command = (event.input as { command?: unknown } | undefined)?.command;
+		if (event.toolName === "bash" && typeof command === "string" && runsStateScript(command)) takeUp();
+	});
 
 	const toggle = (ctx: ExtensionContext) => {
 		// With the overlay focused, its handleInput gets the shortcut instead.
 		if (overlay) return overlay.close();
+		takeUp();
 		if (!state) return ctx.ui.notify(`engineering-router: no workflow in ${root || ctx.cwd}`, "info");
 		const send = (choice: Choice) => {
 			const text = state && replyFor(state, choice);

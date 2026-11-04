@@ -9,11 +9,15 @@ import type { EngineInterface, Register, RouterReview } from 'claude-code'
 import {
   currentStep,
   detailLines,
+  foreignLine,
   hiddenAtStart,
+  invokesRouter,
   isClosed,
+  isForeignAtStart,
   KEYS,
   parseState,
   replyFor,
+  runsStateScript,
   STATE_FILE,
   symbol,
   widgetLines,
@@ -62,6 +66,10 @@ const state = atom({ plugin: 'engineering-router-panel', key: 'state' } as const
 const selected = atom({ plugin: 'engineering-router-panel', key: 'selected' } as const, 0)
 const confirmStop = atom({ plugin: 'engineering-router-panel', key: 'confirmStop' } as const, false)
 const isHidden = atom({ plugin: 'engineering-router-panel', key: 'isHidden' } as const, false)
+const foreign = atom({ plugin: 'engineering-router-panel', key: 'foreign' } as const, null)
+const INVOCATION = '/engineering-router'
+// This session takes up the workflow: from here the band and pane follow the file.
+const takeUp = ($: EngineInterface) => update($, foreign, () => null)
 
 // Lists the models of a backend that has a list command, once it has listed some: a
 // failure, a timeout or an empty list is kept as none, and asked again the next time.
@@ -81,7 +89,13 @@ async function listModels($: EngineInterface, name: string) {
 }
 
 export const register: Register = on => {
+  on('prompt.submit', async ($, e, next) => {
+    if (invokesRouter(e.text) || /(^|:)engineering-router$/.test(e.command?.name ?? '')) await takeUp($)
+    return next(e)
+  })
+
   on('tool.call', { tool: 'Bash' }, async ($, e, next) => {
+    if (runsStateScript(e.command)) await takeUp($)
     const outcome = await next(e)
     if ('deny' in outcome || outcome.isError || !outcome.result || typeof outcome.result !== 'object') return outcome
     const result = outcome.result
@@ -134,8 +148,12 @@ export const register: Register = on => {
 
       const parsed = text ? parseState(text) : undefined
       const fresh = parsed?.kind === 'ok' ? parsed.state : null
-      if (isFirstRead && fresh) await update($, isHidden, () => hiddenAtStart(fresh))
-      else if (fresh && !isClosed(fresh)) await update($, isHidden, () => false)
+      if (isFirstRead && fresh) {
+        await update($, isHidden, () => hiddenAtStart(fresh))
+        if (isForeignAtStart(fresh)) await update($, foreign, () => foreignLine(fresh, INVOCATION))
+      } else if (fresh && !isClosed(fresh)) await update($, isHidden, () => false)
+      // A workflow removed (discarded) frees the next one from the start-of-session line.
+      if (!text) await takeUp($)
       isFirstRead = false
 
       const before = await read($, state)
@@ -380,6 +398,7 @@ export const register: Register = on => {
 
   on('command.run', { command: 'router-panel' }, async ($, e) => {
     const open = (await $.ui.panes()).some(p => p.id === PANE)
+    await takeUp($)
     if (open) {
       await $.ui.close({ id: PANE })
       return { text: 'Router pane closed.' }
@@ -406,6 +425,8 @@ export const register: Register = on => {
     if (s === null || (await read($, isHidden)) || e.props.hasSurvey) return next(e)
 
     const { Box, Text } = $.ui.resolve(e)
+    const frozen = await read($, foreign)
+    if (frozen !== null) return <Text dimColor>{frozen}</Text>
     const hint =
       s.status === 'selecting'
         ? '/router-panel: choose skills'
