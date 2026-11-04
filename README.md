@@ -40,7 +40,7 @@ Limitations: it does not make code better or work faster by itself. One [live co
 
 ## Install (Claude Code)
 
-One checkout on your disk serves both the skills and the panel plugin, so they always match. Exercised with Claude Code 2.1.317 on macOS ([walkthrough record](#what-has-been-verified)).
+One checkout on your disk serves both the skills and the panel plugin, so they always match. Walked through with the Claude Code 2.1.318 CLI on macOS; which parts ran in a live session is in [what has been verified](#what-has-been-verified).
 
 **Components**
 
@@ -116,9 +116,9 @@ In a Claude Code session:
 
 - type `/engineering-` and `/skill-`: `/engineering-router` and `/skill-selector` appear in the menu (`/skills` lists them too);
 - with the plugin: `/plugin` shows `engineering-router-panel` on the Installed tab, and `/router-panel` toggles the pane;
-- review 2 backend, separately and only if you want it: ask Claude to call `review_other_family` **without a prompt**. It only checks that the CLI is installed and prints `available: …` or why not; it starts no review. `codex --version` / `opencode --version` in a terminal says the same without Claude Code.
+- review 2 backend, separately and only if you want it: ask Claude to call `review_other_family` **without a prompt**, with the model from your preferences (`models.openai`, e.g. `openai-codex/<model>`) or after picking one in `/router-models`. It only checks that the backend's CLI is installed and prints `available: …` or why not; it starts no review, and it does not check that your account can use that model. `codex --version` / `opencode --version` in a terminal says the same without Claude Code.
 
-A harmless first run: in a scratch git repo, write a short spec file (e.g. "add a CSV export endpoint with tests"), run `/engineering-router <spec path>`, read the workflow it proposes, and answer `stop`. Up to that point the router only reads, writes `.router/state.json` there, and asks whether to check vendor updates now (decline; `update_check_days: 0` in your preferences turns that question off). Use a repo with no unfinished workflow: in one that has one, the router offers to resume it instead and leaves it as it is.
+A harmless first run: in a scratch git repo, write a short spec file (e.g. "add a CSV export endpoint with tests"), run `/engineering-router <spec path>`, read the workflow it proposes, and answer `stop`. Up to that point the router only reads, writes `.router/state.json` there, and asks whether to check vendor updates now (decline; `update_check_days: 0` in your preferences turns that question off). Use a repo with no unfinished workflow: in one that has one (running, waiting, paused or stopped), the router asks whether to resume or discard it and leaves it as it is until you answer. A workflow only shown and never approved does not count: a new task replaces it.
 
 ### Update
 
@@ -145,7 +145,7 @@ ls -l ~/.claude/skills/engineering-router ~/.claude/skills/skill-selector    # c
 rm ~/.claude/skills/engineering-router ~/.claude/skills/skill-selector       # removes the links only
 ```
 
-Then delete `$ROUTER` if you no longer want it. `~/.config/engineering-skills-router/` is yours to keep or delete; a target repo's `.router/` belongs to its runs.
+Claude Code may leave a copy of the plugin in `~/.claude/plugins/cache/engineering-skills-router/`, marked orphaned for its own cleanup; that folder belongs to this installation too. Then delete `$ROUTER` if you no longer want it. `~/.config/engineering-skills-router/` is yours to keep or delete; a target repo's `.router/` belongs to its runs.
 
 ### Alternatives
 
@@ -153,7 +153,7 @@ Plugin from GitHub without a clone, one-session `--plugin-dir`, `CLAUDE_CONFIG_D
 
 ### What has been verified
 
-Recorded in the #65 walkthrough: the commands above in a disposable configuration directory with a checkout path containing spaces (Claude Code 2.1.317, Node 25.2.1, git 2.30.1, macOS), including reruns, a conflicting entry, marketplace repointing and removal. Discovery of the skills in a live session, the panel, and a proposal-only run are still to be confirmed in an interactive session. CI covers the scripts and the adapters' automated tests ([CI](docs/reference.md#ci)).
+Recorded in the [installation walkthrough](evals/live/2026-11-04-claude-code-install.md) (Claude Code 2.1.318 CLI, Node 25.2.1, git 2.30.1, macOS): the commands above in a disposable `HOME` with a checkout path containing spaces, including reruns, conflicting entries, marketplace repointing, restoring pinned vendor commits, and removal. Live `claude -p` sessions then confirmed discovery of both skills and of the plugin's commands and tool, a proposal-only run that stopped at the workflow (no branch, commit or PR), and a paused workflow left intact by a new task. Those sessions used project-scoped skill links and a one-session `--plugin-dir` instead of steps 3–4, because a fresh configuration has no login; the record lists what was not exercised, notably the user-scope links and the panel drawn in an interactive session. CI covers the scripts and the adapters' automated tests ([CI](docs/reference.md#ci)).
 
 ## Install (Pi)
 
