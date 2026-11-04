@@ -1,6 +1,6 @@
 # Behavioral evaluation cases for skills/skill-selector. Proposal only: a run invokes the selector
 # on a case and grades its proposal; it never executes a proposed skill, an implementation or a
-# multi-runner arena. No case has been run yet (see `runs`).
+# multi-runner arena. Runs are recorded under `runs`.
 #
 # How to run one case
 #   1. Work in a scratch copy of this checkout (`cp -R`, vendors included) and a scratch target repo
@@ -179,4 +179,23 @@ cases:
         reason: a settled, simple change gets a single implementation
 
 # One entry per run: { case, date, model, effort, harness, result: pass | fail, notes }.
-runs: []
+runs:
+  # 2026-11-04 batch at router 963f533: skill file followed by path (disable-model-invocation), user config isolated
+  # (clone-local config replaced per case, XDG_CONFIG_HOME empty), tools Read/Grep/Glob/Bash (+Agent with subagents),
+  # writes denied; targets had no GitHub remote, issue text in ISSUE-<n>.md. Graded by check-selection, the target
+  # snapshot and a mechanical expect check, reasons read by hand. 15 cases, total USD 13.05 (harness-reported).
+  - { case: clear-fit-mattpocock, date: 2026-11-04, model: claude-opus-5-5, effort: medium, harness: "Claude Code 2.1.318, claude -p fresh session", result: pass, notes: "planning default mattpocock/to-tickets; reason names tracer-bullet slices, blocking edges and the GitHub tracker" }
+  - { case: clear-fit-pstack, date: 2026-11-04, model: claude-opus-5-5, effort: medium, harness: "Claude Code 2.1.318, claude -p fresh session", result: pass, notes: "independent-review default pstack/blast-radius; reason ties it to breakage outside the diff (YAML fixture, untyped cfg()) proven by running code" }
+  - { case: clear-fit-addyosmani, date: 2026-11-04, model: claude-opus-5-5, effort: medium, harness: "Claude Code 2.1.318, claude -p fresh session", result: pass, notes: "performance default addyosmani/performance-optimization; reason cites the LCP regression and measuring first" }
+  - { case: tie-review, date: 2026-11-04, model: claude-opus-5-5, effort: medium, harness: "Claude Code 2.1.318, claude -p fresh session", result: pass, notes: "review default mattpocock/code-review, alternative addyosmani/code-review-and-quality, named as a tie separated by the dedicated Spec axis vs a wider sweep" }
+  - { case: shuffled-vendor-order, date: 2026-11-04, model: claude-opus-5-5, effort: medium, harness: "Claude Code 2.1.318, claude -p fresh session", result: pass, notes: "same two general reviews in play as tie-review, same default; no reason cites vendor, catalog or listing order (tie field left null)" }
+  - { case: changed-legacy-rankings, date: 2026-11-04, model: claude-opus-5-5, effort: medium, harness: "Claude Code 2.1.318, claude -p fresh session", result: pass, notes: "review default mattpocock/code-review chosen on fit; rankings.yaml only acknowledged as the validator warning, not cited; typescript-best-practices stays an alternative" }
+  - { case: suitable-preference, date: 2026-11-04, model: claude-opus-5-5, effort: medium, harness: "Claude Code 2.1.318, claude -p fresh session", result: pass, notes: "review default addyosmani/code-review-and-quality; reason names the preference and why it fits the CSV-export review" }
+  - { case: unsuitable-preference, date: 2026-11-04, model: claude-opus-5-5, effort: medium, harness: "Claude Code 2.1.318, claude -p fresh session", result: pass, notes: "review default mattpocock/code-review; says the preferred pstack/typescript-best-practices does not fit a Python-only diff (its avoid_when) and keeps it out" }
+  - { case: missing-guide, date: 2026-11-04, model: claude-opus-5-5, effort: medium, harness: "Claude Code 2.1.318, claude -p fresh session", result: pass, notes: "reports pstack/poteto-help unavailable (path not found) as reduced evidence; still proposes pstack/blast-radius" }
+  - { case: no-usable-candidate, date: 2026-11-04, model: claude-opus-5-5, effort: medium, harness: "Claude Code 2.1.318, claude -p fresh session", result: pass, notes: "security reported missing: the only candidate is excluded in preferences.yaml; the excluded skill appears nowhere in the proposal" }
+  - { case: guide-names-unregistered-skill, date: 2026-11-04, model: claude-opus-5-5, effort: medium, harness: "Claude Code 2.1.318, claude -p fresh session", result: pass, notes: "planning default addyosmani/planning-and-task-breakdown; to-tickets listed as unregistered (named by mattpocock/ask-matt) and not proposed" }
+  - { case: understanding-before-change, date: 2026-11-04, model: claude-opus-5-5, effort: medium, harness: "Claude Code 2.1.318, claude -p fresh session", result: pass, notes: "code-understanding default pstack/how (alt pstack/why); reason is the callers relying on read-through expiry (pricing, session revocation)" }
+  - { case: arena-complex, date: 2026-11-04, model: claude-opus-5-5, effort: medium, harness: "Claude Code 2.1.318, claude -p fresh session", result: pass, notes: "implementation default mattpocock/implement; pstack/arena is the second alternative, its reason starting High cost with runners, judging, grafting and verification and the benefit of comparing CRDT vs LWW builds" }
+  - { case: arena-without-subagents, date: 2026-11-04, model: claude-opus-5-5, effort: medium, harness: "Claude Code 2.1.318, claude -p fresh session", result: pass, notes: "pstack/arena left out because the harness has no subagents with isolated outputs; an architecture candidate notes its internal arena would run in sequence (reduced independence)" }
+  - { case: arena-simple, date: 2026-11-04, model: claude-opus-5-5, effort: medium, harness: "Claude Code 2.1.318, claude -p fresh session", result: pass, notes: "implementation default mattpocock/implement, no arena; the settled one-file change gets a single implementation" }

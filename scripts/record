@@ -80,7 +80,8 @@ const record = {
     skill: s.skill ?? null,
     model: s.model ?? null,
     effort: s.effort ?? null,
-    status: s.status,
+    // The record is written as the pull-request step's last act, before the step is closed.
+    status: s.id === 'pull-request' && s.status === 'running' ? 'done' : s.status,
     tokens: null,
   })),
   session_model: flags['session-model'] || null,
