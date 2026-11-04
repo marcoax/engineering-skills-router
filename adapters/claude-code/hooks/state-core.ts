@@ -142,6 +142,22 @@ export function hiddenAtStart(state: State, prState?: string): boolean {
 	return !state.handoff.pr || prState === "MERGED" || prState === "CLOSED";
 }
 
+// An unfinished workflow found at session start may belong to another session, even one in
+// another harness: the state file records no owner. The adapter shows only `foreignLine`,
+// frozen at start, until this session takes the workflow up (`takesUpWorkflow`).
+export const isForeignAtStart = (state: State): boolean => !isClosed(state);
+
+export const foreignLine = (state: State, invocation: string): string =>
+	`router · ${state.status} elsewhere · ${state.task} — ${invocation} to resume`;
+
+// Whether a prompt typed in this session invokes the router (`/engineering-router` in Claude
+// Code, `/skill:engineering-router` in Pi, plugin-qualified or not), or a shell command the
+// agent runs changes the router state: either takes the workflow up in this session.
+const ROUTER_INVOCATION = /^\/(?:skill:)?(?:[\w.-]+:)?engineering-router(?:\s|$)/;
+const STATE_SCRIPT = /(?:^|[\s/"'])scripts\/state(?:[\s"']|$)/;
+export const invokesRouter = (text: string): boolean => ROUTER_INVOCATION.test(text.trimStart());
+export const runsStateScript = (command: string): boolean => STATE_SCRIPT.test(command);
+
 export function widgetLines(state: State, paint: Paint = plain): string[] {
 	const doneCount = state.steps.filter((s) => s.status === "done").length;
 	if (isClosed(state)) {

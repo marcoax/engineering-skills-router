@@ -1,4 +1,4 @@
-import { expect, test } from 'claude-code/testing'
+import { expect, mock, test } from 'claude-code/testing'
 
 import { planRun, resolveBackend } from './backends.ts'
 
@@ -335,5 +335,53 @@ test('codex keeps the text field and runs no list command', async ($, on) => {
   expect((await ui.find({ key: 'model' }))?.type).toBe('Input')
   expect(await ui.find({ type: 'Text', text: /Listing models…|No model list/ })).toBeFalsy()
   expect(runs).toEqual([])
+  await ui.unmount()
+})
+
+const BAND = { plugin: 'engineering-router-panel', component: 'AbovePrompt', props: { hasSurvey: false, isWorking: false } } as const
+
+// A session that starts with `text` as the state file; `write` changes the file afterwards.
+async function startWith($: any, on: any, text: string) {
+  let file = text
+  on('fs.read', () => ({ value: file }))
+  const clock = mock.clock(on)
+  on('command.register', () => ({ value: undefined }))
+  on('tool.register', () => ({ value: undefined }))
+  on('store.get', () => ({ value: undefined }))
+  on('session.start', (_: unknown, e: any) => e)
+  await $.session.start({ cwd: '/repo' } as any)
+  // Another session writes the file; the poll reads it a second later.
+  return async (next: string) => {
+    file = next
+    await clock.advance(1000)
+  }
+}
+
+const runningElsewhere = JSON.stringify({ version: 1, ...selecting, task: '#956 Admin SEO', status: 'running' })
+
+test('a workflow running at session start shows only a frozen line until /engineering-router', async ($, on) => {
+  on('prompt.submit', (_: unknown, e: any) => ({ text: e.text }))
+  const write = await startWith($, on, runningElsewhere)
+  await write(runningElsewhere.replace('"status":"pending"', '"status":"done"'))
+  const ui = await $.ui.mount({ ...BAND, surface: 'terminal' } as any)
+  const line = 'router · running elsewhere · #956 Admin SEO — /engineering-router to resume'
+  expect(await ui.find({ type: 'Text', text: line })).toBeTruthy()
+  expect(await ui.find({ type: 'Text', text: /1\. specification/ })).toBeFalsy()
+  await ui.unmount()
+
+  await $.prompt.submit({ text: '/engineering-router' } as any)
+  const after = await $.ui.mount({ ...BAND, surface: 'terminal' } as any)
+  expect(await after.find({ type: 'Text', text: /1\. specification/ })).toBeTruthy()
+  expect(await after.find({ type: 'Text', text: /elsewhere/ })).toBeFalsy()
+  await after.unmount()
+})
+
+test('/router-panel takes up a workflow found running at session start', async ($, on) => {
+  on('ui.panes', () => ({ value: [] }))
+  on('ui.open', () => ({ value: { isPlaced: true } }))
+  await startWith($, on, runningElsewhere)
+  await $.command.run({ command: 'router-panel' } as any)
+  const ui = await $.ui.mount({ ...BAND, surface: 'terminal' } as any)
+  expect(await ui.find({ type: 'Text', text: /1\. specification/ })).toBeTruthy()
   await ui.unmount()
 })

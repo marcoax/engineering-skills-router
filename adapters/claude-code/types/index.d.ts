@@ -73,6 +73,9 @@ declare module 'claude-code' {
       confirmStop: boolean
       // A finished workflow found at session start stays hidden until a new one begins.
       isHidden: boolean
+      // The frozen line shown in place of an unfinished workflow found at session start,
+      // until this session takes it up; null otherwise.
+      foreign: string | null
     }
   }
 }
