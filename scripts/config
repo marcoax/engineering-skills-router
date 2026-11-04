@@ -1,5 +1,6 @@
 #!/usr/bin/env node
-// Usage: scripts/config                 which user configuration is in effect, and where
+// Usage: scripts/config                 which user configuration is in effect, and where, and
+//                                       whether the vendor update check is due (update-check:)
 //        scripts/config migrate         show how clone-local config/ would move outside the checkout
 //        scripts/config migrate --yes   move it: validate first, never overwrite, originals kept on failure
 // Policy (docs/configuration.md): $ENGINEERING_ROUTER_CONFIG, else $XDG_CONFIG_HOME/engineering-skills-router
@@ -22,6 +23,19 @@ const SOURCES = {
 };
 const present = (file) => (fs.existsSync(file) ? file : `${file} (none)`);
 
+// Whether the vendor update check is due (SKILL.md §0): `update_check_days` (default 14, 0 = off)
+// since the date scripts/update records in the checkout's config/.last-update-check (none = never).
+// Due is a note for the workflow proposal, never a question at startup.
+const LAST_CHECK = path.join(Catalog.ROOT, 'config/.last-update-check');
+function updateCheck(prefs) {
+  const days = Number.isInteger(prefs.update_check_days) && prefs.update_check_days >= 0 ? prefs.update_check_days : 14;
+  if (days === 0) return 'off (update_check_days: 0)';
+  const text = fs.existsSync(LAST_CHECK) ? fs.readFileSync(LAST_CHECK, 'utf8').trim() : '';
+  const last = /^\d{4}-\d{2}-\d{2}$/.test(text) ? Date.parse(`${text}T00:00:00Z`) : NaN;
+  const since = `last checked ${Number.isNaN(last) ? 'never' : text}, every ${days} days`;
+  return Number.isNaN(last) || Date.now() - last >= days * 86400000 ? `due (${since}): scripts/update` : `not due (${since})`;
+}
+
 if (args.length === 0) {
   console.log(`source: ${cfg.source} (${SOURCES[cfg.source]})`);
   console.log(`directory: ${cfg.dir}`);
@@ -30,6 +44,7 @@ if (args.length === 0) {
   console.log(`relative personal_path base: ${cfg.base}`);
   cfg.shadowed.forEach((f) => console.log(`ignored: ${f} (the ${cfg.source} configuration is used instead)`));
   const errors = [...cfg.problems, ...Catalog.configErrors(cfg)];
+  if (errors.length === 0) console.log(`update-check: ${updateCheck(Catalog.preferences(cfg))}`);
   errors.forEach((p) => console.log(`error: ${p}`));
   process.exit(errors.length === 0 ? 0 : 1);
 }
