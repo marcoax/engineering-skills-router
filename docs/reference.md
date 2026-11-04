@@ -6,7 +6,7 @@ For working on the router itself or its catalog. Install and use: the [README](.
 
 | Path | What |
 |---|---|
-| `skills/engineering-router/SKILL.md` | the router skill: what every run needs; the files beside it (`light.md`, `review-2.md`, `after-implementation.md`, …) are read only when a run reaches them |
+| `skills/engineering-router/SKILL.md` | the router skill: what every run needs; the files beside it (`light.md`, `cross-family-review.md`, `after-implementation.md`, …) are read only when a run reaches them |
 | `skills/skill-selector/SKILL.md` | the selector skill: a read-only proposal of which skill fits each phase of a task, consulting the vendor guides, with vendors on equal standing |
 | `skills/*/resolve-root.js` | finds the router checkout a skill works from; identical in both skills |
 | `evals/skill-selector/cases.yaml` | behavioral evaluation cases for the selector, with the model and effort to record per run |
@@ -19,7 +19,7 @@ For working on the router itself or its catalog. Install and use: the [README](.
 | `config/personal-skills.example.yaml` | template for your own skills (`personal-skills.yaml` beside it) |
 | `adapters/pi/` | Pi extension: workflow widget and panel from `.router/state.json`, and the `router_primary` select menu for the primary question |
 | `vendors/` | git submodules, never edited |
-| `adapters/claude-code/` | Claude Code plugin: workflow band and panes, review 2 on another family ([claude-code.md](claude-code.md)) |
+| `adapters/claude-code/` | Claude Code plugin: workflow band and panes, cross-family reviews through Codex or opencode ([claude-code.md](claude-code.md)) |
 | `.claude-plugin/marketplace.json` | makes the repo a Claude Code marketplace for that plugin |
 | `skills/engineering-router/run-record.md` | the run record each PR carries, read by `scripts/stats` |
 | `.github/workflows/checks.yml` | CI: the repo's checks on every PR and push to `master` ([CI](#ci)) |
@@ -78,7 +78,7 @@ The `checks` workflow (job **catalog, selftest, adapters** on the PR) runs on ev
 4. `scripts/selftest`: scratch catalogs, scratch target repos and state files, then the Pi adapter tests (they run there only, not a second time);
 5. `claude plugin test adapters/claude-code`: the Claude Code adapter tests, run by the Claude Code CLI version pinned in the workflow (`CLAUDE_CODE_VERSION`, installed from npm; bump it deliberately). The command exits non-zero when a test fails or when it finds no tests, so the step cannot pass without running them.
 
-The job reads no user configuration (`config/` or the external directory, [configuration.md](configuration.md)), user-level agent folder or provider credential, and calls no model: the adapter tests replace the session, tools and processes with the harness's fakes. A green run covers the scripts and both adapters' automated tests. It is not live acceptance: discovering the router in a real Pi or Claude Code session, drawing the band and pane, and running review 2 through Codex or opencode still need a check in an interactive session.
+The job reads no user configuration (`config/` or the external directory, [configuration.md](configuration.md)), user-level agent folder or provider credential, and calls no model: the adapter tests replace the session, tools and processes with the harness's fakes. A green run covers the scripts and both adapters' automated tests. It is not live acceptance: discovering the router in a real Pi or Claude Code session, drawing the band and pane, and running a cross-family review through Codex or opencode still need a check in an interactive session.
 
 The local pre-commit hook is unchanged; CI repeats the checks for contributors who have not installed it or bypassed it.
 

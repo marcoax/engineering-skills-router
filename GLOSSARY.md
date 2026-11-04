@@ -39,3 +39,7 @@ _Avoid_: model picker
 **Agent record**:
 A step's own statement of which agent ran it, on which harness, model and effort. When present, it is the authority on the step model.
 _Avoid_: agent line, attribution
+
+**Cross-family review**:
+A code review run by a model of the family opposite to the one that wrote the code under review (the implementation or its fixes). A review on the same family, where the other is unreachable, is a **same-family review** and is never called cross-family.
+_Avoid_: review 1, review 2, second review, covered review

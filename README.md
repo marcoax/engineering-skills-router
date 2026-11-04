@@ -19,7 +19,7 @@ In a Claude Code session opened on the repo the ticket is about:
 ```
 
 1. **Proposal.** The router reads the issue (`gh`) and the code it touches, records the task's type, risk, size and properties with a reason each, and has the [skill selector](skills/skill-selector/SKILL.md) pick one skill per phase (default plus up to two alternatives, with reasons). It shows the workflow and waits. A low-risk task gets no workflow: the router offers to do it directly. A medium-risk ticket of low complexity is proposed the short **light** path (implementation, a fresh review, PR), with `full` one reply away.
-2. **One approval.** You swap skills, switch optional steps (a second review on another model family, a comparison of both) on or off, and answer `go` once. A spec file works the same way: `/engineering-router docs/specs/export.md`.
+2. **One approval.** You swap skills, switch optional steps (an independent review at high risk, agent verification of the checklist) on or off, and answer `go` once. A spec file works the same way: `/engineering-router docs/specs/export.md`.
 3. **Progress.** The router runs the steps in order (branch, implementation, tests, reviews, in-scope fixes, commits, push) and reports progress as it goes, without asking to continue after each step.
 4. **Exceptions only.** It stops for an unresolved decision, a scope or risk change, a missing prerequisite or credential, a reproducible blocker, or a checkpoint you asked for. `pause` and `stop` work at any time; `/engineering-router` with no task resumes an unfinished workflow.
 5. **Stopping point.** It ends with the PR open, carrying a short manual checklist and a hidden run record. Merge and deployment need your separate authorization.
@@ -51,7 +51,7 @@ One checkout on your disk serves both the skills and the panel plugin, so they a
 | `skill-selector` skill | the read-only selector, `/skill-selector <task>` | optional (the router reads it from the checkout either way) |
 | `engineering-router-panel` plugin | a mod: workflow band and pane, `/router-panel`, `/router-models`, the `review_other_family` tool | optional |
 
-**Prerequisites:** git, Node 22.18 or later with npm, Claude Code (CLI; the panel also runs in the Desktop app's Code tab and the VS Code extension, not verified here). Optional: `gh`, logged in, to publish issues and open PRs; Codex or opencode, logged in with a model you can use, only if you want review 2 on another family. The router works without either.
+**Prerequisites:** git, Node 22.18 or later with npm, Claude Code (CLI; the panel also runs in the Desktop app's Code tab and the VS Code extension, not verified here). Optional: `gh`, logged in, to publish issues and open PRs; Codex or opencode, logged in with a model you can use, for the cross-family reviews. Without either the router still works, but it asks once per run to run the reviews as same-family reviews, marked as not independent.
 
 ### Steps
 
@@ -116,7 +116,7 @@ In a Claude Code session:
 
 - type `/engineering-` and `/skill-`: `/engineering-router` and `/skill-selector` appear in the menu (`/skills` lists them too);
 - with the plugin: `/plugin` shows `engineering-router-panel` on the Installed tab, and `/router-panel` toggles the pane;
-- review 2 backend, separately and only if you want it: ask Claude to call `review_other_family` **without a prompt**, with the model from your preferences (`models.openai`, e.g. `openai-codex/<model>`) or after picking one in `/router-models`. It only checks that the backend's CLI is installed and prints `available: …` or why not; it starts no review, and it does not check that your account can use that model. `codex --version` / `opencode --version` in a terminal says the same without Claude Code.
+- cross-family review backend, separately and only if you want it: ask Claude to call `review_other_family` **without a prompt**, with the model from your preferences (`models.openai`, e.g. `openai-codex/<model>`) or after picking one in `/router-models`. It only checks that the backend's CLI is installed and prints `available: …` or why not; it starts no review, and it does not check that your account can use that model. `codex --version` / `opencode --version` in a terminal says the same without Claude Code.
 
 A harmless first run: in a scratch git repo, write a short spec file (e.g. "add a CSV export endpoint with tests"), run `/engineering-router <spec path>`, read the workflow it proposes, and answer `stop`. Up to that point the router only reads, and writes `.router/state.json` there; when the vendor update check is due, the workflow carries an `Updates:` note instead of a question (`update_check_days: 0` in your preferences turns it off). Use a repo with no unfinished workflow: in one that has one (running, waiting, paused or stopped), the router asks whether to resume or discard it and leaves it as it is until you answer. A workflow only shown and never approved does not count: a new task replaces it.
 

@@ -58,7 +58,7 @@ declare module 'claude-code' {
 
   interface PluginState {
     'engineering-router-panel': {
-      // The last review 2 run on another model family; null before the first.
+      // The last cross-family review run; null before the first.
       review: RouterReview | null
       // Backend, model and effort picked in /router-models; mirrors $.store 'review-choice'.
       choice: RouterReviewChoice

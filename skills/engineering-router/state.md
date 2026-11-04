@@ -72,7 +72,7 @@ The router writes this file in the **target repo** during a workflow so that ada
       "phases": ["implementation"],
       "skill": "mattpocock/implement",
       "reason": "one spec, implemented in this session",
-      "summary": "Build the CSV export test-first, then run review 1",
+      "summary": "Build the CSV export test-first, without the review implement runs inside",
       "alternatives": [],
       "confirm": false,
       "covered_by": null,
@@ -82,19 +82,33 @@ The router writes this file in the **target repo** during a workflow so that ada
       "outcome": null
     },
     {
-      "id": "review-1",
-      "phases": ["review"],
-      "skill": "mattpocock/code-review",
+      "id": "testing",
+      "phases": ["testing"],
+      "skill": "mattpocock/tdd",
       "reason": "runs inside implement",
-      "summary": "Standards and spec review since the base commit",
+      "summary": "Red-green-refactor for the export",
       "alternatives": [],
       "confirm": false,
       "covered_by": "implementation",
       "selected": {
-        "skill": "addyosmani/code-review-and-quality",
-        "reason": "five review axes fit a user-facing export",
-        "alternatives": [{ "skill": "mattpocock/code-review", "reason": "standards and spec axes" }]
+        "skill": "addyosmani/test-driven-development",
+        "reason": "test-first with a prove-it pattern for the export",
+        "alternatives": [{ "skill": "mattpocock/tdd", "reason": "vertical red-green slices" }]
       },
+      "model": null,
+      "effort": null,
+      "status": "pending",
+      "outcome": null
+    },
+    {
+      "id": "review",
+      "phases": ["review"],
+      "skill": "addyosmani/code-review-and-quality",
+      "reason": "five review axes fit a user-facing export",
+      "summary": "Cross-family review of the diff since the base commit",
+      "alternatives": [{ "skill": "mattpocock/code-review", "reason": "standards and spec axes" }],
+      "confirm": false,
+      "covered_by": null,
       "model": null,
       "effort": null,
       "status": "pending",
@@ -121,7 +135,7 @@ The router writes this file in the **target repo** during a workflow so that ada
 | `type` | string | Task type from the classification (`feature`, `bug`, …). |
 | `risk` | `"low"` \| `"medium"` \| `"high"` | A low-risk task gets a workflow only when the user asks for one anyway (it then runs as at medium risk). |
 | `complexity` (optional) | `"low"` \| `"medium"` \| `"high"` | Task size from the classification, matched against each skill's catalog `complexity`. |
-| `path` (optional) | `"light"` \| `"full"` | Light: a ticket of low risk (or medium risk and low complexity) run as branch → implementation → independent review 1 → [security] → [framework-review] → pull request; full: every other workflow. |
+| `path` (optional) | `"light"` \| `"full"` | Light: a ticket of low risk (or medium risk and low complexity) run as branch → implementation → cross-family review → [security] → [framework-review] → pull request; full: every other workflow. |
 | `properties` | string[] | Task properties from the classification; may be empty. |
 | `classification` (optional) | Classification \| null | How `type`, `risk` and `complexity` were assigned, under which policy ([classification.md](classification.md)); `null` in a state written before it. |
 | `primary` (optional) | `"claude"` \| `"openai"` | The run's primary model family ([models.md](models.md)). A state without it gets the preferences' `primary` on its next write by `scripts/state`. |
@@ -165,8 +179,8 @@ Checked by `scripts/check-classification` and by `scripts/state … compose`. A 
 
 | Field | Type | Meaning |
 |---|---|---|
-| `id` | string | Unique, stable within the workflow. Usually the phase name; router steps use `branch`, `review-1`, `review-2`, `comparison`, `verification`, `pull-request`. |
-| `phases` | string[] | Catalog categories this step fills; empty for router steps without a phase (`branch`, `comparison`). |
+| `id` | string | Unique, stable within the workflow. Usually the phase name; router steps use `branch`, `verification`, `pull-request`; the general review is `review`. States written before [ADR 0001](../../docs/adr/0001-single-cross-family-review.md) may hold `review-1`, `review-2` and `comparison`. |
+| `phases` | string[] | Catalog categories this step fills; empty for router steps without a phase (`branch`, `verification`). |
 | `skill` | string \| null | Chosen catalog id (`source/name`); `null` when the router does the step itself. |
 | `reason` | string | One line: why this skill (or step) was chosen. A `cost: high` skill's reason starts "High cost", as an alternative too, so a swap carries it. |
 | `summary` | string | One line: what the step does for this task. |
@@ -175,8 +189,8 @@ Checked by `scripts/check-classification` and by `scripts/state … compose`. A 
 | `cost` (optional) | string \| null | The selector's cost note for the step (arena's **High cost** included); `null` when it gave none. |
 | `tie` (optional) | string \| null | The selector's tie: the skills it judged equivalent for the step and what separates them; `null` when there is none. |
 | `confirm` | boolean | Whether the router pauses before this step. Defaults to `false`; use `true` for an explicit user checkpoint and record the request in its reason or step note ([autonomy.md](autonomy.md)). |
-| `optional` (optional) | boolean | `true` when the user may switch the step on and off during selection (review 2, comparison, independent-review, verification). An optional step that is off is `skipped` with outcome `off (optional)`; switching it on sets `pending`. |
-| `covered_by` | string \| null | `id` of the step whose skill runs this one internally (e.g. review 1 inside implementation). |
+| `optional` (optional) | boolean | `true` when the user may switch the step on and off during selection (independent-review, verification). An optional step that is off is `skipped` with outcome `off (optional)`; switching it on sets `pending`. |
+| `covered_by` | string \| null | `id` of the step whose skill runs this one internally (e.g. testing inside implementation). Never set for a review step: a review runs on its own. |
 | `selected` (optional) | Selection \| null | The selector's own pick for a covered step, kept while `skill` holds the skill its covering step runs; restored when a swap leaves the step to run on its own. `null` for a step that is not covered. |
 | `model` | string \| null | The **step model**: the model the step actually ran on, for every step that ran (`running`, `waiting`, `done`, `failed`, or `skipped` after running). Precedence: agent record, then the model passed to the step's subagent (or `review_other_family`'s backend), then the session's model; full rules in [models.md](models.md). Recorded as the source names it (`claude-bridge/claude-opus-5-5` and `claude-opus-5-5` may both appear), no spaces. `null` only for a step that did not run. |
 | `effort` (optional) | `"low"` \| `"medium"` \| `"high"` \| null | The step's effort, from the agent record or the one passed to the step ([models.md](models.md)); `null` when neither names one (the harness default). Never taken from the session. |
@@ -210,5 +224,5 @@ Step `status`:
 | `spec` (optional) | string \| null | Spec file, relative to the target repo; set when the workflow has no issue. |
 | `tickets` | `{number, url}[]` | Tickets published from the spec. |
 | `branch` | string \| null | Work branch, `<issue-number>-<slug>`, or `<slug>` without an issue. |
-| `base_commit` | string \| null | `git rev-parse HEAD` just before implementation; the fixed point for both reviews. |
+| `base_commit` | string \| null | `git rev-parse HEAD` just before implementation; the fixed point for every review. |
 | `pr` | `{number, url}` \| null | Opened pull request. |

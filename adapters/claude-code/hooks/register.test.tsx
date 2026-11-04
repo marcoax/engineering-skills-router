@@ -139,7 +139,7 @@ test('the backend comes from the model prefix, and the pane choice wins', async 
 
 const TOOL = 'mcp__engineering-router-panel__review_other_family'
 
-test('review 2 runs codex read-only and returns its stdout', async ($, on) => {
+test('a cross-family review runs codex read-only and returns its stdout', async ($, on) => {
   seed(null, on)
   const argvs: string[][] = []
   const opened: any[] = []
@@ -172,7 +172,7 @@ test('review 2 runs codex read-only and returns its stdout', async ($, on) => {
   expect(opened.find(p => p.id === 'review')?.columns).toBeGreaterThanOrEqual(60)
 })
 
-test('review 2 without a prompt checks the CLI and answers "available" as text', async ($, on) => {
+test('a cross-family review without a prompt checks the CLI and answers "available" as text', async ($, on) => {
   seed(null, on)
   const runs: string[][] = []
   on('process.run', (_: unknown, e: any) => {
@@ -187,7 +187,7 @@ test('review 2 without a prompt checks the CLI and answers "available" as text',
   expect(ran.isError).toBe(undefined)
 })
 
-test('review 2 reports a failing CLI as an error with readable text', async ($, on) => {
+test('a cross-family review reports a failing CLI as an error with readable text', async ($, on) => {
   seed(null, on)
   on('process.run', () => ({ value: { exitCode: 2, stdout: '', stderr: 'not logged in\n' } }))
 

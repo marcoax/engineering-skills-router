@@ -18,11 +18,48 @@ function phaseFamily(phases, state, prefs) {
   return FAMILIES.includes(override) ? override : runPrimary(state, prefs);
 }
 
-// A step's family: review 2 runs on the family opposite to review 1's.
+// Phases of a step that reviews code, and of a step that writes it (ADR 0001).
+const REVIEW_PHASES = ['review', 'framework-review', 'security', 'independent-review'];
+const WRITING_PHASES = ['implementation', 'refactoring', 'debugging', 'performance'];
+const has = (step, list) => (step?.phases ?? []).some((p) => list.includes(p));
+
+// The family a recorded model ID belongs to: one of the preferences' models, else by its name;
+// null when it names neither.
+function modelFamily(id, prefs) {
+  if (typeof id !== 'string' || !id) return null;
+  const bare = (m) => m.split('/').pop();
+  const exact = FAMILIES.find((f) => bare(familyModel(f, prefs)) === bare(id));
+  if (exact) return exact;
+  if (/claude|opus|sonnet|haiku/i.test(id)) return 'claude';
+  if (/gpt|codex|openai/i.test(id)) return 'openai';
+  return null;
+}
+
+// The family a writing step runs on: the one it actually ran on once its model is recorded,
+// else its first phase's `model`, else the run's primary.
+const writerFamily = (writer, state, prefs) =>
+  modelFamily(writer?.model, prefs) ?? phaseFamily(writer?.phases ?? ['implementation'], state, prefs);
+
+// A step's family. A review step (review, framework-review, security, independent-review) is a
+// cross-family review: it runs on the family opposite to the last earlier step that wrote the
+// code, whatever a phase's `model` says. Every other step: its first phase's `model`, else the
+// run's primary.
 function stepFamily(state, step, prefs) {
-  if (step.id !== 'review-2') return phaseFamily(step.phases, state, prefs);
-  const review1 = state.steps.find((s) => s.id === 'review-1');
-  return other(phaseFamily(review1?.phases ?? ['review'], state, prefs));
+  if (!has(step, REVIEW_PHASES) || has(step, WRITING_PHASES)) return phaseFamily(step.phases, state, prefs);
+  const at = state.steps.indexOf(step);
+  const writer = state.steps.slice(0, at < 0 ? state.steps.length : at).reverse().find((s) => has(s, WRITING_PHASES));
+  return other(writerFamily(writer, state, prefs));
+}
+
+// For a review step that ran: true when it ran on a family other than the step that wrote the
+// code, false for a same-family review, null when either family is unknown. Not a review: null.
+function crossFamily(state, step, prefs) {
+  if (!has(step, REVIEW_PHASES) || has(step, WRITING_PHASES) || !step.model) return null;
+  const at = state.steps.indexOf(step);
+  const writer = state.steps.slice(0, at).reverse().find((s) => has(s, WRITING_PHASES));
+  const reviewer = modelFamily(step.model, prefs);
+  const wrote = modelFamily(writer?.model, prefs);
+  return reviewer && wrote ? reviewer !== wrote : null;
 }
 
 const stepModel = (state, step, prefs) => familyModel(stepFamily(state, step, prefs), prefs);
@@ -53,4 +90,4 @@ function primaryAnswer(state, prefs, answer) {
   return (options.find((o) => o.family === answer) ?? options[Number(answer) - 1])?.family ?? null;
 }
 
-module.exports = { FAMILIES, presetPrimary, preferredPrimary, primaryPreset, runPrimary, stepFamily, stepModel, modelsLine, primaryOptions, primaryQuestion, primaryAnswer };
+module.exports = { FAMILIES, REVIEW_PHASES, modelFamily, crossFamily, presetPrimary, preferredPrimary, primaryPreset, runPrimary, stepFamily, stepModel, modelsLine, primaryOptions, primaryQuestion, primaryAnswer };

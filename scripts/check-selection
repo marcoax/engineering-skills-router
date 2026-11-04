@@ -12,8 +12,7 @@
 // {
 //   "phases":  [{ "phase": "review", "reason": "...", "default": { "skill": "<id>", "reason": "..." },
 //                 "alternatives": [{ "skill": "<id>", "reason": "..." }],
-//                 "prerequisites": ["..."], "cost": "..." | null, "tie": "..." | null },
-//               { "phase": "review", "step": "review-2", ... }],   review 2's own selection
+//                 "prerequisites": ["..."], "cost": "..." | null, "tie": "..." | null }],
 //   "omitted": [{ "phase": "planning", "reason": "..." }],
 //   "missing": [{ "phase": "release", "reason": "..." }],
 //   "capabilities": ["subagents", "isolated-outputs"]   the harness's, as the selector recorded them
@@ -54,35 +53,27 @@ const omitted = Catalog.arr(selection.omitted);
 const { capabilities } = selection;
 if (capabilities !== undefined && !isStrings(capabilities)) errors.push('capabilities must be a list of strings');
 
-// Steps that hold a second selection for a phase: review 2 is chosen on its own, so it keeps a
-// default and alternatives (and a swap slot) of its own.
-const STEPS = { 'review-2': 'review' };
 const isNote = (v) => v == null || typeof v === 'string';
 const selected = new Set();
 for (const p of phases) {
   const name = p?.phase;
   if (!Object.hasOwn(categories, name)) { errors.push(`${name}: unknown phase`); continue; }
-  if (p.step != null && STEPS[p.step] !== name) {
-    errors.push(`${name}: step ${p.step} ${Object.hasOwn(STEPS, p.step) ? `belongs to the ${STEPS[p.step]} phase` : 'is not a step with its own selection'}`);
-    continue;
-  }
-  const entry = p.step ?? name;
-  if (selected.has(entry)) errors.push(`${entry}: selected twice${name === 'review' ? ' (a second review is its own entry with "step": "review-2")' : ''}`);
-  selected.add(entry);
-  if (!hasReason(p)) errors.push(`${entry}: needs a reason`);
+  // Each phase has one selection: there is no second review (ADR 0001).
+  if (p.step != null) { errors.push(`${name}: step ${p.step}: a phase has one selection, with no step of its own`); continue; }
+  if (selected.has(name)) errors.push(`${name}: selected twice`);
+  selected.add(name);
+  if (!hasReason(p)) errors.push(`${name}: needs a reason`);
   if (missing.some((m) => m?.phase === name)) errors.push(`${name}: both selected and missing`);
   if (omitted.some((m) => m?.phase === name)) errors.push(`${name}: both selected and omitted`);
-  if (p.prerequisites !== undefined && !isStrings(p.prerequisites)) errors.push(`${entry}: prerequisites must be a list of strings`);
-  for (const key of ['cost', 'tie']) if (!isNote(p[key])) errors.push(`${entry}: ${key} must be a string or null`);
-  if (!p.default) { errors.push(`${entry}: needs a default (or list the phase under missing)`); continue; }
+  if (p.prerequisites !== undefined && !isStrings(p.prerequisites)) errors.push(`${name}: prerequisites must be a list of strings`);
+  for (const key of ['cost', 'tie']) if (!isNote(p[key])) errors.push(`${name}: ${key} must be a string or null`);
+  if (!p.default) { errors.push(`${name}: needs a default (or list the phase under missing)`); continue; }
   const alternatives = Catalog.arr(p.alternatives);
-  if (alternatives.length > 2) errors.push(`${entry}: at most two alternatives`);
-  const first = p.step && phases.find((q) => q?.phase === name && q.step == null)?.default?.skill;
-  if (first && p.default.skill === first) errors.push(`${entry}: default ${first}: same as ${name} 1's`);
+  if (alternatives.length > 2) errors.push(`${name}: at most two alternatives`);
   const seen = new Set();
   for (const [role, pick] of [['default', p.default], ...alternatives.map((a) => ['alternative', a])]) {
     const id = pick?.skill;
-    const where = `${entry}: ${role} ${id}`;
+    const where = `${name}: ${role} ${id}`;
     if (seen.has(id)) errors.push(`${where}: repeats another pick`);
     seen.add(id);
     if (!hasReason(pick)) errors.push(`${where}: needs a reason`);
