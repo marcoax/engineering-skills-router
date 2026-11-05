@@ -2054,11 +2054,12 @@ fs.statSync = function (p, ...a) { const r = statSync.call(this, p, ...a); if (S
     fs.mkdirSync(path.dirname(path.join(repo, f)), { recursive: true });
     fs.writeFileSync(path.join(repo, f), text);
   };
-  g('init', '-q', '-b', 'export');
+  // Git clients may use an empty template, which creates no .git/info directory.
+  g('init', '-q', '--template=', '-b', 'export');
   put('src/export.js', 'v1');
   put('test/export.test.js', 't1');
   put('README.md', 'r1');
-  fs.writeFileSync(path.join(repo, '.git/info/exclude'), '.router/\n');
+  put('.git/info/exclude', '.router/\n');
   g('add', '.');
   g('commit', '-qm', 'base');
   const stateFile = path.join(repo, '.router/state.json');
