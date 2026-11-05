@@ -25,7 +25,7 @@ The model a step actually ran on. Every step that ran has one; only a step that 
 _Avoid_: session model (for a step), default model
 
 **Step result**:
-What a delegated step delivers: a JSON object naming the step and its attempt, a verdict (`done`, `fixes` or `blocked`) and the artifacts the step declared. Only an accepted step result lets the step close or the workflow move past it.
+What a delegated step delivers: a JSON object naming the step and its attempt, a verdict (`done`, `fixes` or `blocked`) and the artifacts the step declared. Only an accepted step result lets the step close or the workflow move past it; a skill step that ran in the main session says so with `--main-session`.
 _Avoid_: ready marker, completion phrase
 
 **Step boundary**:
@@ -37,11 +37,11 @@ One execution of a workflow, from `compose --new` to its end, identified by `run
 _Avoid_: session (a run can outlive one)
 
 **Owner**:
-The one session that may change a run's state (`owner.session`), enforced by `scripts/state`. It changes only through `claim` (no owner yet) or an explicit `takeover` ([ADR 0002](docs/adr/0002-workflow-ownership.md)).
+The one session that may change a run's state (`owner.session`), enforced by `scripts/state`. It changes only through `claim` (no owner yet) or an explicit `takeover --previous-closed` ([ADR 0002](docs/adr/0002-workflow-ownership.md)).
 _Avoid_: lock holder (the lock lasts one command)
 
 **Progress record**:
-What a running step has saved so far: work done, next work, limits, the checkout it saw and the checks it ran, each tied to the content of its scope ([ADR 0003](docs/adr/0003-progress-records.md)). `recover` reads it back after an interruption.
+What a running step has saved so far: work done, next work, limits, the checkout it saw and the checks it ran, each tied to the content of its scope ([ADR 0003](docs/adr/0003-progress-records.md)). `recover --env` reads it back after an interruption. A step interrupted and not yet resumed is a **recoverable error**: neither active work, nor waiting for a decision, nor done.
 _Avoid_: checkpoint (an explicit user checkpoint is a pause), snapshot
 
 **Interrupted step**:

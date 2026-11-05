@@ -21,6 +21,7 @@ import {
   STATE_FILE,
   symbol,
   widgetLines,
+  workflowLabel,
 } from './state-core.ts'
 import type { Choice } from './state-core.ts'
 import { asChoice, BACKENDS, backendNamed, parseModelList, planRun } from './backends.ts'
@@ -479,7 +480,7 @@ export const register: Register = on => {
         {shown.map(line => (
           <Text>{line}</Text>
         ))}
-        <Text dimColor>{KEYS[s.status] ? `${symbol(s.status)} ${s.status}` : s.status}</Text>
+        <Text dimColor>{KEYS[s.status] ? `${symbol(s.status)} ${workflowLabel(s)}` : workflowLabel(s)}</Text>
         <Box>
           {isChoosing && (
             <Button key="go" hotkey="g" variant="primary" onPress={press(() => send({ kind: 'go' }))}>

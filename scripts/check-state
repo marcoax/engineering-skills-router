@@ -3,6 +3,7 @@
 // Exits 1 on errors. Does not check that skills are in the catalog (that varies per machine).
 const fs = require('node:fs');
 const path = require('node:path');
+const { CLOSED } = require('./lib/state-ops');
 
 const ROOT = path.resolve(__dirname, '..');
 const STATE_FILE = '.router/state.json';
@@ -172,7 +173,7 @@ steps.forEach((s, i) => {
       altSkills.add(a.skill);
     });
   }
-  if (['done', 'skipped', 'failed'].includes(s.status) && !(isStr(s.outcome) && s.outcome.trim()))
+  if (CLOSED.includes(s.status) && !(isStr(s.outcome) && s.outcome.trim()))
     errors.push(`${where}.outcome: required when status is ${s.status}`);
 });
 // Several steps may run at once (a covered step runs alongside its covering step). Between two
@@ -194,7 +195,7 @@ steps.forEach((s, i) => {
 
 // A step that owes a delivery (step-result.md) closes as done only on an accepted done verdict
 // carrying every artifact it declared.
-const ARTIFACT_KINDS = ['note', 'findings', 'pr-body'];
+const ARTIFACT_KINDS = require('./lib/step-result').KINDS;
 steps.forEach((s, i) => {
   const r = isObj(s) ? s.result : null;
   if (!isObj(r)) return;

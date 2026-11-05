@@ -73,6 +73,27 @@ test("widget: one line per step, router and covered labels", () => {
 	assert.equal(lines[5], "○ 5. review  addyosmani/code-review-and-quality");
 });
 
+// A running step stopped by a timeout or quota (state.md Progress) is a recoverable error, not
+// active work: its record says so until the step saves progress again.
+const interrupted = () => {
+	const s = example();
+	s.steps[2].progress = { ...(s.steps[2].progress ?? {}), interrupted: { reason: "quota", at: "2026-10-17T09:30:00Z" } };
+	return s;
+};
+
+test("an interrupted step shows as a recoverable error, not active work", () => {
+	const s = parsed(interrupted());
+	assert.deepEqual(s.steps[2].interrupted, { reason: "quota", at: "2026-10-17T09:30:00Z" });
+	assert.equal(parsed(example()).steps[2].interrupted, null);
+	const lines = widgetLines(s);
+	assert.equal(lines[0], "router · recoverable error · step 3 implementation interrupted (quota) · Add CSV export to the reports page");
+	assert.equal(lines[3], "↻ 3. implementation  mattpocock/implement");
+	const details = detailLines(s).lines.join("\n");
+	assert.ok(details.includes("recoverable error"), details);
+	assert.ok(details.includes("     interrupted (quota): recoverable error, resumes from its progress record"), details);
+	assert.ok(!detailLines(parsed(example())).lines.join("\n").includes("interrupted"));
+});
+
 test("widget: one line once the workflow is closed", () => {
 	const done = example();
 	done.status = "done";

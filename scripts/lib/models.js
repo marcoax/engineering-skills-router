@@ -19,7 +19,7 @@ function phaseFamily(phases, state, prefs) {
 }
 
 // Phases of a step that reviews code, and of a step that writes it (ADR 0001).
-const REVIEW_PHASES = ['review', 'framework-review', 'security', 'independent-review'];
+const { REVIEW_PHASES } = require('./state-ops');
 const WRITING_PHASES = ['implementation', 'refactoring', 'debugging', 'performance'];
 const has = (step, list) => (step?.phases ?? []).some((p) => list.includes(p));
 
