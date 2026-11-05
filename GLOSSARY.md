@@ -29,8 +29,16 @@ What a delegated step delivers: a JSON object naming the step and its attempt, a
 _Avoid_: ready marker, completion phrase
 
 **Step boundary**:
-The moment after one step has closed and before the next one starts. The step's note and the workflow state are written, so it is the only point where the workflow can pause and resume in a new session without losing work.
+The moment after one step has closed and before the next one starts. The step's note and the workflow state are written, so it is the only point where the workflow can pause on purpose and resume in a new session. An interrupted step resumes from its progress record instead.
 _Avoid_: checkpoint, mid-step pause
+
+**Progress record**:
+What a running step has saved so far: work done, next work, limits, the checkout it saw and the checks it ran, each tied to the content of its scope ([ADR 0003](docs/adr/0003-progress-records.md)). `recover` reads it back after an interruption.
+_Avoid_: checkpoint (an explicit user checkpoint is a pause), snapshot
+
+**Interrupted step**:
+A step whose agent stopped before handing back (timeout, quota, unavailable model). It stays `running`: neither done nor waiting for a decision.
+_Avoid_: failed step, crashed step
 
 **Primary family**:
 The model family (`claude` or `openai`) a run's steps run on unless their phase sets its own. Each run keeps its own in `.router/state.json`, starting from `primary` in the user's `preferences.yaml`.

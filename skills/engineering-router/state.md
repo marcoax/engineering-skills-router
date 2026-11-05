@@ -79,7 +79,29 @@ The router writes this file in the **target repo** during a workflow so that ada
       "model": "claude-bridge/claude-opus-5-5",
       "effort": null,
       "status": "running",
-      "outcome": null
+      "outcome": null,
+      "progress": {
+        "at": "2026-10-17T09:40:00Z",
+        "branch": "42-csv-export",
+        "head": "9c1d4e2a7b3f8e0d6a5c2b1f4e7d9a3c8b0e6f2d",
+        "changes": ["src/reports/export.js"],
+        "done": "CSV writer and its tests committed",
+        "next": "add the export button",
+        "limits": null,
+        "interrupted": null,
+        "interruptions": 0,
+        "checks": [
+          {
+            "command": "npm test -- reports",
+            "scope": ["src/reports", "test/reports"],
+            "environment": "node 22, darwin",
+            "result": "pass",
+            "head": "9c1d4e2a7b3f8e0d6a5c2b1f4e7d9a3c8b0e6f2d",
+            "content": "5d41402abc4b2a76b9719d911017c592ae0f3c4b8e9a6d2f1c7b3e0a9d8c6f4e",
+            "at": "2026-10-17T09:38:00Z"
+          }
+        ]
+      }
     },
     {
       "id": "testing",
@@ -194,6 +216,7 @@ Checked by `scripts/check-classification` and by `scripts/state … compose`. A 
 | `selected` (optional) | Selection \| null | The selector's own pick for a covered step, kept while `skill` holds the skill its covering step runs; restored when a swap leaves the step to run on its own. `null` for a step that is not covered. |
 | `model` | string \| null | The **step model**: the model the step actually ran on, for every step that ran (`running`, `waiting`, `done`, `failed`, or `skipped` after running). Precedence: agent record, then the model passed to the step's subagent (or `review_other_family`'s backend), then the session's model; full rules in [models.md](models.md). Recorded as the source names it (`claude-bridge/claude-opus-5-5` and `claude-opus-5-5` may both appear), no spaces. `null` only for a step that did not run. |
 | `effort` (optional) | `"low"` \| `"medium"` \| `"high"` \| null | The step's effort, from the agent record or the one passed to the step ([models.md](models.md)); `null` when neither names one (the harness default). Never taken from the session. |
+| `progress` (optional) | Progress \| null | What a running step has saved so far, so an interruption loses nothing ([ADR 0003](../../docs/adr/0003-progress-records.md)); `null` until it saves any. Written with `scripts/state … progress`, `check` and `interrupt`; read back with `recover`. |
 | `status` | string | Step status, see below. |
 | `outcome` | string \| null | One-line result once the step ends. |
 | `result` (optional) | Result \| null | The delivery a delegated step owes ([step-result.md](step-result.md)): set by `scripts/state … expect`, accepted by `… deliver`. A step that has one closes as `done` only on an accepted `done` verdict. `null` or absent for a step that declares none. |
@@ -208,6 +231,44 @@ Step `status`:
 | `done` | Finished; `outcome` set. |
 | `skipped` | Will not run (user declined, or no longer needed); `outcome` says why. |
 | `failed` | Could not finish; `outcome` says why. |
+
+## Progress
+
+A step's latest progress, rewritten by `progress`; `branch`, `head` and `changes` are read from the checkout each time `progress`, `check` or `interrupt` writes.
+
+| Field | Type | Meaning |
+|---|---|---|
+| `at` | string | ISO-8601 UTC time of the last write. |
+| `branch` | string \| null | Checked-out branch; `null` when detached or outside a git repo. |
+| `head` | string \| null | The commit checked out; `null` outside a git repo. |
+| `changes` | string[] | Paths with uncommitted changes, tracked or untracked (`.router/` excluded). |
+| `done` | string \| null | One line: what the step has completed and verified so far. |
+| `next` | string \| null | One line: the first work still needed. `null` leaves the record incomplete. |
+| `limits` | string \| null | Known limits and open points; `null` when none. |
+| `interrupted` | Interruption \| null | The last interruption, until the step saves progress again. |
+| `interruptions` | integer | How many times the step was interrupted; it is retried at most twice ([resume.md](resume.md)). |
+| `checks` | Check[] | The checks the step ran, one per command: a rerun replaces the earlier one. |
+
+## Interruption
+
+| Field | Type | Meaning |
+|---|---|---|
+| `reason` | string | One line: `timeout`, `quota`, `model unavailable`, `cancelled`, or what else stopped the step. Neither a success nor a question for the user. |
+| `at` | string | ISO-8601 UTC time. |
+
+## Check
+
+A check's result holds only for the content it ran on: `recover` reuses a passing check while the files in its scope hash to the same `content` and its environment matches.
+
+| Field | Type | Meaning |
+|---|---|---|
+| `command` | string | The command run, as typed. |
+| `scope` | string[] | Paths, relative to the target repo, whose content the result depends on; `["."]` for the whole repo. |
+| `environment` | string | The relevant environment in one line (runtime and version, OS, services). |
+| `result` | "pass" \| "fail" \| "interrupted" | `interrupted`: the check did not finish and proves nothing. |
+| `head` | string \| null | The commit checked out when it ran. |
+| `content` | string \| null | SHA-256 over the scope's files (each path and its content, uncommitted changes included); `null` when it could not be computed, which leaves the check unprovable. |
+| `at` | string | ISO-8601 UTC time. |
 
 ## Selection
 
