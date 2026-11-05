@@ -33,7 +33,7 @@ function checkout(target) {
     const file = e.slice(3);
     if (!file.startsWith(ROUTER_DIR)) changes.push(file);
   }
-  // SHA-256 over each file in scope (its path, then its content as it is on disk), sorted. A path
+  // SHA-256 over each file's path, type, executable bits and content, sorted. A path
   // named in the scope counts even when ignored (a gitignored .env); the whole tree ('.') does not.
   const content = (scope) => {
     const listed = git('ls-files', '-z', '--cached', '--others', '--exclude-standard', '--', ...scope);
@@ -41,12 +41,25 @@ function checkout(target) {
     const ignored = named.length ? git('ls-files', '-z', '--others', '--ignored', '--exclude-standard', '--', ...named) : '';
     if (listed == null || ignored == null || head == null) return null;
     const hash = crypto.createHash('sha256');
+    hash.update('router-scope-v2\0');
     for (const file of [...new Set(`${listed}\0${ignored}`.split('\0').filter((f) => f && !f.startsWith(ROUTER_DIR)))].sort()) {
       const p = path.join(target, file);
-      const stat = fs.statSync(p, { throwIfNoEntry: false });
-      hash.update(`${file}\0`);
-      hash.update(!stat ? 'deleted' : stat.isFile() ? fs.readFileSync(p) : 'not a file');
-      hash.update('\0');
+      try {
+        const stat = fs.lstatSync(p, { throwIfNoEntry: false });
+        if (!stat) {
+          hash.update(`${JSON.stringify([file, 'missing'])}\0`);
+          continue;
+        }
+        // Git lists a submodule as a directory, without its files. Symlinks and other
+        // unsupported entries are unprovable too: force a rerun instead of reusing a check.
+        if (!stat.isFile()) return null;
+        const bytes = fs.readFileSync(p);
+        hash.update(`${JSON.stringify([file, 'file', stat.mode & 0o111, bytes.length])}\0`);
+        hash.update(bytes);
+        hash.update('\0');
+      } catch {
+        return null; // unreadable or changed while being fingerprinted
+      }
     }
     return hash.digest('hex');
   };

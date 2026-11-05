@@ -148,7 +148,7 @@ function scenario(root, label) {
     const again = st('expect', String(n));
     const attempt = again.out.match(/^attempt: (\S+)/m)?.[1];
     const note = `.router/steps/${n}-implementation.md`;
-    fs.appendFileSync(path.join(repo, note), 'Built the CSV export; tests pass.\n');
+    put(note, `run: ${read().run}\nBuilt the CSV export; tests pass.\n`);
     put(`.router/steps/${n}-implementation.result.json`, JSON.stringify({ step: 'implementation', attempt, verdict: 'done', summary: 'Built', artifacts: { note }, remaining: null }));
     m.delivery.accepted = st('deliver', String(n)).ok;
     m.delivery.closed_after_delivery = st('step', String(n), 'done', '--outcome', 'Built').ok;

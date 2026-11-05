@@ -25,7 +25,7 @@ for (const dir of ['vendors', 'node_modules']) fs.symlinkSync(path.join(ROOT, di
 
 const prefsFile = path.join(tmp, 'config/preferences.yaml');
 const fail = (msg) => { console.log(`FAIL: ${msg}`); process.exit(1); };
-const scriptTests = spawnSync(process.execPath, ['--test', path.join(ROOT, 'scripts/lib/git-env.test.js'), path.join(ROOT, 'scripts/lib/install-claude.test.js')], { encoding: 'utf8' });
+const scriptTests = spawnSync(process.execPath, ['--test', path.join(ROOT, 'scripts/lib/git-env.test.js'), path.join(ROOT, 'scripts/lib/install-claude.test.js'), path.join(ROOT, 'scripts/lib/progress.test.js')], { encoding: 'utf8' });
 if (scriptTests.status !== 0) fail(`Script tests\n${scriptTests.stdout}${scriptTests.stderr}`);
 const run = (script, ...args) => {
   const r = spawnSync(path.join(tmp, 'scripts', script), args, { encoding: 'utf8' });
@@ -1335,6 +1335,12 @@ expectStateOk('unknown fields', variant((s) => { s.extra = 1; s.steps[0].extra =
   put('.router/steps/5-review.result.json', result());
   refused('a note of another run', st('deliver', 'review'), 'note: .router/steps/5-review.md belongs to run run-801, not this run');
   put('.router/steps/5-review.md', 'Reviewed the diff.\n');
+  const beforeUntagged = fs.readFileSync(stateFile, 'utf8');
+  refused('a note without its run line', st('deliver', 'review'), `note: .router/steps/5-review.md needs first line "run: ${read().run}"`);
+  if (fs.readFileSync(stateFile, 'utf8') !== beforeUntagged || fs.readFileSync(path.join(repo, '.router/steps/5-review.md'), 'utf8') !== 'Reviewed the diff.\n')
+    fail('a refused untagged note must keep the state, attempt and note unchanged');
+  refused('closing after an untagged note', st('step', 'review', 'done', '--outcome', 'Reviewed'), 'needs an accepted delivery');
+  put('.router/steps/5-review.md', `run: ${read().run}\nReviewed the diff.\n`);
 
   // Invalid findings format; findings to fix lead to fixes, not to done.
   const finding = { title: 'Export ignores the date filter', severity: 'high', found_by: ['review'] };

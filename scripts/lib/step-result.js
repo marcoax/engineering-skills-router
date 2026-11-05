@@ -149,9 +149,10 @@ function deliver(state, ref, read) {
       continue;
     }
     const own = [];
-    // A note headed by another run (`run: <id>`, ADR 0002) is that run's, never this delivery.
+    // A run's note must identify that run, including notes left by older executions.
     const run = kind === 'note' ? noteRun(content) : null;
     if (!noteBody(content).trim()) own.push(`${kind}: ${rel} is empty`);
+    else if (kind === 'note' && state.run && !run) own.push(`note: ${rel} needs first line "run: ${state.run}"`);
     else if (run && state.run && run !== state.run) own.push(`note: ${rel} belongs to run ${run}, not this run`);
     else if (kind === 'findings') {
       let list;
