@@ -1608,6 +1608,138 @@ expectStateOk('unknown fields', variant((s) => { s.extra = 1; s.steps[0].extra =
     fail(`an explicit recomposition may revise the classification under the current policy\n${r.out}`);
 }
 
+// Progress records (ADR 0003): a running step saves its progress and checks as it goes, so a
+// timeout or quota stop loses nothing. `recover` reads them against the current checkout: it keeps
+// completed steps and commits, lists uncommitted work, reuses only checks whose files are unchanged
+// and whose environment matches, never reports a check it cannot prove, and bounds retries without
+// switching model.
+{
+  const repo = fs.mkdtempSync(path.join(tmp, 'progress-'));
+  const g = (...a) => spawnSync('git', ['-C', repo, '-c', 'user.name=t', '-c', 'user.email=t@t', ...a], { encoding: 'utf8', env: gitEnv });
+  const put = (f, text) => {
+    fs.mkdirSync(path.dirname(path.join(repo, f)), { recursive: true });
+    fs.writeFileSync(path.join(repo, f), text);
+  };
+  g('init', '-q', '-b', 'export');
+  put('src/export.js', 'v1');
+  put('test/export.test.js', 't1');
+  put('README.md', 'r1');
+  fs.writeFileSync(path.join(repo, '.git/info/exclude'), '.router/\n');
+  g('add', '.');
+  g('commit', '-qm', 'base');
+  const stateFile = path.join(repo, '.router/state.json');
+  fs.mkdirSync(path.dirname(stateFile));
+  fs.writeFileSync(stateFile, JSON.stringify(variant((s) => { s.handoff.branch = 'export'; delete s.steps[2].progress; })));
+  const read = () => JSON.parse(fs.readFileSync(stateFile, 'utf8'));
+  const st = (...a) => run('state', repo, ...a);
+  const expectOk = (label, r) => { if (!r.ok) fail(`scripts/state ${label}\n${r.out}`); };
+  const recover = (label, ...a) => {
+    const r = st('recover', ...a);
+    if (!r.ok) fail(`recover, ${label}\n${r.out}`);
+    return r.out;
+  };
+  const expectLines = (label, out, ...lines) => {
+    const missing = lines.filter((l) => !out.includes(l));
+    if (missing.length) fail(`recover, ${label}: expected\n  ${missing.join('\n  ')}\ngot:\n${out}`);
+  };
+  const head = () => g('rev-parse', 'HEAD').stdout.trim();
+
+  // A step interrupted before it saved anything: said so, with nothing reported as done or checked.
+  let out = recover('no progress record');
+  expectLines('no progress record', out, '3. implementation: running, no progress record: rebuild it from git and the step note; report nothing as done or checked');
+  if (/reuse:/.test(out)) fail(`recover without a progress record must reuse no check\n${out}`);
+  expectOk('progress without next', st('progress', 'implementation', '--done', 'export written'));
+  expectLines('incomplete record', recover('incomplete record'), '3. implementation: incomplete progress record: no next work');
+
+  // Interrupted after its tests passed and its work was committed.
+  put('src/export.js', 'v2');
+  put('test/export.test.js', 't2');
+  g('add', '.');
+  g('commit', '-qm', 'export');
+  expectOk('check pass', st('check', 'implementation', 'pass', '--command', 'npm test', '--scope', 'src,test', '--env', 'node 22'));
+  expectOk('check interrupted', st('check', 'implementation', 'interrupted', '--command', 'npm run e2e', '--env', 'node 22'));
+  expectOk('progress', st('progress', 'implementation', '--done', 'export built and tested, committed', '--next', 'write the step note', '--limits', 'e2e not run to the end'));
+  expectOk('interrupt', st('interrupt', 'implementation', '--reason', 'timeout'));
+  let s = read();
+  if (s.status !== 'running' || s.steps[2].status !== 'running' || s.steps[2].progress?.interrupted?.reason !== 'timeout')
+    fail(`an interruption keeps the step and workflow running, neither done nor waiting for a decision: ${JSON.stringify(s.steps[2])}`);
+  const saved = fs.readFileSync(stateFile, 'utf8');
+  out = recover('after test and commit');
+  expectLines('after test and commit', out,
+    '1. specification: done, kept',
+    '3. implementation: interrupted (timeout), retry 1 of 2',
+    'done: export built and tested, committed',
+    'next: write the step note',
+    'limits: e2e not run to the end',
+    `checkout: at the recorded commit ${head().slice(0, 7)} on export`,
+    'reuse: npm test (node 22) on src, test: pass',
+    'rerun: npm run e2e (node 22) on .: interrupted',
+    'model: claude-bridge/claude-opus-5-5 as recorded; another model or family only with the user\'s yes',
+    'continue: step 3 implementation: write the step note');
+  if (fs.readFileSync(stateFile, 'utf8') !== saved) fail('recover must not change the state');
+
+  // A change outside a check's scope keeps it; another environment or a change inside reruns it.
+  put('README.md', 'r2');
+  expectLines('change outside scope', recover('change outside scope'), 'reuse: npm test (node 22) on src, test: pass');
+  expectLines('other environment', recover('other environment', '--env', 'node 20'), 'rerun: npm test (node 22) on src, test: environment is node 20');
+  put('src/export.js', 'v3');
+  g('commit', '-qam', 'more');
+  expectLines('later change', recover('later change'),
+    'rerun: npm test (node 22) on src, test: its files changed since',
+    'checkout: 1 commit(s) after the recorded commit');
+
+  // A partial fix not committed: kept as it is and listed, with retries bounded on the same model.
+  put('src/fix.js', 'partial');
+  put('src/export.js', 'v4');
+  expectOk('progress on a partial fix', st('progress', 'implementation', '--done', 'fix half done', '--next', 'finish the fix in src/fix.js'));
+  expectOk('interrupt on quota', st('interrupt', 'implementation', '--reason', 'quota'));
+  out = recover('partial fix');
+  expectLines('partial fix', out, 'uncommitted: src/export.js, src/fix.js', '3. implementation: interrupted (quota), retry 2 of 2', 'continue: step 3 implementation: finish the fix in src/fix.js');
+  if (fs.readFileSync(path.join(repo, 'src/fix.js'), 'utf8') !== 'partial') fail('recover must leave partial changes as they are');
+  expectOk('third interruption', st('interrupt', 'implementation', '--reason', 'quota'));
+  out = recover('retries used up');
+  expectLines('retries used up', out,
+    '3. implementation: interrupted (quota), retries used up (3 interruptions): ask the user to retry, change model or stop',
+    'model: claude-bridge/claude-opus-5-5 as recorded');
+  if (read().steps[2].model !== 'claude-bridge/claude-opus-5-5') fail('an interruption must not change the step model');
+
+  // Completing the fix: a rerun check replaces the earlier one with the same command.
+  put('src/fix.js', 'done');
+  g('add', '.');
+  g('commit', '-qm', 'fix');
+  expectOk('check pass again', st('check', 'implementation', 'pass', '--command', 'npm test', '--scope', 'src,test', '--env', 'node 22'));
+  expectOk('progress after the fix', st('progress', 'implementation', '--done', 'fix committed and tested', '--next', 'write the step note'));
+  s = read();
+  if (s.steps[2].progress.checks.length !== 2 || s.steps[2].progress.interrupted !== null)
+    fail(`a check replaces its earlier run, and new progress ends the interruption: ${JSON.stringify(s.steps[2].progress)}`);
+  expectLines('after the fix', recover('after the fix'), 'reuse: npm test (node 22) on src, test: pass', '3. implementation: running, after 3 interruption(s)');
+  expectOk('step done', st('step', 'implementation', 'done', '--outcome', 'Built'));
+  // A finished step keeps its checks, for the pull request step to reuse.
+  expectLines('implementation done', recover('implementation done'), '3. implementation: done, kept', 'reuse: npm test (node 22) on src, test: pass', 'continue: step 5 review: not started');
+
+  // A recorded commit missing from the checkout: nothing recorded is trusted.
+  fs.writeFileSync(stateFile, JSON.stringify(variant((s) => {
+    s.handoff.branch = 'export';
+    s.steps[2].progress = { ...read().steps[2].progress, head: 'deadbeef'.repeat(5) };
+  })));
+  expectLines('commit not in history', recover('commit not in history'),
+    'checkout: recorded commit deadbee is not in this checkout\'s history: stop and ask before continuing',
+    'rerun: npm test (node 22) on src, test: its recorded commit is not in this checkout');
+
+  // Refused changes name the reason.
+  const expectRefused = (label, r, msg) => { if (r.ok || !r.out.includes(`error: ${msg}`)) fail(`scripts/state ${label}: expected error: ${msg}\ngot:\n${r.out}`); };
+  expectRefused('bad result', st('check', 'implementation', 'maybe', '--command', 'x', '--env', 'e'), 'check result must be pass | fail | interrupted');
+  expectRefused('check without environment', st('check', 'implementation', 'pass', '--command', 'x'), 'check needs --command and --env');
+  expectRefused('interrupt without reason', st('interrupt', 'implementation'), 'interrupt needs --reason');
+  expectRefused('interrupt a pending step', st('interrupt', 'review', '--reason', 'timeout'), 'step review is pending: only a running step records progress');
+  // check-state reads the record's format from state.md.
+  expectState('progress record', variant((s) => {
+    s.steps[2].progress.checks[0].result = 'maybe';
+    s.steps[2].progress.at = 'yesterday';
+  }), 'steps[2].progress.checks[0].result: must be "pass" | "fail" | "interrupted", got "maybe"',
+  'steps[2].progress.at: must be ISO-8601 UTC');
+}
+
 // The run's primary family lives in the state: written from the preferences when the state has
 // none, then kept whatever the preferences say, and every model the run shows follows it.
 {
