@@ -19,6 +19,14 @@ Show it as `Reviews: <available | unverified | unavailable>: <one-line reason or
 
 ## Running a review
 
+Before dispatch, complete this local preflight for the selected executor, using its installed help and effective configuration:
+
+1. Confirm the working directory, loaded configuration, agent identity and requested model/effort. For an external CLI, use explicit configuration paths when supported and check what the executor actually loads. A model listing confirms an ID, not provider credit or live availability; keep the latter unverified until invocation.
+2. Match permissions to the review's required commands and artifact paths. Allow source inspection, focused tests, formatter checks and required static analysis (including cache clearing when required); keep source edits and publication disabled. Normal test/analysis cache writes must remain possible. Use ignored workspace paths or temporary files for local configuration and reports, respecting the target's write restrictions.
+3. Give the reviewer paths to captured check outputs with their commit, file scope and environment. Distinguish checks it must execute from existing evidence it can inspect; require a rerun when that evidence is missing, stale or insufficient for its assessment.
+
+Done when the effective configuration names the selected agent/model and permits the required review operations. Correct local setup errors before dispatch; they do not require another code-review pass. If the executor cannot expose enough configuration to establish this, report the unverified capability and its limitation before starting. Provider or model failures on invocation follow the failure policy below.
+
 Start a subagent on the reviewers' family that runs the step's skill on `git diff <base commit>...HEAD` against the issue (issue-free: against the spec file). Tell it to only report findings, never edit.
 
 Where the review runs through `review_other_family`, call that tool instead. Pass `model`, `effort` (when set in the preferences), `cwd` the target repo, and a `prompt` that holds what a subagent would get:

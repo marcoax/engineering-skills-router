@@ -2,6 +2,14 @@
 
 Read from SKILL.md §6 when the implementation step is about to start. It holds everything from there to the open PR: the implementation's own review, the manual checklist, the reviews, security and fixes, verification, and the pull request with its run record. Execution and exceptional stops follow [autonomy.md](autonomy.md). How every review step runs, on the other family, is in [cross-family-review.md](cross-family-review.md).
 
+## Check plan before implementation
+
+Before briefing implementation or fixes, inspect the target's required checks and effective Git hooks (`core.hooksPath`, or its default hooks directory). Assign each required check to an execution point: focused checks during development, hook-owned checks at commit, and remaining checks before delivery. Pass that plan to the implementing agent.
+
+When an enabled commit hook runs the required full suite, use its execution as the final full-suite check. Run focused tests during development and let the normal commit run the hook. Preserve the hook's actual command, output and environment in a log reachable by the reviewer; record each successful check with `scripts/state … check` against the resulting files. A hook configuration or a successful commit alone is not proof that a check ran. If its output cannot establish the required result, run and capture the missing check explicitly. Keep mandatory hooks enabled.
+
+Check the final diff after the hook: formatting or other hook changes can invalidate a check that ran earlier. Reuse only results that still match their recorded files and environment, under the pull-request rule below. Done when every required check has observed passing evidence on the final changes; a planned hook run remains pending until observed.
+
 ## The implementation's own review
 
 When the implementation skill calls a review itself (e.g. `mattpocock/implement` calls `code-review`), tell that step to skip it: the review is a step of its own, on the other family. Tell it too to commit its work before the step ends, since the review reads `git diff <base commit>...HEAD`. Say in the step note that its internal review was skipped (`code-review: skipped, the review runs cross-family`).

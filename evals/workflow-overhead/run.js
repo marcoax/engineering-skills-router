@@ -58,11 +58,12 @@ function scenario(root, label) {
   const missing = (r) => /unknown command|usage:/.test(r.out) && !r.ok;
 
   // The sample task: the state.md example (CSV export), implementation running on a fresh branch.
-  g('init', '-q', '-b', 'export');
+  // Exercise clients that initialize repositories without Git's default template.
+  g('init', '-q', '--template=', '-b', 'export');
   put('src/export.js', 'v1');
   put('test/export.test.js', 't1');
   put('README.md', 'r1');
-  fs.writeFileSync(path.join(repo, '.git/info/exclude'), '.router/\n');
+  put('.git/info/exclude', '.router/\n');
   g('add', '.');
   g('commit', '-qm', 'base');
   const doc = fs.readFileSync(path.join(root, 'skills/engineering-router/state.md'), 'utf8');
