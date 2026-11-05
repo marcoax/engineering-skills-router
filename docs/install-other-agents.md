@@ -4,7 +4,7 @@ Claude Code and Pi have their own routes in the [README](../README.md#install-cl
 
 ## From a checkout (recommended)
 
-Do steps 1 and 2 of the README's [Claude Code install](../README.md#steps) (checkout and optional preferences; they touch no agent folder), then make `"$ROUTER/skills/engineering-router"`, and optionally `"$ROUTER/skills/skill-selector"`, available with whatever skill mechanism the agent offers: a symlink into its skills folder, or pointing it at the `SKILL.md`. A linked or referenced skill uses that checkout directly (`found: skill-dir`), with no environment variable. Update and the reviewed vendor synchronization are as in the README's [Update](../README.md#update).
+Clone the repo and run `"$ROUTER/scripts/setup"` (not `scripts/install-claude`, which is for Claude Code), optionally copy the preferences as in the README's [Claude Code install](../README.md#steps); none of this touches an agent folder. Then make `"$ROUTER/skills/engineering-router"`, and optionally `"$ROUTER/skills/skill-selector"`, available with whatever skill mechanism the agent offers: a symlink into its skills folder, or pointing it at the `SKILL.md`. A linked or referenced skill uses that checkout directly (`found: skill-dir`), with no environment variable. Update and the reviewed vendor synchronization are as in the README's [Update](../README.md#update).
 
 ## With `npx skills add`
 

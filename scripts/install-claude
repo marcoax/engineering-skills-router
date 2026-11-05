@@ -1,5 +1,8 @@
 #!/usr/bin/env node
-// Installs from this checkout. Tests use a temporary HOME, never the user's installation.
+// Installs this checkout into Claude Code for the person running it. Unlike scripts/setup,
+// it writes outside the checkout: two skill links in ~/.claude/skills (or $CLAUDE_CONFIG_DIR/skills)
+// and, unless --no-panel, the panel plugin at user scope. Agents must not run it (AGENTS.md);
+// its tests use a temporary HOME and CLAUDE_CONFIG_DIR, never the user's installation.
 const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
@@ -8,7 +11,7 @@ const { spawnSync } = require('node:child_process');
 const ROOT = path.resolve(__dirname, '..');
 const args = process.argv.slice(2);
 if (args.includes('--help')) {
-  console.log('Usage: scripts/install-claude [--no-panel]\nPrepares this checkout, links both skills and installs the Claude Code panel.\n--no-panel  Install the skills without the optional panel.\nExisting skill entries are never replaced. Preferences keep their defaults.');
+  console.log('Usage: scripts/install-claude [--no-panel]\nPrepares this checkout, links both skills and installs the Claude Code panel (on by default).\n--no-panel  Install the skills without the panel.\nExisting skill entries are never replaced. Preferences keep their defaults.');
   process.exit(0);
 }
 if (args.some((arg) => arg !== '--no-panel')) {
@@ -21,9 +24,12 @@ const links = ['engineering-router', 'skill-selector'].map((name) => ({
   source: path.join(ROOT, 'skills', name),
   target: path.join(skillsDir, name),
 }));
+const realpath = (p) => {
+  try { return fs.realpathSync(p); } catch { return null; }
+};
+// A link counts as ours when it resolves to this checkout's skill, whatever path it was written with.
 function alreadyLinked({ source, target }) {
-  return fs.lstatSync(target).isSymbolicLink() &&
-    path.resolve(path.dirname(target), fs.readlinkSync(target)) === source;
+  return fs.lstatSync(target).isSymbolicLink() && realpath(target) === realpath(source);
 }
 function run(command, commandArgs) {
   const result = spawnSync(command, commandArgs, { cwd: ROOT, stdio: 'inherit' });
@@ -32,19 +38,22 @@ function run(command, commandArgs) {
 }
 // Check conflicts and prerequisites before changing anything.
 for (const link of links) {
-  if (fs.existsSync(link.target) || fs.lstatSync(link.target, { throwIfNoEntry: false })) {
-    if (!alreadyLinked(link)) {
-      console.error(`Left unchanged: ${link.target}\nAn existing skill occupies this path. See docs/claude-code.md before retrying.`);
-      process.exit(1);
-    }
+  link.exists = Boolean(fs.lstatSync(link.target, { throwIfNoEntry: false }));
+  if (link.exists && !alreadyLinked(link)) {
+    console.error(`Left unchanged: ${link.target}\nAn existing skill occupies this path. See docs/claude-code.md before retrying.`);
+    process.exit(1);
   }
 }
 if (panel) run('claude', ['--version']);
 run(path.join(ROOT, 'scripts/setup'), []);
 fs.mkdirSync(skillsDir, { recursive: true });
 for (const link of links) {
-  if (!fs.existsSync(link.target)) fs.symlinkSync(link.source, link.target, 'dir');
-  console.log(`Linked: ${link.target}`);
+  if (link.exists) {
+    console.log(`Already linked: ${link.target}`);
+  } else {
+    fs.symlinkSync(link.source, link.target, 'dir');
+    console.log(`Linked: ${link.target}`);
+  }
 }
 if (panel) {
   run('claude', ['plugin', 'marketplace', 'add', ROOT]);
