@@ -1258,6 +1258,158 @@ expectStateOk('unknown fields', variant((s) => { s.extra = 1; s.steps[0].extra =
   }
 }
 
+// Step results (step-result.md): a delegated step closes, or the workflow moves past it, only on a
+// validated delivery: a result for this step and attempt, a recognizable verdict and the
+// artifacts the step declared. Covers review → fixes → pull-request preparation → simulated
+// publication.
+{
+  const repo = fs.mkdtempSync(path.join(tmp, 'step-result-'));
+  fs.mkdirSync(path.join(repo, '.router/steps'), { recursive: true });
+  const stateFile = path.join(repo, '.router/state.json');
+  const read = () => JSON.parse(fs.readFileSync(stateFile, 'utf8'));
+  const step = (id) => read().steps.find((s) => s.id === id);
+  fs.writeFileSync(stateFile, JSON.stringify(variant((s) => {
+    Object.assign(s.steps[2], { status: 'done', outcome: 'Built' });
+    Object.assign(s.steps[3], { status: 'done', outcome: 'ran inside implementation', model: s.steps[2].model });
+    s.steps.push({ id: 'pull-request', phases: ['pull-request'], skill: 'mattpocock/pr', reason: 'r', summary: 's', alternatives: [],
+      confirm: false, covered_by: null, model: null, effort: null, status: 'pending', outcome: null });
+    s.handoff.issue = { number: 42, url: 'https://github.com/o/r/issues/42' };
+  })));
+  const st = (...a) => run('state', repo, ...a);
+  const ok = (label, r) => { if (!r.ok) fail(`step result, ${label}\n${r.out}`); return r; };
+  const refused = (label, r, ...msgs) => {
+    const missing = msgs.filter((m) => !r.out.includes(m));
+    if (r.ok || missing.length) fail(`step result, ${label}: expected a refusal naming\n  ${missing.join('\n  ')}\ngot:\n${r.out}`);
+    return r;
+  };
+  const put = (rel, content) => fs.writeFileSync(path.join(repo, rel), typeof content === 'string' ? content : JSON.stringify(content));
+  const attemptOf = (r) => r.out.match(/^attempt: (\S+)$/m)?.[1];
+
+  // A step without a declared delivery closes as before; one with it, only after a validated one.
+  ok('review running', st('step', 'review', 'running', '--model', 'gpt-6-sol'));
+  const expected = ok('expect the review', st('expect', 'review'));
+  const attempt = attemptOf(expected);
+  if (!attempt || !expected.out.includes('result: .router/steps/5-review.result.json')
+    || !expected.out.includes('requires: note .router/steps/5-review.md, findings .router/steps/5-review.findings.json'))
+    fail(`expect should print the result path, the attempt and the declared artifacts\n${expected.out}`);
+  refused('closing before a delivery', st('step', 'review', 'done', '--outcome', 'Reviewed'), 'needs an accepted delivery');
+  if (step('review').status !== 'running') fail('a refused close should leave the step running');
+
+  // Missing, malformed or deceptive results never pass.
+  refused('a missing result', st('deliver', 'review'), 'result: .router/steps/5-review.result.json not found');
+  put('.router/steps/5-review.result.json', 'Review complete.\nROUTER_STEP_READY\n');
+  refused('a bare marker', st('deliver', 'review'), 'no result JSON');
+  const result = (over) => ({ step: 'review', attempt, verdict: 'done', summary: 'No findings',
+    artifacts: { note: '.router/steps/5-review.md', findings: '.router/steps/5-review.findings.json' }, ...over });
+  put('.router/steps/5-review.result.json', result({ verdict: 'ROUTER_STEP_READY' }));
+  refused('an unrecognizable verdict', st('deliver', 'review'), 'result.verdict: no recognizable verdict');
+  put('.router/steps/5-review.result.json', result({ verdict: undefined }));
+  refused('a missing verdict', st('deliver', 'review'), 'result.verdict: no recognizable verdict');
+  put('.router/steps/5-review.result.json', result({ step: 'implementation' }));
+  refused('a result for another step', st('deliver', 'review'), 'result.step: "implementation" is not step review');
+  put('.router/steps/5-review.result.json', result({ attempt: 'stale' }));
+  refused('a result from another execution', st('deliver', 'review'), 'result.attempt: "stale" is not the current attempt');
+
+  // Declared success with a file missing: what is missing is named, what is valid is kept.
+  put('.router/steps/5-review.findings.json', []);
+  put('.router/steps/5-review.result.json', result());
+  const partial = refused('a declared artifact that is absent', st('deliver', 'review'), 'note: .router/steps/5-review.md not found');
+  if (!partial.out.includes('kept: findings .router/steps/5-review.findings.json')) fail(`a refused delivery should name the valid artifacts\n${partial.out}`);
+  if (step('review').result?.attempt !== attempt || step('review').status !== 'running') fail('a refused delivery should leave the step recoverable');
+  put('.router/steps/5-review.result.json', result({ artifacts: { findings: '.router/steps/5-review.findings.json' } }));
+  refused('an undeclared required artifact', st('deliver', 'review'), 'note: required, not delivered');
+  put('.router/steps/5-review.md', 'Reviewed the diff.\n');
+  put('.router/steps/5-review.result.json', result({ artifacts: { note: '../outside.md', findings: '.router/steps/5-review.findings.json' } }));
+  refused('an artifact outside the target repo', st('deliver', 'review'), 'note: must be a path inside the target repo');
+
+  // Invalid findings format; findings to fix lead to fixes, not to done.
+  const finding = { title: 'Export ignores the date filter', severity: 'high', found_by: ['review'] };
+  put('.router/steps/5-review.result.json', result());
+  put('.router/steps/5-review.findings.json', '{"title": "x"}');
+  refused('findings that are not an array', st('deliver', 'review'), 'findings: expected a JSON array');
+  put('.router/steps/5-review.findings.json', [{ ...finding, severity: 'huge' }]);
+  refused('a finding with an unknown severity', st('deliver', 'review'), 'findings[0].severity: one of critical, high, medium, low');
+  put('.router/steps/5-review.findings.json', [finding]);
+  refused('done with an actionable finding', st('deliver', 'review'), 'verdict done with 1 actionable finding');
+  put('.router/steps/5-review.findings.json', []);
+  put('.router/steps/5-review.result.json', result({ verdict: 'fixes' }));
+  refused('fixes without a finding to fix', st('deliver', 'review'), 'verdict fixes needs at least one actionable finding');
+  put('.router/steps/5-review.findings.json', [finding]);
+  put('.router/steps/5-review.result.json', result({ verdict: 'fixes', summary: '1 finding to fix' }));
+  const fixes = ok('a review with findings to fix', st('deliver', 'review'));
+  if (!fixes.out.includes('fixes: 1 actionable finding') || step('review').status !== 'running' || step('review').result.verdict !== 'fixes')
+    fail(`a fixes verdict should keep the step running for the fixes\n${fixes.out}`);
+  refused('closing after a fixes verdict', st('step', 'review', 'done', '--outcome', 'Reviewed'), 'needs an accepted delivery');
+
+  // After the fixes, a new attempt: the old one is refused, the decided findings close the step.
+  const again = attemptOf(ok('expect the fixes delivery', st('expect', 'review')));
+  if (!again || again === attempt) fail('a new expectation should start a new attempt');
+  put('.router/steps/5-review.findings.json', [{ ...finding, decision: 'fixed' }]);
+  refused('the earlier attempt after a new expectation', st('deliver', 'review'), 'is not the current attempt');
+  put('.router/steps/5-review.result.json', result({ attempt: again, summary: '1 finding, fixed' }));
+  ok('fixes delivered', st('deliver', 'review'));
+  ok('close the review after its delivery', st('step', 'review', 'done', '--outcome', '1 finding, fixed'));
+  const closed = step('review').result;
+  if (closed.verdict !== 'done' || closed.artifacts.length !== 2) fail(`the accepted delivery should stay on the step: ${JSON.stringify(closed)}`);
+
+  // Pull-request preparation: body and consolidated findings in declared formats; absence of
+  // findings is an explicit empty array.
+  ok('pull request running', st('step', 'pull-request', 'running', '--model', 'claude-opus-5-5'));
+  const prAttempt = attemptOf(ok('expect the PR preparation', st('expect', 'pull-request')));
+  const prResult = (over) => ({ step: 'pull-request', attempt: prAttempt, verdict: 'done', summary: 'Prepared',
+    artifacts: { 'pr-body': '.router/steps/6-pull-request.pr-body.md', findings: '.router/steps/6-pull-request.findings.json' }, ...over });
+  put('.router/steps/6-pull-request.result.json', prResult());
+  put('.router/steps/6-pull-request.pr-body.md', 'Adds the export.\n');
+  refused('a PR body without the findings file', st('deliver', 'pull-request'), 'findings: .router/steps/6-pull-request.findings.json not found');
+  put('.router/steps/6-pull-request.findings.json', [{ ...finding, decision: 'fixed' }]);
+  refused('a PR body that does not close the issue', st('deliver', 'pull-request'), 'pr-body: must link the issue with "Closes #42"');
+  put('.router/steps/6-pull-request.findings.json', [finding]);
+  put('.router/steps/6-pull-request.pr-body.md', 'Adds the export.\n\nCloses #42\n');
+  refused('consolidated findings without a decision', st('deliver', 'pull-request'), 'verdict done with 1 actionable finding');
+  put('.router/steps/6-pull-request.findings.json', [{ ...finding, decision: 'fixed' }]);
+  ok('PR preparation delivered', st('deliver', 'pull-request'));
+  const bodyPath = ok('artifact path', st('artifact', 'pull-request', 'pr-body')).out.trim();
+  if (bodyPath !== path.join(repo, '.router/steps/6-pull-request.pr-body.md')) fail(`artifact should print the accepted file's path, got ${bodyPath}`);
+  refused('an artifact the step did not deliver', st('artifact', 'pull-request', 'note'), 'no accepted note');
+
+  // Simulated publication: the record takes the accepted findings; gh is a stub.
+  const bin = fs.mkdtempSync(path.join(tmp, 'gh-'));
+  const published = path.join(bin, 'body.md');
+  fs.writeFileSync(path.join(bin, 'gh'), `#!/bin/sh\ncase "$1 $2" in\n  "pr view") cat "${published}" ;;\n  "pr edit") cp "$5" "${published}" ;;\nesac\n`, { mode: 0o755 });
+  fs.copyFileSync(bodyPath, published);
+  const env = { ...process.env, PATH: `${bin}${path.delimiter}${process.env.PATH}` };
+  const rec = spawnSync(path.join(tmp, 'scripts/record'), [repo, '--pr', '7'], { encoding: 'utf8', env });
+  const { parseRecord } = require(path.join(ROOT, 'scripts/lib/runs'));
+  const back = parseRecord(fs.readFileSync(published, 'utf8'));
+  if (rec.status !== 0 || back.kind !== 'ok' || back.record.findings.length !== 1 || back.record.findings[0].decision !== 'fixed'
+    || !fs.readFileSync(published, 'utf8').startsWith('Adds the export.'))
+    fail(`publication should use the accepted body and findings\n${rec.stdout}${rec.stderr}`);
+  ok('close the pull request', st('step', 'pull-request', 'done', '--outcome', 'Opened #7'));
+
+  // A read-only reviewer's answer, saved as it came: its last json block is the result, its
+  // inline findings are written to the conventional path.
+  fs.writeFileSync(stateFile, JSON.stringify(variant((s) => { s.steps[4].status = 'running'; })));
+  const roAttempt = attemptOf(ok('expect a read-only review', st('expect', 'review', '--requires', 'findings')));
+  const answer = path.join(repo, 'answer.md');
+  fs.writeFileSync(answer, `backend codex · gpt-6-sol · high\n\nNothing to report. ROUTER_STEP_READY\n\n\`\`\`json\n${JSON.stringify(
+    { step: 'review', attempt: roAttempt, verdict: 'done', summary: 'No findings', artifacts: { findings: [] } })}\n\`\`\`\n`);
+  ok('a read-only review delivered from its answer', st('deliver', 'review', answer));
+  if (fs.readFileSync(path.join(repo, '.router/steps/5-review.findings.json'), 'utf8').trim() !== '[]'
+    || step('review').result.artifacts[0]?.path !== '.router/steps/5-review.findings.json')
+    fail(`inline findings should be saved to the conventional path: ${JSON.stringify(step('review').result)}`);
+
+  // Blocked: the blocker is named and the step waits for it; the step closes no other way.
+  fs.writeFileSync(stateFile, JSON.stringify(variant(() => {})));
+  const blocked = { step: 'implementation', attempt: attemptOf(ok('expect the implementation', st('expect', 'implementation'))),
+    verdict: 'blocked', summary: 'Stuck', artifacts: {} };
+  put('.router/steps/3-implementation.result.json', blocked);
+  refused('blocked without what remains', st('deliver', 'implementation'), 'result.remaining: required when the verdict is blocked');
+  put('.router/steps/3-implementation.result.json', { ...blocked, remaining: 'The export needs a DB index nobody approved' });
+  ok('blocked delivered', st('deliver', 'implementation'));
+  if (step('implementation').status !== 'waiting' || read().status !== 'waiting') fail('a blocked verdict should leave the step and workflow waiting');
+  if (st('expect', 'review').ok) fail('expect should refuse a step that is not running');
+}
+
 // setStep: a covered step takes its covering step's step model; one with its own agent record
 // keeps it, whichever side of the covering step's close it is recorded on.
 {

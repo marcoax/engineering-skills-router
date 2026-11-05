@@ -3,14 +3,15 @@
 //                       [--session-model <id>] [--tokens <n>] [--cost <usd>] [--pr <number>]
 // Composes the run record (skills/engineering-router/run-record.md) from `.router/state.json`
 // and what only the router knows: the findings (a JSON array of {title, severity, found_by,
-// decision}), the checklist counts, the session model, reported usage. Prints the block to
+// decision}; by default the findings the pull-request step delivered, step-result.md), the
+// checklist counts, the session model, reported usage. Prints the block to
 // append to the PR body; with --pr, writes it into that PR's body through gh, replacing an
 // earlier record. Invalid input is refused with the reason, nothing is written.
 const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
 const { spawnSync } = require('node:child_process');
-const { parseRecord, SEVERITIES, DECISIONS } = require('./lib/runs');
+const { parseRecord, findingsProblems } = require('./lib/runs');
 const { crossFamily } = require('./lib/models');
 
 const ROOT = path.resolve(__dirname, '..');
@@ -32,22 +33,20 @@ try {
 }
 
 const ids = new Set(state.steps.map((s) => s.id));
+// Without --findings, the consolidated findings the pull-request preparation delivered
+// (step-result.md), when it delivered them.
+const prepared = state.steps.find((s) => s.id === 'pull-request')?.result;
+const preparedFindings = prepared?.verdict === 'done' ? prepared.artifacts.find((a) => a.kind === 'findings') : null;
+const findingsFile = flags.findings || (preparedFindings ? path.join(target, preparedFindings.path) : null);
 let findings = [];
-if (flags.findings) {
+if (findingsFile) {
   try {
-    findings = JSON.parse(fs.readFileSync(flags.findings, 'utf8'));
+    findings = JSON.parse(fs.readFileSync(findingsFile, 'utf8'));
   } catch (e) {
     die(`--findings: ${e.message}`);
   }
-  if (!Array.isArray(findings)) die('--findings: expected a JSON array');
-  findings.forEach((f, i) => {
-    const at = `--findings[${i}]`;
-    if (typeof f?.title !== 'string' || !f.title.trim()) die(`${at}.title: required`);
-    if (!SEVERITIES.includes(f.severity)) die(`${at}.severity: one of ${SEVERITIES.join(', ')}`);
-    if (!DECISIONS.includes(f.decision)) die(`${at}.decision: one of ${DECISIONS.join(', ')}`);
-    if (!Array.isArray(f.found_by) || f.found_by.length === 0) die(`${at}.found_by: at least one step id`);
-    for (const id of f.found_by) if (!ids.has(id)) die(`${at}.found_by: no step ${JSON.stringify(id)} in the workflow`);
-  });
+  const problems = findingsProblems(findings, ids, { at: '--findings' });
+  if (problems.length) die(problems[0]);
   findings = findings.map(({ title, severity, found_by, decision }) => ({ title, severity, found_by, decision }));
 }
 

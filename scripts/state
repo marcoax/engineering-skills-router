@@ -36,6 +36,15 @@
 //                            config/preferences.yaml, else the run's primary; a review step
 //                            (review, framework-review, security, independent-review) the
 //                            family opposite to the step that wrote the code
+//   expect <n|id> [--requires note,findings,pr-body]
+//                            opens a running step's delivery (step-result.md): a new attempt, and
+//                            the artifacts it must deliver (by default from the step). Prints the
+//                            result path, the attempt and the artifact paths for the step's brief.
+//   deliver <n|id> [<file>]  checks the step's result (default: its conventional result path) and
+//                            its artifacts; refuses with what is missing and what is valid, the
+//                            attempt left open. done lets the step close, fixes keeps it running,
+//                            blocked leaves it waiting.
+//   artifact <n|id> <kind>   the path of an artifact an accepted done delivery carries
 //   progress <n|id> --done "..." [--next "..."] [--limits "..."]
 //                            a running step's progress record (state.md "Progress"), with the
 //                            checkout's branch, HEAD and uncommitted paths; ends an interruption
@@ -241,6 +250,16 @@ if (command === 'model') {
   process.exit(0);
 }
 
+const results = require('./lib/step-result');
+if (command === 'artifact') {
+  try {
+    console.log(path.join(target, results.artifact(state, args[0], args[1])));
+  } catch (e) {
+    die(e.message);
+  }
+  process.exit(0);
+}
+
 const progress = require('./lib/progress');
 if (command === 'recover') {
   for (const line of progress.recovery(state, progress.checkout(target), flags.env)) console.log(line);
@@ -250,6 +269,7 @@ if (command === 'recover') {
 let next;
 let logged = args;
 const notes = [];
+const lines = [];
 try {
   if (command === 'step') next = ops.setStep(state, args[0], args[1], flags);
   else if (command === 'workflow') next = ops.setWorkflow(state, args[0]);
@@ -275,6 +295,29 @@ try {
     next = replied.state;
     notes.push(...replied.notes);
   }
+  else if (command === 'expect') {
+    const requires = flags.requires === undefined ? undefined : flags.requires.split(',').map((k) => k.trim()).filter(Boolean);
+    const attempt = require('node:crypto').randomBytes(4).toString('hex');
+    const expected = results.expect(state, args[0], { requires, attempt });
+    next = expected.state;
+    lines.push(...expected.lines);
+  } else if (command === 'deliver') {
+    const resultPath = results.paths(state, ops.stepIndex(state, args[0])).result;
+    const read = (rel) => {
+      const f = rel === resultPath && args[1] ? path.resolve(args[1]) : path.join(target, rel);
+      return fs.existsSync(f) && fs.statSync(f).isFile() ? fs.readFileSync(f, 'utf8') : null;
+    };
+    const delivered = results.deliver(state, args[0], read);
+    if (delivered.problems) {
+      // Refused: nothing is written, the attempt stays open, the valid artifacts stay as they are.
+      for (const p of delivered.problems) console.error(`error: ${p}`);
+      for (const k of delivered.kept) console.error(`kept: ${k}`);
+      process.exit(1);
+    }
+    for (const w of delivered.writes) fs.writeFileSync(path.join(target, w.path), w.content);
+    next = delivered.state;
+    lines.push(...delivered.lines);
+  }
   else if (['progress', 'check', 'interrupt'].includes(command)) {
     const now = new Date().toISOString().replace(/\.\d{3}Z$/, 'Z');
     const co = progress.checkout(target);
@@ -291,4 +334,4 @@ try {
 }
 
 // A state written without a primary family takes the preferences'; a stored one stays for the run.
-write(next, before, `${command} ${logged.join(' ')}`, notes.map((n) => `coverage: ${n}`));
+write(next, before, `${command} ${logged.join(' ')}`, [...notes.map((n) => `coverage: ${n}`), ...lines]);

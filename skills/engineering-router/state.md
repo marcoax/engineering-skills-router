@@ -219,6 +219,7 @@ Checked by `scripts/check-classification` and by `scripts/state … compose`. A 
 | `progress` (optional) | Progress \| null | What a running step has saved so far, so an interruption loses nothing ([ADR 0003](../../docs/adr/0003-progress-records.md)); `null` until it saves any. Written with `scripts/state … progress`, `check` and `interrupt`; read back with `recover`. |
 | `status` | string | Step status, see below. |
 | `outcome` | string \| null | One-line result once the step ends. |
+| `result` (optional) | Result \| null | The delivery a delegated step owes ([step-result.md](step-result.md)): set by `scripts/state … expect`, accepted by `… deliver`. A step that has one closes as `done` only on an accepted `done` verdict. `null` or absent for a step that declares none. |
 
 Step `status`:
 
@@ -276,6 +277,16 @@ A check's result holds only for the content it ran on: `recover` reuses a passin
 | `skill` | string | The selector's default for the step. |
 | `reason` | string | Its one-line reason. |
 | `alternatives` | `{skill, reason}[]` | The selector's alternatives for the step. |
+
+## Result
+
+| Field | Type | Meaning |
+|---|---|---|
+| `attempt` | string | The current execution's token; a result naming another one is stale. |
+| `requires` | string[] | The artifacts this step must deliver: `note`, `findings`, `pr-body`. |
+| `verdict` | null \| "done" \| "fixes" \| "blocked" | The accepted verdict; `null` while the delivery is expected. |
+| `artifacts` | {kind, path}[] | The accepted artifacts, each path relative to the target repo; empty while expected. |
+| `remaining` | string \| null | What blocks the step or is left, from a `blocked` (or any) delivery. |
 
 ## Handoff
 

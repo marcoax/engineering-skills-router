@@ -22,6 +22,7 @@ This file holds what every run needs. The rest is in files beside it; read each 
 | [cross-family-review.md](cross-family-review.md) | before showing the workflow (§5), and when a review step runs (§6) |
 | [state-brief.md](state-brief.md) | composing `.router/state.json` (§5) |
 | [after-implementation.md](after-implementation.md) | the implementation step is about to start (§6) |
+| [step-result.md](step-result.md) | a skill step is about to start in a subagent (§6) |
 
 **Repo root** is the router checkout (catalog, scripts, vendors) this skill works from. Find it first with `node <this skill's folder>/resolve-root.js` and use the `root:` it prints; on `missing`, follow [checkout.md](checkout.md).
 
@@ -154,7 +155,7 @@ Execute under [autonomy.md](autonomy.md): `go` authorizes the selected workflow 
 
 **Fresh context per step.** When the harness can start subagents, run each skill step in a new subagent, on the model [models.md](models.md) gives it, so the main session keeps only the workflow, not every step's working detail. Run in the main session instead: router steps, and steps whose phase is `requirements`, `clarification`, `specification` or `setup`, because they converse with the user and draw on the conversation. Without subagents, run every step in the main session.
 
-A step subagent gets: the task, the target repo path, the step's `SKILL.md` path (absolute), the handoff, the paths of earlier step notes, and the execution policy and approved scope from [autonomy.md](autonomy.md). It follows points 2–3 below under that policy, writes the step note (point 5), and returns a one-line outcome plus any handoff values. Handle unresolved questions as that policy's exceptions, using existing context before involving the user.
+Before it starts, declare the step's delivery with `scripts/state <target repo> expect <n>` ([step-result.md](step-result.md)). A step subagent gets: the task, the target repo path, the step's `SKILL.md` path (absolute), the handoff, the paths of earlier step notes, the execution policy and approved scope from [autonomy.md](autonomy.md), and the lines `expect` printed. It follows points 2–3 below under that policy, records its checks and progress as it goes with `scripts/state <target repo> check` and `progress` (point 5, [ADR 0003](../../docs/adr/0003-progress-records.md)), writes the step note (point 5) and its step result, and returns a one-line outcome plus any handoff values. The step moves on only after `scripts/state <target repo> deliver <n>` accepts the result; its verdict decides what follows, never a phrase in the answer. Handle unresolved questions as that policy's exceptions, using existing context before involving the user.
 
 **Nested subagents.** A vendor skill may start subagents of its own (e.g. `code-review` runs its two axes in parallel). Tell every step subagent: where it cannot start subagents itself, run those parts in sequence in its own context, each with fresh eyes: it reuses the inputs already read (the diff, the issue, the spec), never an earlier part's conclusions, and says so in the step note (`code-review: axes run in sequence, no nested subagents`). The step stays in its subagent even then: in the main session, an independent step (a review, verification) would have seen the implementation.
 
