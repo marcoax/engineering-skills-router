@@ -1262,6 +1262,163 @@ expectStateOk('unknown fields', variant((s) => { s.extra = 1; s.steps[0].extra =
   }
 }
 
+// Step results (step-result.md): a delegated step closes, or the workflow moves past it, only on a
+// validated delivery: a result for this step and attempt, a recognizable verdict and the
+// artifacts the step declared. Covers review → fixes → pull-request preparation → simulated
+// publication.
+{
+  const repo = fs.mkdtempSync(path.join(tmp, 'step-result-'));
+  fs.mkdirSync(path.join(repo, '.router/steps'), { recursive: true });
+  const stateFile = path.join(repo, '.router/state.json');
+  const read = () => JSON.parse(fs.readFileSync(stateFile, 'utf8'));
+  const step = (id) => read().steps.find((s) => s.id === id);
+  fs.writeFileSync(stateFile, JSON.stringify(variant((s) => {
+    Object.assign(s.steps[2], { status: 'done', outcome: 'Built' });
+    Object.assign(s.steps[3], { status: 'done', outcome: 'ran inside implementation', model: s.steps[2].model });
+    s.steps.push({ id: 'pull-request', phases: ['pull-request'], skill: 'mattpocock/pr', reason: 'r', summary: 's', alternatives: [],
+      confirm: false, covered_by: null, model: null, effort: null, status: 'pending', outcome: null });
+    s.handoff.issue = { number: 42, url: 'https://github.com/o/r/issues/42' };
+  })));
+  const st = (...a) => run('state', repo, ...a);
+  const ok = (label, r) => { if (!r.ok) fail(`step result, ${label}\n${r.out}`); return r; };
+  const refused = (label, r, ...msgs) => {
+    const missing = msgs.filter((m) => !r.out.includes(m));
+    if (r.ok || missing.length) fail(`step result, ${label}: expected a refusal naming\n  ${missing.join('\n  ')}\ngot:\n${r.out}`);
+    return r;
+  };
+  const put = (rel, content) => fs.writeFileSync(path.join(repo, rel), typeof content === 'string' ? content : JSON.stringify(content));
+  const attemptOf = (r) => r.out.match(/^attempt: (\S+)$/m)?.[1];
+
+  // A step without a declared delivery closes as before; one with it, only after a validated one.
+  ok('review running', st('step', 'review', 'running', '--model', 'gpt-6-sol'));
+  const expected = ok('expect the review', st('expect', 'review'));
+  const attempt = attemptOf(expected);
+  if (!attempt || !expected.out.includes('result: .router/steps/5-review.result.json')
+    || !expected.out.includes('requires: note .router/steps/5-review.md, findings .router/steps/5-review.findings.json'))
+    fail(`expect should print the result path, the attempt and the declared artifacts\n${expected.out}`);
+  refused('closing before a delivery', st('step', 'review', 'done', '--outcome', 'Reviewed'), 'needs an accepted delivery');
+  if (step('review').status !== 'running') fail('a refused close should leave the step running');
+
+  // Missing, malformed or deceptive results never pass.
+  refused('a missing result', st('deliver', 'review'), 'result: .router/steps/5-review.result.json not found');
+  put('.router/steps/5-review.result.json', 'Review complete.\nROUTER_STEP_READY\n');
+  refused('a bare marker', st('deliver', 'review'), 'no result JSON');
+  const result = (over) => ({ step: 'review', attempt, verdict: 'done', summary: 'No findings',
+    artifacts: { note: '.router/steps/5-review.md', findings: '.router/steps/5-review.findings.json' }, ...over });
+  put('.router/steps/5-review.result.json', result({ verdict: 'ROUTER_STEP_READY' }));
+  refused('an unrecognizable verdict', st('deliver', 'review'), 'result.verdict: no recognizable verdict');
+  put('.router/steps/5-review.result.json', result({ verdict: undefined }));
+  refused('a missing verdict', st('deliver', 'review'), 'result.verdict: no recognizable verdict');
+  put('.router/steps/5-review.result.json', result({ step: 'implementation' }));
+  refused('a result for another step', st('deliver', 'review'), 'result.step: "implementation" is not step review');
+  put('.router/steps/5-review.result.json', result({ attempt: 'stale' }));
+  refused('a result from another execution', st('deliver', 'review'), 'result.attempt: "stale" is not the current attempt');
+
+  // Declared success with a file missing: what is missing is named, what is valid is kept.
+  put('.router/steps/5-review.findings.json', []);
+  put('.router/steps/5-review.result.json', result());
+  const partial = refused('a declared artifact that is absent', st('deliver', 'review'), 'note: .router/steps/5-review.md not found');
+  if (!partial.out.includes('kept: findings .router/steps/5-review.findings.json')) fail(`a refused delivery should name the valid artifacts\n${partial.out}`);
+  if (step('review').result?.attempt !== attempt || step('review').status !== 'running') fail('a refused delivery should leave the step recoverable');
+  put('.router/steps/5-review.result.json', result({ artifacts: { findings: '.router/steps/5-review.findings.json' } }));
+  refused('an undeclared required artifact', st('deliver', 'review'), 'note: required, not delivered');
+  put('.router/steps/5-review.md', 'Reviewed the diff.\n');
+  put('.router/steps/5-review.result.json', result({ artifacts: { note: '../outside.md', findings: '.router/steps/5-review.findings.json' } }));
+  refused('an artifact outside the target repo', st('deliver', 'review'), 'note: must be a path inside the target repo');
+  // A note headed by another run is never this run's delivery (ADR 0002).
+  put('.router/steps/5-review.md', 'run: run-801\nReviewed #801.\n');
+  put('.router/steps/5-review.result.json', result());
+  refused('a note of another run', st('deliver', 'review'), 'note: .router/steps/5-review.md belongs to run run-801, not this run');
+  put('.router/steps/5-review.md', 'Reviewed the diff.\n');
+
+  // Invalid findings format; findings to fix lead to fixes, not to done.
+  const finding = { title: 'Export ignores the date filter', severity: 'high', found_by: ['review'] };
+  put('.router/steps/5-review.result.json', result());
+  put('.router/steps/5-review.findings.json', '{"title": "x"}');
+  refused('findings that are not an array', st('deliver', 'review'), 'findings: expected a JSON array');
+  put('.router/steps/5-review.findings.json', [{ ...finding, severity: 'huge' }]);
+  refused('a finding with an unknown severity', st('deliver', 'review'), 'findings[0].severity: one of critical, high, medium, low');
+  put('.router/steps/5-review.findings.json', [finding]);
+  refused('done with an actionable finding', st('deliver', 'review'), 'verdict done with 1 actionable finding');
+  put('.router/steps/5-review.findings.json', []);
+  put('.router/steps/5-review.result.json', result({ verdict: 'fixes' }));
+  refused('fixes without a finding to fix', st('deliver', 'review'), 'verdict fixes needs at least one actionable finding');
+  put('.router/steps/5-review.findings.json', [finding]);
+  put('.router/steps/5-review.result.json', result({ verdict: 'fixes', summary: '1 finding to fix' }));
+  const fixes = ok('a review with findings to fix', st('deliver', 'review'));
+  if (!fixes.out.includes('fixes: 1 actionable finding') || step('review').status !== 'running' || step('review').result.verdict !== 'fixes')
+    fail(`a fixes verdict should keep the step running for the fixes\n${fixes.out}`);
+  refused('closing after a fixes verdict', st('step', 'review', 'done', '--outcome', 'Reviewed'), 'needs an accepted delivery');
+
+  // After the fixes, a new attempt: the old one is refused, the decided findings close the step.
+  const again = attemptOf(ok('expect the fixes delivery', st('expect', 'review')));
+  if (!again || again === attempt) fail('a new expectation should start a new attempt');
+  put('.router/steps/5-review.findings.json', [{ ...finding, decision: 'fixed' }]);
+  refused('the earlier attempt after a new expectation', st('deliver', 'review'), 'is not the current attempt');
+  put('.router/steps/5-review.result.json', result({ attempt: again, summary: '1 finding, fixed' }));
+  ok('fixes delivered', st('deliver', 'review'));
+  ok('close the review after its delivery', st('step', 'review', 'done', '--outcome', '1 finding, fixed'));
+  const closed = step('review').result;
+  if (closed.verdict !== 'done' || closed.artifacts.length !== 2) fail(`the accepted delivery should stay on the step: ${JSON.stringify(closed)}`);
+
+  // Pull-request preparation: body and consolidated findings in declared formats; absence of
+  // findings is an explicit empty array.
+  ok('pull request running', st('step', 'pull-request', 'running', '--model', 'claude-opus-5-5'));
+  const prAttempt = attemptOf(ok('expect the PR preparation', st('expect', 'pull-request')));
+  const prResult = (over) => ({ step: 'pull-request', attempt: prAttempt, verdict: 'done', summary: 'Prepared',
+    artifacts: { 'pr-body': '.router/steps/6-pull-request.pr-body.md', findings: '.router/steps/6-pull-request.findings.json' }, ...over });
+  put('.router/steps/6-pull-request.result.json', prResult());
+  put('.router/steps/6-pull-request.pr-body.md', 'Adds the export.\n');
+  refused('a PR body without the findings file', st('deliver', 'pull-request'), 'findings: .router/steps/6-pull-request.findings.json not found');
+  put('.router/steps/6-pull-request.findings.json', [{ ...finding, decision: 'fixed' }]);
+  refused('a PR body that does not close the issue', st('deliver', 'pull-request'), 'pr-body: must link the issue with "Closes #42"');
+  put('.router/steps/6-pull-request.findings.json', [finding]);
+  put('.router/steps/6-pull-request.pr-body.md', 'Adds the export.\n\nCloses #42\n');
+  refused('consolidated findings without a decision', st('deliver', 'pull-request'), 'verdict done with 1 actionable finding');
+  put('.router/steps/6-pull-request.findings.json', [{ ...finding, decision: 'fixed' }]);
+  ok('PR preparation delivered', st('deliver', 'pull-request'));
+  const bodyPath = ok('artifact path', st('artifact', 'pull-request', 'pr-body')).out.trim();
+  if (bodyPath !== path.join(repo, '.router/steps/6-pull-request.pr-body.md')) fail(`artifact should print the accepted file's path, got ${bodyPath}`);
+  refused('an artifact the step did not deliver', st('artifact', 'pull-request', 'note'), 'no accepted note');
+
+  // Simulated publication: the record takes the accepted findings; gh is a stub.
+  const bin = fs.mkdtempSync(path.join(tmp, 'gh-'));
+  const published = path.join(bin, 'body.md');
+  fs.writeFileSync(path.join(bin, 'gh'), `#!/bin/sh\ncase "$1 $2" in\n  "pr view") cat "${published}" ;;\n  "pr edit") cp "$5" "${published}" ;;\nesac\n`, { mode: 0o755 });
+  fs.copyFileSync(bodyPath, published);
+  const env = { ...process.env, PATH: `${bin}${path.delimiter}${process.env.PATH}` };
+  const rec = spawnSync(path.join(tmp, 'scripts/record'), [repo, '--pr', '7'], { encoding: 'utf8', env });
+  const { parseRecord } = require(path.join(ROOT, 'scripts/lib/runs'));
+  const back = parseRecord(fs.readFileSync(published, 'utf8'));
+  if (rec.status !== 0 || back.kind !== 'ok' || back.record.findings.length !== 1 || back.record.findings[0].decision !== 'fixed'
+    || !fs.readFileSync(published, 'utf8').startsWith('Adds the export.'))
+    fail(`publication should use the accepted body and findings\n${rec.stdout}${rec.stderr}`);
+  ok('close the pull request', st('step', 'pull-request', 'done', '--outcome', 'Opened #7'));
+
+  // A read-only reviewer's answer, saved as it came: its last json block is the result, its
+  // inline findings are written to the conventional path.
+  fs.writeFileSync(stateFile, JSON.stringify(variant((s) => { s.steps[4].status = 'running'; })));
+  const roAttempt = attemptOf(ok('expect a read-only review', st('expect', 'review', '--requires', 'findings')));
+  const answer = path.join(repo, 'answer.md');
+  fs.writeFileSync(answer, `backend codex · gpt-6-sol · high\n\nNothing to report. ROUTER_STEP_READY\n\n\`\`\`json\n${JSON.stringify(
+    { step: 'review', attempt: roAttempt, verdict: 'done', summary: 'No findings', artifacts: { findings: [] } })}\n\`\`\`\n`);
+  ok('a read-only review delivered from its answer', st('deliver', 'review', answer));
+  if (fs.readFileSync(path.join(repo, '.router/steps/5-review.findings.json'), 'utf8').trim() !== '[]'
+    || step('review').result.artifacts[0]?.path !== '.router/steps/5-review.findings.json')
+    fail(`inline findings should be saved to the conventional path: ${JSON.stringify(step('review').result)}`);
+
+  // Blocked: the blocker is named and the step waits for it; the step closes no other way.
+  fs.writeFileSync(stateFile, JSON.stringify(variant(() => {})));
+  const blocked = { step: 'implementation', attempt: attemptOf(ok('expect the implementation', st('expect', 'implementation'))),
+    verdict: 'blocked', summary: 'Stuck', artifacts: {} };
+  put('.router/steps/3-implementation.result.json', blocked);
+  refused('blocked without what remains', st('deliver', 'implementation'), 'result.remaining: required when the verdict is blocked');
+  put('.router/steps/3-implementation.result.json', { ...blocked, remaining: 'The export needs a DB index nobody approved' });
+  ok('blocked delivered', st('deliver', 'implementation'));
+  if (step('implementation').status !== 'waiting' || read().status !== 'waiting') fail('a blocked verdict should leave the step and workflow waiting');
+  if (st('expect', 'review').ok) fail('expect should refuse a step that is not running');
+}
+
 // setStep: a covered step takes its covering step's step model; one with its own agent record
 // keeps it, whichever side of the covering step's close it is recorded on.
 {
@@ -1448,8 +1605,8 @@ expectStateOk('unknown fields', variant((s) => { s.extra = 1; s.steps[0].extra =
   }
   for (const f of ['a.out', 'b.out', 'a.code', 'b.code']) fs.rmSync(path.join(repo, f));
 
-  // A step's note belongs to its run: starting the step writes the run line first, and a note
-  // left at that path by another run is moved to that run's archive, not reused or deleted.
+  // A step's note belongs to its run: starting the step names the note and its run line, and a
+  // note left at that path by another run is moved to that run's archive, not reused or deleted.
   fs.writeFileSync(stateFile, JSON.stringify(example));
   const notes = path.join(repo, '.router/steps');
   fs.mkdirSync(notes, { recursive: true });
@@ -1458,14 +1615,18 @@ expectStateOk('unknown fields', variant((s) => { s.extra = 1; s.steps[0].extra =
   fs.writeFileSync(path.join(notes, '2-branch.md'), 'branch created (written before runs)\n');
   const started = st('step', 'review', 'running');
   expectOk('step running with a foreign note in place', started);
-  if (fs.readFileSync(path.join(notes, '5-review.md'), 'utf8') !== `run: ${example.run}\n`) fail('a started step should get a note headed by its run');
+  if (fs.existsSync(path.join(notes, '5-review.md'))) fail('a foreign note should leave the step\'s note path');
   if (fs.readFileSync(path.join(repo, '.router/runs/run-801/steps/5-review.md'), 'utf8') !== 'run: run-801\nreview of #801: no findings\n')
     fail('a foreign note should move to its own run\'s archive, unchanged');
-  if (!started.out.includes('note: .router/steps/5-review.md')) fail(`step running should name the step's note\n${started.out}`);
+  if (!started.out.includes(`note: .router/steps/5-review.md, first line \`run: ${example.run}\``)) fail(`step running should name the step's note and its run line\n${started.out}`);
+  // This run's note, or one without a run line (this step's own before an interruption), stays.
+  fs.writeFileSync(path.join(notes, '5-review.md'), `run: ${example.run}\nhalf done\n`);
   expectOk('step running again', st('step', 'review', 'running'));
-  fs.appendFileSync(path.join(notes, '5-review.md'), 'half done\n');
-  expectOk('step running once more', st('step', 'review', 'running'));
   if (!fs.readFileSync(path.join(notes, '5-review.md'), 'utf8').includes('half done')) fail('a note of this run must be kept when its step starts again');
+  fs.writeFileSync(path.join(notes, '5-review.md'), 'half done, no run line\n');
+  expectOk('step running once more', st('step', 'review', 'running'));
+  if (!fs.existsSync(path.join(notes, '5-review.md'))) fail('a note without a run line must stay where it is');
+  fs.writeFileSync(path.join(notes, '5-review.md'), `run: ${example.run}\nreview started\n`);
   fs.writeFileSync(path.join(notes, '3-implementation.md'), 'run: run-801\nimplementation of #801\n');
 
   // Reconcile: state, branch, commits since the base, PR and notes side by side. A merged PR is
@@ -1769,6 +1930,138 @@ expectStateOk('unknown fields', variant((s) => { s.extra = 1; s.steps[0].extra =
   s = read();
   if (!r.ok || !r.out.includes('classification: revised under policy 2') || s.risk !== 'high' || s.classification.facts.length !== 1)
     fail(`an explicit recomposition may revise the classification under the current policy\n${r.out}`);
+}
+
+// Progress records (ADR 0003): a running step saves its progress and checks as it goes, so a
+// timeout or quota stop loses nothing. `recover` reads them against the current checkout: it keeps
+// completed steps and commits, lists uncommitted work, reuses only checks whose files are unchanged
+// and whose environment matches, never reports a check it cannot prove, and bounds retries without
+// switching model.
+{
+  const repo = fs.mkdtempSync(path.join(tmp, 'progress-'));
+  const g = (...a) => spawnSync('git', ['-C', repo, '-c', 'user.name=t', '-c', 'user.email=t@t', ...a], { encoding: 'utf8', env: gitEnv });
+  const put = (f, text) => {
+    fs.mkdirSync(path.dirname(path.join(repo, f)), { recursive: true });
+    fs.writeFileSync(path.join(repo, f), text);
+  };
+  g('init', '-q', '-b', 'export');
+  put('src/export.js', 'v1');
+  put('test/export.test.js', 't1');
+  put('README.md', 'r1');
+  fs.writeFileSync(path.join(repo, '.git/info/exclude'), '.router/\n');
+  g('add', '.');
+  g('commit', '-qm', 'base');
+  const stateFile = path.join(repo, '.router/state.json');
+  fs.mkdirSync(path.dirname(stateFile));
+  fs.writeFileSync(stateFile, JSON.stringify(variant((s) => { s.handoff.branch = 'export'; delete s.steps[2].progress; })));
+  const read = () => JSON.parse(fs.readFileSync(stateFile, 'utf8'));
+  const st = (...a) => run('state', repo, ...a);
+  const expectOk = (label, r) => { if (!r.ok) fail(`scripts/state ${label}\n${r.out}`); };
+  const recover = (label, ...a) => {
+    const r = st('recover', ...a);
+    if (!r.ok) fail(`recover, ${label}\n${r.out}`);
+    return r.out;
+  };
+  const expectLines = (label, out, ...lines) => {
+    const missing = lines.filter((l) => !out.includes(l));
+    if (missing.length) fail(`recover, ${label}: expected\n  ${missing.join('\n  ')}\ngot:\n${out}`);
+  };
+  const head = () => g('rev-parse', 'HEAD').stdout.trim();
+
+  // A step interrupted before it saved anything: said so, with nothing reported as done or checked.
+  let out = recover('no progress record');
+  expectLines('no progress record', out, '3. implementation: running, no progress record: rebuild it from git and the step note; report nothing as done or checked');
+  if (/reuse:/.test(out)) fail(`recover without a progress record must reuse no check\n${out}`);
+  expectOk('progress without next', st('progress', 'implementation', '--done', 'export written'));
+  expectLines('incomplete record', recover('incomplete record'), '3. implementation: incomplete progress record: no next work');
+
+  // Interrupted after its tests passed and its work was committed.
+  put('src/export.js', 'v2');
+  put('test/export.test.js', 't2');
+  g('add', '.');
+  g('commit', '-qm', 'export');
+  expectOk('check pass', st('check', 'implementation', 'pass', '--command', 'npm test', '--scope', 'src,test', '--env', 'node 22'));
+  expectOk('check interrupted', st('check', 'implementation', 'interrupted', '--command', 'npm run e2e', '--env', 'node 22'));
+  expectOk('progress', st('progress', 'implementation', '--done', 'export built and tested, committed', '--next', 'write the step note', '--limits', 'e2e not run to the end'));
+  expectOk('interrupt', st('interrupt', 'implementation', '--reason', 'timeout'));
+  let s = read();
+  if (s.status !== 'running' || s.steps[2].status !== 'running' || s.steps[2].progress?.interrupted?.reason !== 'timeout')
+    fail(`an interruption keeps the step and workflow running, neither done nor waiting for a decision: ${JSON.stringify(s.steps[2])}`);
+  const saved = fs.readFileSync(stateFile, 'utf8');
+  out = recover('after test and commit');
+  expectLines('after test and commit', out,
+    '1. specification: done, kept',
+    '3. implementation: interrupted (timeout), retry 1 of 2',
+    'done: export built and tested, committed',
+    'next: write the step note',
+    'limits: e2e not run to the end',
+    `checkout: at the recorded commit ${head().slice(0, 7)} on export`,
+    'reuse: npm test (node 22) on src, test: pass',
+    'rerun: npm run e2e (node 22) on .: interrupted',
+    'model: claude-bridge/claude-opus-5-5 as recorded; another model or family only with the user\'s yes',
+    'continue: step 3 implementation: write the step note');
+  if (fs.readFileSync(stateFile, 'utf8') !== saved) fail('recover must not change the state');
+
+  // A change outside a check's scope keeps it; another environment or a change inside reruns it.
+  put('README.md', 'r2');
+  expectLines('change outside scope', recover('change outside scope'), 'reuse: npm test (node 22) on src, test: pass');
+  expectLines('other environment', recover('other environment', '--env', 'node 20'), 'rerun: npm test (node 22) on src, test: environment is node 20');
+  put('src/export.js', 'v3');
+  g('commit', '-qam', 'more');
+  expectLines('later change', recover('later change'),
+    'rerun: npm test (node 22) on src, test: its files changed since',
+    'checkout: 1 commit(s) after the recorded commit');
+
+  // A partial fix not committed: kept as it is and listed, with retries bounded on the same model.
+  put('src/fix.js', 'partial');
+  put('src/export.js', 'v4');
+  expectOk('progress on a partial fix', st('progress', 'implementation', '--done', 'fix half done', '--next', 'finish the fix in src/fix.js'));
+  expectOk('interrupt on quota', st('interrupt', 'implementation', '--reason', 'quota'));
+  out = recover('partial fix');
+  expectLines('partial fix', out, 'uncommitted: src/export.js, src/fix.js', '3. implementation: interrupted (quota), retry 2 of 2', 'continue: step 3 implementation: finish the fix in src/fix.js');
+  if (fs.readFileSync(path.join(repo, 'src/fix.js'), 'utf8') !== 'partial') fail('recover must leave partial changes as they are');
+  expectOk('third interruption', st('interrupt', 'implementation', '--reason', 'quota'));
+  out = recover('retries used up');
+  expectLines('retries used up', out,
+    '3. implementation: interrupted (quota), retries used up (3 interruptions): ask the user to retry, change model or stop',
+    'model: claude-bridge/claude-opus-5-5 as recorded');
+  if (read().steps[2].model !== 'claude-bridge/claude-opus-5-5') fail('an interruption must not change the step model');
+
+  // Completing the fix: a rerun check replaces the earlier one with the same command.
+  put('src/fix.js', 'done');
+  g('add', '.');
+  g('commit', '-qm', 'fix');
+  expectOk('check pass again', st('check', 'implementation', 'pass', '--command', 'npm test', '--scope', 'src,test', '--env', 'node 22'));
+  expectOk('progress after the fix', st('progress', 'implementation', '--done', 'fix committed and tested', '--next', 'write the step note'));
+  s = read();
+  if (s.steps[2].progress.checks.length !== 2 || s.steps[2].progress.interrupted !== null)
+    fail(`a check replaces its earlier run, and new progress ends the interruption: ${JSON.stringify(s.steps[2].progress)}`);
+  expectLines('after the fix', recover('after the fix'), 'reuse: npm test (node 22) on src, test: pass', '3. implementation: running, after 3 interruption(s)');
+  expectOk('step done', st('step', 'implementation', 'done', '--outcome', 'Built'));
+  // A finished step keeps its checks, for the pull request step to reuse.
+  expectLines('implementation done', recover('implementation done'), '3. implementation: done, kept', 'reuse: npm test (node 22) on src, test: pass', 'continue: step 5 review: not started');
+
+  // A recorded commit missing from the checkout: nothing recorded is trusted.
+  fs.writeFileSync(stateFile, JSON.stringify(variant((s) => {
+    s.handoff.branch = 'export';
+    s.steps[2].progress = { ...read().steps[2].progress, head: 'deadbeef'.repeat(5) };
+  })));
+  expectLines('commit not in history', recover('commit not in history'),
+    'checkout: recorded commit deadbee is not in this checkout\'s history: stop and ask before continuing',
+    'rerun: npm test (node 22) on src, test: its recorded commit is not in this checkout');
+
+  // Refused changes name the reason.
+  const expectRefused = (label, r, msg) => { if (r.ok || !r.out.includes(`error: ${msg}`)) fail(`scripts/state ${label}: expected error: ${msg}\ngot:\n${r.out}`); };
+  expectRefused('bad result', st('check', 'implementation', 'maybe', '--command', 'x', '--env', 'e'), 'check result must be pass | fail | interrupted');
+  expectRefused('check without environment', st('check', 'implementation', 'pass', '--command', 'x'), 'check needs --command and --env');
+  expectRefused('interrupt without reason', st('interrupt', 'implementation'), 'interrupt needs --reason');
+  expectRefused('interrupt a pending step', st('interrupt', 'review', '--reason', 'timeout'), 'step review is pending: only a running step records progress');
+  // check-state reads the record's format from state.md.
+  expectState('progress record', variant((s) => {
+    s.steps[2].progress.checks[0].result = 'maybe';
+    s.steps[2].progress.at = 'yesterday';
+  }), 'steps[2].progress.checks[0].result: must be "pass" | "fail" | "interrupted", got "maybe"',
+  'steps[2].progress.at: must be ISO-8601 UTC');
 }
 
 // The run's primary family lives in the state: written from the preferences when the state has
