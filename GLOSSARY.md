@@ -32,6 +32,14 @@ _Avoid_: ready marker, completion phrase
 The moment after one step has closed and before the next one starts. The step's note and the workflow state are written, so it is the only point where the workflow can pause on purpose and resume in a new session. An interrupted step resumes from its progress record instead.
 _Avoid_: checkpoint, mid-step pause
 
+**Run**:
+One execution of a workflow, from `compose --new` to its end, identified by `run` in `.router/state.json`. Its step notes start with `run: <run>`; a note of another run is never this run's evidence. A finished or discarded run is archived with its notes in `.router/runs/<run>/`.
+_Avoid_: session (a run can outlive one)
+
+**Owner**:
+The one session that may change a run's state (`owner.session`), enforced by `scripts/state`. It changes only through `claim` (no owner yet) or an explicit `takeover` ([ADR 0002](docs/adr/0002-workflow-ownership.md)).
+_Avoid_: lock holder (the lock lasts one command)
+
 **Progress record**:
 What a running step has saved so far: work done, next work, limits, the checkout it saw and the checks it ran, each tied to the content of its scope ([ADR 0003](docs/adr/0003-progress-records.md)). `recover` reads it back after an interruption.
 _Avoid_: checkpoint (an explicit user checkpoint is a pause), snapshot

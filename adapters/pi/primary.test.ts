@@ -54,8 +54,10 @@ test("the tool takes the router checkout and the target repo, both strings", () 
 	for (const p of Object.values(parameters.properties) as any[]) assert.equal(p.type, "string");
 });
 
+// The tool runs scripts/state as the Pi session; the state.md example is owned by session-example.
+const asSession = (session: string) => ({ getSessionId: () => session });
 const run = async (f: ReturnType<typeof fixture>, ctx: object) => {
-	const result = await tool().execute("call-1", { root: f.router, target: f.target }, undefined, undefined, ctx);
+	const result = await tool().execute("call-1", { root: f.router, target: f.target }, undefined, undefined, { sessionManager: asSession("session-example"), ...ctx });
 	return result.content.map((c: any) => c.text).join("\n");
 };
 
@@ -115,5 +117,24 @@ test("Pi asks nothing when preferences.yaml sets primary, and names the family a
 		} finally {
 			f.cleanup();
 		}
+	}
+});
+
+test("the answer is stored as the Pi session, which another session's workflow refuses", async () => {
+	const f = fixture();
+	const saved = { ...process.env };
+	// Not the session this test runs in: only the Pi session the tool is given.
+	for (const k of ["ROUTER_SESSION", "CLAUDE_CODE_SESSION_ID", "PI_SESSION_ID"]) delete process.env[k];
+	try {
+		await assert.rejects(
+			run(f, { sessionManager: asSession("pi-other"), hasUI: true, ui: { select: async () => OPENAI } }),
+			/owned by session session-example/,
+		);
+		assert.equal(f.primary(), "claude");
+		await run(f, { hasUI: true, ui: { select: async () => OPENAI } });
+		assert.equal(f.primary(), "openai");
+	} finally {
+		Object.assign(process.env, saved);
+		f.cleanup();
 	}
 });

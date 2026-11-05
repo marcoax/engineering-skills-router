@@ -10,6 +10,8 @@ const ROOT = path.resolve(import.meta.dirname, "../..");
 // Never the maintainer's configuration: no explicit location, an empty XDG config root.
 delete process.env.ENGINEERING_ROUTER_CONFIG;
 process.env.XDG_CONFIG_HOME = path.join(os.tmpdir(), `router-no-user-config-${process.pid}`);
+// scripts/state runs as the session that owns the state.md example (ADR 0002).
+process.env.ROUTER_SESSION = "session-example";
 const fixture = () => {
  const target = fs.mkdtempSync(path.join(os.tmpdir(), "router-boundary-"));
  fs.mkdirSync(path.join(target, ".router"));

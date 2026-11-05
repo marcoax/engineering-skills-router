@@ -124,7 +124,10 @@ function deliver(state, ref, read) {
       continue;
     }
     const own = [];
-    if (!content.trim()) own.push(`${kind}: ${rel} is empty`);
+    // A note headed by another run (`run: <id>`, ADR 0002) is that run's, never this delivery.
+    const noteRun = kind === 'note' ? content.match(/^run: (\S+)/)?.[1] : undefined;
+    if (!content.replace(/^run: \S+\n?/, '').trim()) own.push(`${kind}: ${rel} is empty`);
+    else if (noteRun && state.run && noteRun !== state.run) own.push(`note: ${rel} belongs to run ${noteRun}, not this run`);
     else if (kind === 'findings') {
       let list;
       try {

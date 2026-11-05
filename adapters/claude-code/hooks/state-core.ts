@@ -23,6 +23,8 @@ export type Step = {
 	status: string;
 	outcome: string | null;
 };
+// The session that may change the workflow (state.md Owner); null when none is recorded.
+export type Owner = { session: string; since: string };
 export type State = {
 	task: string;
 	type: string;
@@ -40,6 +42,7 @@ export type State = {
 		base_commit: string | null;
 		pr: Ref | null;
 	};
+	owner: Owner | null;
 };
 export type Parsed = { kind: "ok"; state: State } | { kind: "version"; version: unknown } | { kind: "invalid" };
 
@@ -111,6 +114,7 @@ export function parseState(text: string): Parsed {
 				base_commit: strOrNull(h.base_commit),
 				pr: ref(h.pr),
 			},
+			owner: isObj(raw.owner) && typeof raw.owner.session === "string" ? { session: raw.owner.session, since: str(raw.owner.since) } : null,
 		},
 	};
 }
@@ -143,9 +147,11 @@ export function hiddenAtStart(state: State, prState?: string): boolean {
 }
 
 // An unfinished workflow found at session start may belong to another session, even one in
-// another harness: the state file records no owner. The adapter shows only `foreignLine`,
-// frozen at start, until this session takes the workflow up (`takesUpWorkflow`).
-export const isForeignAtStart = (state: State): boolean => !isClosed(state);
+// another harness, unless its recorded owner is this session (`session`, the harness's session
+// id; ADR 0002). The adapter shows only `foreignLine`, frozen at start, until this session takes
+// the workflow up (`takesUpWorkflow`); scripts/state still refuses a non-owner's change.
+export const isForeignAtStart = (state: State, session?: string): boolean =>
+	!isClosed(state) && !(session !== undefined && state.owner?.session === session);
 
 export const foreignLine = (state: State, invocation: string): string =>
 	`router · ${state.status} elsewhere · ${state.task} — ${invocation} to resume`;

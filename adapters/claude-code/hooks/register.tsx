@@ -150,7 +150,9 @@ export const register: Register = on => {
       const fresh = parsed?.kind === 'ok' ? parsed.state : null
       if (isFirstRead && fresh) {
         await update($, isHidden, () => hiddenAtStart(fresh))
-        if (isForeignAtStart(fresh)) await update($, foreign, () => foreignLine(fresh, INVOCATION))
+        // A workflow this session owns (ADR 0002) is its own; without an id, any may be foreign.
+        const session = await $.session.id().catch(() => undefined)
+        if (isForeignAtStart(fresh, session)) await update($, foreign, () => foreignLine(fresh, INVOCATION))
       } else if (fresh && !isClosed(fresh)) await update($, isHidden, () => false)
       // A workflow removed (discarded) frees the next one from the start-of-session line.
       if (!text) await takeUp($)

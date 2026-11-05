@@ -233,7 +233,7 @@ export default function (pi: ExtensionAPI) {
 		file = path.join(root, STATE_FILE);
 		const initial = readState(root);
 		hideClosed = initial.kind === "ok" && hiddenAtStart(initial.state);
-		foreign = initial.kind === "ok" && isForeignAtStart(initial.state) ? foreignLine(initial.state, INVOCATION) : undefined;
+		foreign = initial.kind === "ok" && isForeignAtStart(initial.state, ctx.sessionManager.getSessionId()) ?foreignLine(initial.state, INVOCATION) : undefined;
 		const pr = initial.kind === "ok" && initial.state.status === "done" ? initial.state.handoff.pr : null;
 		if (pr) {
 			// Shown while gh answers; hidden only once gh says merged/closed and the same workflow is still there.
