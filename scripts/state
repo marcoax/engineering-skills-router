@@ -6,7 +6,7 @@
 //   step <n|id> <status> [--outcome "..."] [--model <model ID>] [--effort low|medium|high] [--main-session]
 //        pending | running | waiting | done | skipped | failed; done, skipped and failed need
 //        an outcome. A delegated step (step-result.md) is done only on an accepted delivery;
-//        --main-session closes a skill step that ran in the main session (no subagents). A step that covers others carries them: running starts them and gives
+//        --main-session closes a skill step that ran in the main session; PR preparation still needs accepted artifacts. A step that covers others carries them: running starts them and gives
 //        those still open without a model its model and effort; done or failed closes those
 //        still open with its model and effort. A running or waiting step sets the workflow's
 //        status.

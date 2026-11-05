@@ -27,11 +27,13 @@ const delegated = (state, step) => Boolean(state.run) && step.skill != null && !
   && !(step.phases ?? []).some((p) => MAIN_SESSION_PHASES.includes(p));
 
 // Why step `ref` may not close as done yet, or null. A delegated step needs an accepted done
-// delivery, unless it ran in the main session (`inSession`: the harness has no subagents).
+// delivery, unless it ran in the main session. PR preparation always validates its artifacts.
 function closeProblem(state, ref, { inSession = false } = {}) {
   const i = stepIndex(state, ref);
   const step = state.steps[i];
-  if (inSession || !delegated(state, step) || step.result?.verdict === 'done') return null;
+  const preparation = Boolean(state.run) && step.id === 'pull-request' && step.skill != null;
+  if ((!preparation && (inSession || !delegated(state, step))) || step.result?.verdict === 'done') return null;
+  if (preparation) return `step ${step.id}: PR preparation needs an accepted delivery in the main session too: \`expect ${i + 1}\`, then \`deliver ${i + 1}\` (step-result.md)`;
   return `step ${step.id}: a delegated step needs an accepted delivery to close as done: \`expect ${i + 1}\` before it starts, then \`deliver ${i + 1}\` (step-result.md); a skill step run in the main session closes with --main-session`;
 }
 
@@ -56,6 +58,8 @@ function expect(state, ref, { requires, attempt, purpose }) {
   const kinds = requires ?? defaultRequires(step);
   const unknown = kinds.filter((k) => !KINDS.includes(k));
   if (unknown.length) fail(`--requires: unknown artifact ${unknown.join(', ')} (${KINDS.join(', ')})`);
+  if (step.id === 'pull-request' && defaultRequires(step).some((k) => !kinds.includes(k)))
+    fail('pull-request requires pr-body and findings, in the main session or a subagent');
   const old = step.result;
   const earlier = old ? [...(old.earlier ?? []), { attempt: old.attempt, purpose: old.purpose ?? null, verdict: old.verdict }] : [];
   const passed = earlier.filter((e) => e.verdict !== null);

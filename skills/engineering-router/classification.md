@@ -1,4 +1,4 @@
-# Classification — policy 2
+# Classification — policy 3
 
 Read from SKILL.md §1. These are the criteria the router classifies a task by, and the constraints `scripts/check-classification` enforces on the result. The policy revision is the number in the title: change it when a criterion, a fact or a minimum changes meaning, never for wording.
 
@@ -36,10 +36,10 @@ What §1 may offer, from the checked classification: the first row that matches 
 |---|---|---|---|
 | low | any | yes | direct (proposed), light or full |
 | low | any | no | direct or full |
-| medium | low | yes | light (proposed) or full |
+| medium | low | yes | direct (proposed), light or full |
 | any other | | | full |
 
-A proposed `direct` is a recommendation, not a choice: the router still waits for the user (SKILL.md §1). Full is always available: the user may ask for it at any risk. A user's explicit request outside the offer is not silently followed: report the constraint and its evidence, and let the user correct the facts or choose an offered path.
+A proposed `direct` is a recommendation, not a choice: the router waits unless the user has already chosen it (SKILL.md §1). Direct work keeps project checks, enabled hooks and proportionate review; it removes orchestration, not verification. Authorization, payment and destructive changes remain high risk and full-only. Full is always available. Report an explicit choice outside the offer with its conflicting evidence.
 
 ## Uncertainty
 
@@ -55,7 +55,7 @@ Write the classification to a file outside the target repo and run `scripts/chec
   "risk": "high",
   "complexity": "low",
   "classification": {
-    "policy": 2,
+    "policy": 3,
     "ticket": true,
     "facts": [
       { "fact": "authorization", "where": "src/auth/guard.ts", "evidence": "the fix changes which roles pass canEditInvoice" }
