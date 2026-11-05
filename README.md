@@ -48,13 +48,13 @@ pi install git:github.com/marcoax/engineering-skills-router
 
 Pi clones it into `~/.pi/agent/git/`, and `npm install` fetches the vendor submodules (`postinstall`). Only this package's skills are loaded, not the vendor skills. Then, in Pi, `/reload` and `/skill:engineering-router <task>` (or `/skill:skill-selector <task>`); run it with no task to resume. To try it for one session without installing: `pi -e git:github.com/marcoax/engineering-skills-router`.
 
-**Update** with `pi update git:github.com/marcoax/engineering-skills-router` (plain `pi update` updates Pi itself). An update resets the installed clone (`git clean -fdx`), so keep preferences in `~/.config/engineering-skills-router/`: step 2 above with `ROUTER="$HOME/.pi/agent/git/github.com/marcoax/engineering-skills-router"`. To edit the catalog, install from your own checkout instead (Pi loads a local path without copying or cleaning it): `pi install "$ROUTER"` after step 1 above; update it as in [Update](#update).
+**Update** with `pi update git:github.com/marcoax/engineering-skills-router` (plain `pi update` updates Pi itself). An update resets the installed clone (`git clean -fdx`), so keep preferences in `~/.config/engineering-skills-router/`: the preferences command in [Steps](#steps), with `ROUTER="$HOME/.pi/agent/git/github.com/marcoax/engineering-skills-router"`. To edit the catalog, install from your own checkout instead (Pi loads a local path without copying or cleaning it): `pi install "$ROUTER"` after cloning and running `scripts/setup`; update it as in [Update](#update).
 
 The workflow widget, its keys and the primary-family menu: [Pi adapter](docs/pi.md).
 
 ## Install (Claude Code)
 
-One checkout on your disk serves both the skills and the panel plugin, so they always match. Walked through with the Claude Code 2.1.318 CLI on macOS ([what ran live](evals/live/2026-11-04-claude-code-install.md)).
+One checkout on your disk serves both the skills and the panel plugin, so they always match. The manual steps the installer automates were walked through with the Claude Code 2.1.318 CLI on macOS ([what ran live](evals/live/2026-11-04-claude-code-install.md)); the installer itself is covered by tests against a stubbed `claude`, not yet by a live run.
 
 **Components**
 
@@ -69,58 +69,37 @@ One checkout on your disk serves both the skills and the panel plugin, so they a
 
 ### Steps
 
-Commands in `sh` blocks run in a terminal; `/…` commands are typed in a Claude Code session. Pick any absolute checkout path, spaces allowed; `ROUTER` is a variable for this terminal only (no shell-profile change).
+Run in a terminal (choose any absolute checkout path, spaces allowed):
 
-1. **Checkout.**
+```sh
+ROUTER="$HOME/tools/engineering skills router"
+git clone https://github.com/marcoax/engineering-skills-router "$ROUTER"
+"$ROUTER/scripts/install-claude"
+```
 
-   ```sh
-   ROUTER="$HOME/tools/engineering skills router"     # your choice; absolute
-   git clone --recurse-submodules https://github.com/marcoax/engineering-skills-router "$ROUTER"
-   "$ROUTER/scripts/setup"
-   ```
+The installer runs `scripts/setup`, links both skills and installs the panel from the same checkout. The panel is on by default; it is a mod that runs with your permissions, so to review it first run `claude plugin validate "$ROUTER/adapters/claude-code"` (see [claude-code.md](docs/claude-code.md#the-panel-plugin)) before the installer, or install with `--no-panel`. Then open Claude Code in your project and run `/engineering-router <task>`; in an already-open session, run `/reload-plugins` first.
 
-   `scripts/setup` fetches the vendor submodules at their pinned commits, runs `npm ci` (one dependency, `yaml`, into the checkout's `node_modules`), sets `core.hooksPath=.githooks` in **the checkout's** git config (a pre-commit hook for working on the router itself) and validates the catalog. Apart from npm's download cache, it writes nothing outside the checkout, and nothing into any project you later use the router on.
+Use `scripts/install-claude --no-panel` for just the skills; for one project only, see [other routes](docs/claude-code.md#other-installation-routes). Rerunning the installer keeps existing links to this checkout; if another skill occupies either path, it stops before making changes and leaves it alone. `CLAUDE_CONFIG_DIR` is honored when set. Plugin registration can repoint an existing marketplace with the same name; see [existing installations](docs/claude-code.md#an-existing-installation).
 
-2. **Preferences** (optional; created only if you have none):
+`scripts/setup` fetches the pinned vendor submodules, installs the checkout's npm dependencies, enables its pre-commit hook and validates the catalog; apart from npm's download cache it writes nothing outside the checkout. The installer then creates the skill links and asks Claude Code to register the plugin at user scope. If a command fails, it stops; completed steps remain and you can rerun it after fixing the error.
 
-   ```sh
-   mkdir -p ~/.config/engineering-skills-router
-   [ -f ~/.config/engineering-skills-router/preferences.yaml ] || cp "$ROUTER/config/preferences.example.yaml" ~/.config/engineering-skills-router/preferences.yaml
-   ```
+**Preferences are optional.** Defaults work without a file, and the installer never changes your preferences. To customize them (created only if you have none):
 
-   They live outside the checkout, so updates never touch them ([configuration.md](docs/configuration.md); `$XDG_CONFIG_HOME` and `ENGINEERING_ROUTER_CONFIG` are honored). Without the file, documented defaults apply.
+```sh
+mkdir -p ~/.config/engineering-skills-router
+[ -f ~/.config/engineering-skills-router/preferences.yaml ] || cp "$ROUTER/config/preferences.example.yaml" ~/.config/engineering-skills-router/preferences.yaml
+```
 
-3. **Skills.** Link both into Claude Code's personal skills folder; an existing entry of the same name is reported and left alone:
+They live outside the checkout, so updates never touch them ([configuration](docs/configuration.md); `$XDG_CONFIG_HOME` and `ENGINEERING_ROUTER_CONFIG` are honored).
 
-   ```sh
-   mkdir -p ~/.claude/skills
-   for s in engineering-router skill-selector; do
-     link="$HOME/.claude/skills/$s"
-     if [ "$(readlink "$link")" = "$ROUTER/skills/$s" ]; then echo "already linked: $link"
-     elif [ -e "$link" ] || [ -L "$link" ]; then echo "left alone, something else is there: $link"
-     else ln -s "$ROUTER/skills/$s" "$link" && echo "linked: $link"; fi
-   done
-   ```
-
-   A linked skill finds its checkout through the link, so no `ENGINEERING_ROUTER_HOME` is needed ([checkout resolution](docs/reference.md#checkout-resolution)). For one project only, link into that project's `.claude/skills/` instead.
-
-4. **Panel plugin** (optional):
-
-   ```sh
-   claude plugin marketplace add "$ROUTER"
-   claude plugin install engineering-router-panel@engineering-skills-router
-   ```
-
-   This registers the checkout as the local marketplace `engineering-skills-router` and enables the plugin at user scope (`~/.claude/settings.json`). Claude Code reads the plugin in place from `$ROUTER/adapters/claude-code`. A mod runs with your permissions: review it with `claude plugin validate "$ROUTER/adapters/claude-code"` and [claude-code.md](docs/claude-code.md). Already-open sessions pick it up after `/reload-plugins`.
-
-**Where things end up:** the checkout at `$ROUTER`; two symlinks in `~/.claude/skills/`; the marketplace and plugin entries in `~/.claude/settings.json` and `~/.claude/plugins/`; preferences in `~/.config/engineering-skills-router/`; during a run, `.router/state.json` in the target repo (with `.router/` added to its `.git/info/exclude`). The `/router-models` choice is kept in Claude Code's mod storage.
+**Where things end up:** the checkout at `$ROUTER`; two symlinks in `~/.claude/skills/`; the marketplace and plugin entries in `~/.claude/settings.json` and `~/.claude/plugins/` (with `CLAUDE_CONFIG_DIR` set, that directory replaces `~/.claude`); preferences in `~/.config/engineering-skills-router/`; during a run, `.router/state.json` in the target repo (with `.router/` added to its `.git/info/exclude`). The `/router-models` choice is kept in Claude Code's mod storage.
 
 ### Check before real work
 
 In a terminal:
 
 ```sh
-node ~/.claude/skills/engineering-router/resolve-root.js   # root: <your $ROUTER>, found: skill-dir
+node "${CLAUDE_CONFIG_DIR:-$HOME/.claude}/skills/engineering-router/resolve-root.js"   # root: <your $ROUTER>, found: skill-dir
 (cd "$ROUTER" && scripts/config && scripts/validate-catalog)   # configuration in effect; catalog OK
 claude plugin list                                          # engineering-router-panel@engineering-skills-router, enabled, read from $ROUTER
 gh auth status                                              # only if the router will publish issues or PRs
