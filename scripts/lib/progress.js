@@ -36,6 +36,16 @@ function checkout(target) {
   // SHA-256 over each file's path, type, executable bits and content, sorted. A path
   // named in the scope counts even when ignored (a gitignored .env); the whole tree ('.') does not.
   const content = (scope) => {
+    // A path inside a submodule gives no rows in the parent repo's scoped ls-files.
+    // Check gitlinks from the full index before trusting even an empty scoped list.
+    const index = git('ls-files', '--stage', '-z');
+    if (index == null || head == null) return null;
+    const scopedPaths = scope.map((p) => path.resolve(target, p));
+    for (const entry of index.split('\0').filter((e) => e.startsWith('160000 '))) {
+      const submodule = path.resolve(target, entry.slice(entry.indexOf('\t') + 1));
+      if (scopedPaths.some((p) => p === submodule || p.startsWith(`${submodule}${path.sep}`) || submodule.startsWith(`${p}${path.sep}`)))
+        return null;
+    }
     const listed = git('ls-files', '-z', '--cached', '--others', '--exclude-standard', '--', ...scope);
     const named = scope.filter((e) => e !== '.');
     const ignored = named.length ? git('ls-files', '-z', '--others', '--ignored', '--exclude-standard', '--', ...named) : '';

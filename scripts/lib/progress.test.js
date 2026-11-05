@@ -51,17 +51,37 @@ test('deleting a file containing the old missing-file marker invalidates its che
 test('a scoped submodule is unprovable, while checks outside it remain reusable', (t) => {
   const f = fixture(t);
   const child = fixture(t);
+  fs.mkdirSync(path.join(child.root, 'src'));
+  fs.writeFileSync(path.join(child.root, 'src/run.sh'), '#!/bin/sh\nexit 0\n');
+  child.git('add', 'src');
+  child.git('commit', '-qm', 'nested source');
   f.git('-c', 'protocol.file.allow=always', 'submodule', 'add', child.root, 'lib');
   f.git('commit', '-qam', 'submodule');
   assert.equal(f.execute('sh', ['lib/run.sh']).status, 0);
   const state = f.record('sh lib/run.sh', ['lib']);
   assert.equal(state.steps[0].progress.checks[0].content, null);
   assert.match(f.plan(state), /rerun: sh lib\/run.sh/);
+  const nested = [
+    { command: 'sh lib/run.sh', scope: ['lib/run.sh'] },
+    { command: 'sh lib/src/run.sh', scope: ['lib/src'] },
+    { command: 'sh lib/src/run.sh', scope: ['source.txt', 'lib/src/run.sh'] },
+    { command: 'sh lib/run.sh', scope: ['./lib/src/../run.sh'] },
+  ].map(({ command, scope }) => {
+    const recorded = f.record(command, scope);
+    assert.equal(recorded.steps[0].progress.checks[0].content, null, scope.join(', '));
+    return recorded;
+  });
   const outside = f.record('test -f source.txt', ['source.txt']);
   fs.writeFileSync(path.join(f.root, 'lib/run.sh'), '#!/bin/sh\nexit 1\n');
+  fs.writeFileSync(path.join(f.root, 'lib/src/run.sh'), '#!/bin/sh\nexit 1\n');
   assert.equal(f.execute('sh', ['lib/run.sh']).status, 1);
+  assert.equal(f.execute('sh', ['lib/src/run.sh']).status, 1);
   assert.match(f.plan(state), /rerun: sh lib\/run.sh/);
   assert.doesNotMatch(f.plan(state), /reuse:/);
+  for (const recorded of nested) {
+    assert.match(f.plan(recorded), /rerun:/);
+    assert.doesNotMatch(f.plan(recorded), /reuse:/);
+  }
   assert.match(f.plan(outside), /reuse: test -f source.txt .*: pass/);
   assert.equal(checkout(f.root).content(['.']), null);
 });
