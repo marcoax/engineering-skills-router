@@ -48,6 +48,19 @@ test('deleting a file containing the old missing-file marker invalidates its che
   assert.match(f.plan(state), /rerun: test -f source.txt .*: its files changed since/);
 });
 
+test('committing a tested deletion reuses checks, while restoring the file invalidates them', (t) => {
+  const f = fixture(t);
+  fs.unlinkSync(path.join(f.root, 'source.txt'));
+  assert.equal(f.execute('test', ['!', '-e', 'source.txt']).status, 0);
+  const states = [['source.txt'], ['.']].map((scope) => f.record('test ! -e source.txt', scope));
+  f.git('add', '-u');
+  f.git('commit', '-qm', 'remove unused source');
+  for (const state of states) assert.match(f.plan(state), /reuse: test ! -e source.txt .*: pass/);
+  fs.writeFileSync(path.join(f.root, 'source.txt'), 'restored');
+  assert.equal(f.execute('test', ['!', '-e', 'source.txt']).status, 1);
+  for (const state of states) assert.match(f.plan(state), /rerun: test ! -e source.txt .*: its files changed since/);
+});
+
 test('a scoped submodule is unprovable, while checks outside it remain reusable', (t) => {
   const f = fixture(t);
   const child = fixture(t);

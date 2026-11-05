@@ -56,10 +56,9 @@ function checkout(target) {
       const p = path.join(target, file);
       try {
         const stat = fs.lstatSync(p, { throwIfNoEntry: false });
-        if (!stat) {
-          hash.update(`${JSON.stringify([file, 'missing'])}\0`);
-          continue;
-        }
+        // A deleted path stays in the index until commit. Hash the filesystem, so
+        // committing an already-tested deletion does not invalidate the check.
+        if (!stat) continue;
         // Git lists a submodule as a directory, without its files. Symlinks and other
         // unsupported entries are unprovable too: force a rerun instead of reusing a check.
         if (!stat.isFile()) return null;

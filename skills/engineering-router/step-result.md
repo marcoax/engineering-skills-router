@@ -2,7 +2,7 @@
 
 Read from SKILL.md §6 before a skill step starts in a subagent. A delegated step ends with a **step result**: a JSON object that names the step and its attempt, gives a verdict and lists the artifacts the step declared. The workflow moves past the step only when `scripts/state` has accepted that result. A phrase in the subagent's answer ("done", `ROUTER_STEP_READY`) is never a result. Why: [ADR 0004](../../docs/adr/0004-step-result-contract.md).
 
-Steps that run in the main session (router steps, conversational phases, a step run inside another) declare no delivery and close as before. Any other skill step of a run is delegated: `step <n> done` refuses it until a `done` delivery is accepted. A skill step that ran in the main session because the harness has no subagents closes with `step <n> done --outcome "..." --main-session`. A state written before runs (no `run`) closes as before.
+Router steps, conversational phases and steps run inside another declare no delivery and close as before. Other skill steps of a run require an accepted `done` delivery. A skill run in the main session without subagents closes with `--main-session`; PR preparation, including the simple main-session route, always declares and delivers `pr-body` and `findings` before it closes. A state written before runs (no `run`) closes as before.
 
 ## Declare, brief, deliver
 
@@ -47,4 +47,4 @@ A finding without a `decision` is **actionable**: a `done` verdict with one is r
 
 ## Pull request preparation
 
-The pull-request step's preparation delivers `pr-body` and the consolidated `findings` (each with its decision) as two files, never inside a report. Publication reads them as they are: `gh pr create --body-file "$(scripts/state <target repo> artifact pull-request pr-body)"` (or `gh pr edit` for a draft), and `scripts/record` takes the accepted findings when `--findings` is not given.
+The pull-request step's preparation, in the main session or a subagent, delivers `pr-body` and consolidated `findings` (each with its decision) as two files. Its result uses the complete Result shape above (`step`, `attempt`, `verdict`, `summary`, `artifacts`, `remaining`). Publication reads the accepted body as it is: `gh pr create --body-file "$(scripts/state <target repo> artifact pull-request pr-body)"` (or `gh pr edit` for a draft), and `scripts/record` takes the accepted findings when `--findings` is not given.
