@@ -3,8 +3,26 @@
 const MARK = /<!--\s*engineering-router:run\s*([\s\S]*?)-->/;
 const SEVERITIES = ['critical', 'high', 'medium', 'low'];
 const DECISIONS = ['fixed', 'declined', 'deferred'];
-// `review-1` and `review-2` are the ids of records written before ADR 0001's single review.
-const REVIEWS = ['review', 'review-1', 'review-2', 'framework-review', 'security', 'independent-review'];
+// The review steps, plus `review-1` and `review-2`: ids of records written before ADR 0001's single review.
+const REVIEWS = [...require('./state-ops').REVIEW_PHASES, 'review-1', 'review-2'];
+
+// What is wrong with a findings list, one message per problem, each starting with `at`: an
+// array of {title, severity, found_by, decision}, found_by naming steps in `ids`. A review's
+// findings may still lack a decision (they are then actionable); `decided` requires one, as the
+// run record does.
+function findingsProblems(findings, ids, { at = 'findings', decided = true } = {}) {
+  if (!Array.isArray(findings)) return [`${at}: expected a JSON array`];
+  const problems = [];
+  findings.forEach((f, i) => {
+    const where = `${at}[${i}]`;
+    if (typeof f?.title !== 'string' || !f.title.trim()) problems.push(`${where}.title: required`);
+    if (!SEVERITIES.includes(f?.severity)) problems.push(`${where}.severity: one of ${SEVERITIES.join(', ')}`);
+    if ((decided || f?.decision !== undefined) && !DECISIONS.includes(f?.decision)) problems.push(`${where}.decision: one of ${DECISIONS.join(', ')}`);
+    if (!Array.isArray(f?.found_by) || f.found_by.length === 0) problems.push(`${where}.found_by: at least one step id`);
+    else for (const id of f.found_by) if (!ids.has(id)) problems.push(`${where}.found_by: no step ${JSON.stringify(id)} in the workflow`);
+  });
+  return problems;
+}
 
 // The record in a PR body, or a reason it has none usable.
 function parseRecord(body) {
@@ -106,4 +124,4 @@ function aggregate(records) {
   };
 }
 
-module.exports = { parseRecord, aggregate, SEVERITIES, DECISIONS };
+module.exports = { parseRecord, aggregate, findingsProblems, SEVERITIES, DECISIONS };

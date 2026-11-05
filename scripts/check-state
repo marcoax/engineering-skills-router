@@ -3,6 +3,7 @@
 // Exits 1 on errors. Does not check that skills are in the catalog (that varies per machine).
 const fs = require('node:fs');
 const path = require('node:path');
+const { CLOSED } = require('./lib/state-ops');
 
 const ROOT = path.resolve(__dirname, '..');
 const STATE_FILE = '.router/state.json';
@@ -133,6 +134,8 @@ const UTC = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d+)?Z$/;
 const isUtc = (v) => UTC.test(v) && new Date(Date.parse(v) || 0).toISOString().slice(0, 19) === v.slice(0, 19);
 if (isStr(state.updated_at) && !isUtc(state.updated_at))
   errors.push(`updated_at: must be ISO-8601 UTC (e.g. 2026-10-17T09:42:00Z), got ${json(state.updated_at)}`);
+if (isObj(state.owner) && isStr(state.owner.since) && !isUtc(state.owner.since))
+  errors.push(`owner.since: must be ISO-8601 UTC (e.g. 2026-10-17T09:42:00Z), got ${json(state.owner.since)}`);
 const specFile = isObj(state.handoff) ? state.handoff.spec : null;
 if (isStr(specFile) && (path.isAbsolute(specFile) || path.normalize(specFile).split(path.sep)[0] === '..'))
   errors.push(`handoff.spec: must be a path relative to the target repo, got ${json(specFile)}`);
@@ -170,7 +173,7 @@ steps.forEach((s, i) => {
       altSkills.add(a.skill);
     });
   }
-  if (['done', 'skipped', 'failed'].includes(s.status) && !(isStr(s.outcome) && s.outcome.trim()))
+  if (CLOSED.includes(s.status) && !(isStr(s.outcome) && s.outcome.trim()))
     errors.push(`${where}.outcome: required when status is ${s.status}`);
 });
 // Several steps may run at once (a covered step runs alongside its covering step). Between two
@@ -180,6 +183,31 @@ for (const [status, allowed] of Object.entries(STEP_STATUSES_FOR_WORKFLOW)) {
   if (state.status === status && !steps.some((s) => isObj(s) && allowed.includes(s.status)))
     errors.push(`status: ${status} requires a step with status ${allowed.join(' or ')}`);
 }
+// A step's progress record (state.md "Progress"): its times are UTC like updated_at.
+steps.forEach((s, i) => {
+  const p = isObj(s) ? s.progress : null;
+  if (!isObj(p)) return;
+  const where = `steps[${i}].progress`;
+  const times = [[p.at, `${where}.at`], [isObj(p.interrupted) ? p.interrupted.at : null, `${where}.interrupted.at`],
+    ...(Array.isArray(p.checks) ? p.checks : []).map((c, j) => [isObj(c) ? c.at : null, `${where}.checks[${j}].at`])];
+  for (const [v, at] of times) if (isStr(v) && !isUtc(v)) errors.push(`${at}: must be ISO-8601 UTC, got ${json(v)}`);
+});
+
+// A step that owes a delivery (step-result.md) closes as done only on an accepted done verdict
+// carrying every artifact it declared.
+const ARTIFACT_KINDS = require('./lib/step-result').KINDS;
+steps.forEach((s, i) => {
+  const r = isObj(s) ? s.result : null;
+  if (!isObj(r)) return;
+  const where = `steps[${i}].result`;
+  if (Array.isArray(r.requires)) for (const k of r.requires) if (!ARTIFACT_KINDS.includes(k)) errors.push(`${where}.requires: unknown artifact ${json(k)}`);
+  if (s.status === 'done' && r.verdict !== 'done')
+    errors.push(`${where}: step ${s.id} done needs an accepted delivery (deliver a done verdict first), got verdict ${json(r.verdict)}`);
+  if (r.verdict === 'done' && Array.isArray(r.requires) && Array.isArray(r.artifacts)) {
+    const have = new Set(r.artifacts.filter(isObj).map((a) => a.kind));
+    for (const k of r.requires) if (!have.has(k)) errors.push(`${where}.artifacts: verdict done without the required ${k}`);
+  }
+});
 
 errors.forEach((e) => console.log(`error: ${e}`));
 console.log(errors.length === 0 ? `state OK (${file})` : `${errors.length} error(s)`);

@@ -22,6 +22,7 @@ This file holds what every run needs. The rest is in files beside it; read each 
 | [cross-family-review.md](cross-family-review.md) | before showing the workflow (§5), and when a review step runs (§6) |
 | [state-brief.md](state-brief.md) | composing `.router/state.json` (§5) |
 | [after-implementation.md](after-implementation.md) | the implementation step is about to start (§6) |
+| [step-result.md](step-result.md) | a skill step is about to start in a subagent (§6) |
 
 **Repo root** is the router checkout (catalog, scripts, vendors) this skill works from. Find it first with `node <this skill's folder>/resolve-root.js` and use the `root:` it prints; on `missing`, follow [checkout.md](checkout.md).
 
@@ -39,7 +40,7 @@ Then run `scripts/validate-catalog`. When it prints errors, show them with the f
 
 ## 1. Classify
 
-First look for an unfinished workflow: `.router/state.json` in the target repo with status `running`, `waiting`, `paused` or `stopped`. If there is one, follow [resume.md](resume.md) before anything else: a resumed workflow keeps its skills, and the selector runs again only when the user asks to recompose.
+First look for an unfinished workflow: `.router/state.json` in the target repo with status `running`, `waiting`, `paused` or `stopped`. Look before asking which task to run when the invocation names none. If there is one, follow [resume.md](resume.md) before anything else: it checks which session owns the workflow (`scripts/state <target repo> owner`) and asks for an explicit handover when another one does; a resumed workflow keeps its skills, and the selector runs again only when the user asks to recompose.
 
 Read the task (fetch it first if it is an issue URL or number; read the file if it is a path to a spec in the target repo). Inspect the target repo enough to judge brownfield vs greenfield, to locate the code the task touches (files or components the task names, or a quick search), and whether `docs/agents/issue-tracker.md`, `docs/agents/skills.yaml` (the project's own skills), `GLOSSARY.md` or `docs/adr/` exist.
 
@@ -154,7 +155,25 @@ Execute under [autonomy.md](autonomy.md): `go` authorizes the selected workflow 
 
 **Fresh context per step.** When the harness can start subagents, run each skill step in a new subagent, on the model [models.md](models.md) gives it, so the main session keeps only the workflow, not every step's working detail. Run in the main session instead: router steps, and steps whose phase is `requirements`, `clarification`, `specification` or `setup`, because they converse with the user and draw on the conversation. Without subagents, run every step in the main session.
 
-A step subagent gets: the task, the target repo path, the step's `SKILL.md` path (absolute), the handoff, the paths of earlier step notes, and the execution policy and approved scope from [autonomy.md](autonomy.md). It follows points 2–3 below under that policy, writes the step note (point 5), and returns a one-line outcome plus any handoff values. Handle unresolved questions as that policy's exceptions, using existing context before involving the user.
+Before it starts, declare the step's delivery with `scripts/state <target repo> expect <n>` ([step-result.md](step-result.md)). One step, one verifiable result: implementation, fixes and a review each get their own subagent, never one growing context. A step subagent's **brief** has these fields, each short:
+
+- **Goal**: the task and what this step must produce for it.
+- **Authorized scope**: the approved scope and execution policy from [autonomy.md](autonomy.md), the target repo path, the branch.
+- **References**: the step's `SKILL.md` path (absolute), the handoff, the paths of earlier step notes and of the spec or issue.
+- **Constraints**: the project's rules that apply (by path: its `AGENTS.md`, `CLAUDE.md`), what the step must not touch, and point 5's progress saving.
+- **Evidence already available**: what earlier steps established, as paths and one-line facts (`recover`'s `reuse:` checks, the accepted findings, the commits since the base), so the step does not redo it.
+- **Expected output**: the lines `expect` printed, and the one-line outcome plus handoff values it returns.
+
+Give paths, never copies: the brief does not recopy this file, a skill's procedure, earlier notes or the whole workflow, since the subagent reads what it needs from the paths and the constraints stay where they are maintained. It follows points 2–3 below under that policy, records its checks and progress as it goes with `scripts/state <target repo> check` and `progress` (point 5, [ADR 0003](../../docs/adr/0003-progress-records.md)), writes the step note (point 5) and its step result, and returns a one-line outcome plus any handoff values. The step moves on only after `scripts/state <target repo> deliver <n>` accepts the result; its verdict decides what follows, never a phrase in the answer, and `step <n> done` is refused for a delegated step until then. A skill step that ran in the main session (no subagents) closes with `step <n> done --outcome "..." --main-session`. Handle unresolved questions as that policy's exceptions, using existing context before involving the user.
+
+**Updates** to the user say which of these the workflow is in, with the current step (`Step n/N: <id>`) and what is left:
+
+- **running**: a step is executing; say what it is doing, not that it is finished.
+- **waiting for your decision**: a step is `waiting` on a question, blocker or checkpoint; say exactly what is needed.
+- **recoverable error**: a step was interrupted (timeout, quota, unavailable model; `recover` shows it) and resumes from its record; say what stopped it and the retry it is on.
+- **done**: the workflow reached its end (the open PR), or a step closed with an accepted delivery.
+
+Ending a reply while a subagent or check still runs is neither a pause nor done: say it is still running. Only `pause` pauses the workflow ([resume.md](resume.md)).
 
 **Nested subagents.** A vendor skill may start subagents of its own (e.g. `code-review` runs its two axes in parallel). Tell every step subagent: where it cannot start subagents itself, run those parts in sequence in its own context, each with fresh eyes: it reuses the inputs already read (the diff, the issue, the spec), never an earlier part's conclusions, and says so in the step note (`code-review: axes run in sequence, no nested subagents`). The step stays in its subagent even then: in the main session, an independent step (a review, verification) would have seen the implementation.
 
@@ -164,7 +183,7 @@ For each step:
 2. For a skill step, read its `SKILL.md` at its catalog `path` (a personal or project skill: the absolute path `list-skills` prints) and follow its procedure under [autonomy.md](autonomy.md). Resolve its relative links against that file's folder.
 3. When it says to call or invoke another skill by name (e.g. "call the Skill tool with tdd"), read the `path` of `<same-source>/<name>` in `catalog/skills.yaml` (for a personal skill, `personal/<name>` as `list-skills` prints it); if it is not cataloged, use an installed skill with that name.
 4. Carry the **handoff** forward: issue (spec file when issue-free), tickets, branch, base commit, PR.
-5. Write the skill step's note to `.router/steps/<n>-<id>.md`: what it did, decisions, files touched, open points. Close the step with a one-line outcome and the handoff it produced. Run `scripts/state <target repo> step <n> done ...` as a separate shell command, with no batch or chained command, so its output is available before the next step starts. If that output includes a `context:` or `config:` line and a step remains, follow [context.md](context.md) now. Otherwise continue normally.
+5. **Save progress as it is made**, not only at the end: whoever runs the step (its subagent included) records each check it ran with `scripts/state <target repo> check <n> pass|fail|interrupted --command "..." --env "..." --scope <paths>`, and after each commit or verified piece of work `progress <n> --done "..." --next "..." [--limits "..."]`, so a timeout or quota stop loses nothing ([resume.md](resume.md) **Interrupted step**). When the step's agent stops before it hands back, run `interrupt <n> --reason "..."` and recover as resume.md says, never from transcripts. Write the skill step's note to `.router/steps/<n>-<id>.md`: `step <n> running` starts it with the first line `run: <run>` (the run id); keep that line first and append below it what the step did, decisions, files touched, open points. A note written from scratch starts with that line too. Close the step with a one-line outcome and the handoff it produced. Run `scripts/state <target repo> step <n> done ...` as a separate shell command, with no batch or chained command, so its output is available before the next step starts. If that output includes a `context:` or `config:` line and a step remains, follow [context.md](context.md) now. Otherwise continue normally.
 
 **Planning decision** (when the specification step closes and the workflow holds a conditional planning step): read the spec and judge whether it splits into more than one ticket: more than one independently demoable or verifiable slice, or more than one fresh context window of work. Tell the user the decision in one line with its reason, then either run planning, or `step <n> skipped --outcome "single ticket: <reason>"`. The user may overrule it before the next step starts. When planning is skipped, an implementation step whose skill builds from tickets (`mattpocock/implement-spec`) is swapped to its first alternative with `scripts/state <target repo> reply <n>a` before the step starts, and the user is told, with any `coverage:` lines it prints.
 

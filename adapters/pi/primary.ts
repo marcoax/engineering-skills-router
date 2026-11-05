@@ -14,9 +14,11 @@ const TOOL = "router_primary";
 type Option = { family: string; label: string; current: boolean };
 type Primary = { preferences: string | null; options: Option[] };
 
-async function state(root: string, target: string, ...args: string[]): Promise<string> {
+// Runs as `session`, the Pi session the tool was called in: only the workflow's owner may answer (ADR 0002).
+async function runState(root: string, target: string, session: string | undefined, ...args: string[]): Promise<string> {
 	try {
-		const { stdout } = await promisify(execFile)("node", [path.join(root, "scripts/state"), target, "primary", ...args], { timeout: 15000 });
+		const as = session ? ["--session", session] : [];
+		const { stdout } = await promisify(execFile)("node", [path.join(root, "scripts/state"), target, "primary", ...args, ...as], { timeout: 15000 });
 		return stdout.trim();
 	} catch (e: any) {
 		throw new Error((e.stderr || e.message).trim());
@@ -35,8 +37,10 @@ export default function registerPrimaryQuestion(pi: ExtensionAPI, Type: typeof T
 			root: Type.String({ description: "The router checkout (repo root) the run works from" }),
 			target: Type.String({ description: "The target repo holding .router/state.json" }),
 		}),
-		async execute(_id, { root, target }, _signal, _update, ctx: Pick<ExtensionToolContext, "hasUI" | "ui">) {
+		async execute(_id, { root, target }, _signal, _update, ctx: Pick<ExtensionToolContext, "hasUI" | "ui" | "sessionManager">) {
 			const reply = (text: string) => ({ content: [{ type: "text" as const, text }], details: {} });
+			const session = ctx.sessionManager?.getSessionId();
+			const state = (r: string, t: string, ...args: string[]) => runState(r, t, session, ...args);
 			const { preferences, options }: Primary = JSON.parse(await state(root, target, "--json"));
 			// A family set in preferences.yaml is the user's answer already: no question.
 			if (preferences) return reply(await state(root, target));

@@ -19,6 +19,8 @@ declare module 'claude-code' {
     model: string | null
     status: string
     outcome: string | null
+    // The last interruption of a running step, until it saves progress again.
+    interrupted: { reason: string; at: string } | null
   }
 
   interface RouterSnapshot {
@@ -37,6 +39,8 @@ declare module 'claude-code' {
       base_commit: string | null
       pr: RouterRef | null
     }
+    // The session that may change the workflow; null when none is recorded.
+    owner: { session: string; since: string } | null
   }
 
   interface RouterReview {

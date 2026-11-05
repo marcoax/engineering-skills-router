@@ -22,7 +22,12 @@ export type Step = {
 	model: string | null;
 	status: string;
 	outcome: string | null;
+	// The last interruption of a running step (state.md Progress), until it saves progress again.
+	interrupted: Interruption | null;
 };
+export type Interruption = { reason: string; at: string };
+// The session that may change the workflow (state.md Owner); null when none is recorded.
+export type Owner = { session: string; since: string };
 export type State = {
 	task: string;
 	type: string;
@@ -40,6 +45,7 @@ export type State = {
 		base_commit: string | null;
 		pr: Ref | null;
 	};
+	owner: Owner | null;
 };
 export type Parsed = { kind: "ok"; state: State } | { kind: "version"; version: unknown } | { kind: "invalid" };
 
@@ -90,6 +96,10 @@ export function parseState(text: string): Parsed {
 			model: strOrNull(s.model),
 			status: s.status,
 			outcome: strOrNull(s.outcome),
+			interrupted:
+				isObj(s.progress) && isObj(s.progress.interrupted) && typeof s.progress.interrupted.reason === "string"
+					? { reason: s.progress.interrupted.reason, at: str(s.progress.interrupted.at) }
+					: null,
 		});
 	}
 	const h = isObj(raw.handoff) ? raw.handoff : {};
@@ -111,6 +121,7 @@ export function parseState(text: string): Parsed {
 				base_commit: strOrNull(h.base_commit),
 				pr: ref(h.pr),
 			},
+			owner: isObj(raw.owner) && typeof raw.owner.session === "string" ? { session: raw.owner.session, since: str(raw.owner.since) } : null,
 		},
 	};
 }
@@ -130,6 +141,19 @@ export function symbol(status: string, paint: Paint = plain): string {
 	return paint(style, sym);
 }
 
+// A running step stopped by a timeout, quota or unavailable model: a recoverable error that
+// resumes from its record (resume.md), neither active work nor done. Older panes may hold a
+// step parsed before the field.
+export const isInterrupted = (step: Step) => step.status === "running" && Boolean(step.interrupted);
+const stepSymbol = (step: Step, paint: Paint = plain) => (isInterrupted(step) ? paint("error", "↻") : symbol(step.status, paint));
+
+// What the workflow is in, for headers: its status, or the recoverable error of an interrupted step.
+export function workflowLabel(state: State): string {
+	const i = state.steps.findIndex(isInterrupted);
+	if (i < 0) return state.status;
+	return `recoverable error · step ${i + 1} ${state.steps[i].id} interrupted (${state.steps[i].interrupted!.reason})`;
+}
+
 const skillLabel = (step: Step) => step.skill ?? "(router)";
 const inside = (step: Step) => (step.covered_by ? `  inside ${step.covered_by}` : "");
 export const isClosed = (state: State) => state.status === "done" || state.status === "stopped";
@@ -143,9 +167,11 @@ export function hiddenAtStart(state: State, prState?: string): boolean {
 }
 
 // An unfinished workflow found at session start may belong to another session, even one in
-// another harness: the state file records no owner. The adapter shows only `foreignLine`,
-// frozen at start, until this session takes the workflow up (`takesUpWorkflow`).
-export const isForeignAtStart = (state: State): boolean => !isClosed(state);
+// another harness, unless its recorded owner is this session (`session`, the harness's session
+// id; ADR 0002). The adapter shows only `foreignLine`, frozen at start, until this session takes
+// the workflow up (`takesUpWorkflow`); scripts/state still refuses a non-owner's change.
+export const isForeignAtStart = (state: State, session?: string): boolean =>
+	!isClosed(state) && !(session !== undefined && state.owner?.session === session);
 
 export const foreignLine = (state: State, invocation: string): string =>
 	`router · ${state.status} elsewhere · ${state.task} — ${invocation} to resume`;
@@ -165,9 +191,10 @@ export function widgetLines(state: State, paint: Paint = plain): string[] {
 		return [`${symbol(state.status, paint)} router ${state.status} · ${tail}`];
 	}
 	return [
-		paint("accent", `router · ${state.status}${state.path === "light" ? " · light" : ""}`) + paint("muted", ` · ${state.task}`),
+		paint(workflowLabel(state) === state.status ? "accent" : "error", `router · ${workflowLabel(state)}${state.path === "light" ? " · light" : ""}`) +
+			paint("muted", ` · ${state.task}`),
 		...state.steps.map(
-			(s, i) => `${symbol(s.status, paint)} ${i + 1}. ${s.id}  ${paint("muted", skillLabel(s) + inside(s))}`,
+			(s, i) => `${stepSymbol(s, paint)} ${i + 1}. ${s.id}  ${paint("muted", skillLabel(s) + inside(s))}`,
 		),
 	];
 }
@@ -249,7 +276,7 @@ export function detailLines(state: State, marked = -1, paint: Paint = plain, wid
 	};
 	const detail = (text: string, style?: Style) => add(`${STEP_INDENT}${text}`, style, STEP_INDENT);
 	add(state.task || "(no task)", "accent");
-	add([state.type, state.risk, state.path ? `${state.path} path` : "", state.properties.join(", "), state.status].filter(Boolean).join(" · "), "muted");
+	add([state.type, state.risk, state.path ? `${state.path} path` : "", state.properties.join(", "), workflowLabel(state)].filter(Boolean).join(" · "), "muted");
 	lines.push("");
 	const h = state.handoff;
 	const refText = (r: Ref | null) => (r ? `#${r.number} ${r.url}`.trim() : "—");
@@ -270,13 +297,14 @@ export function detailLines(state: State, marked = -1, paint: Paint = plain, wid
 		const isMarked = i === marked;
 		if (Number.isFinite(width)) {
 			// Plain: the marker and symbol go in as text so the width counts them.
-			add(`${isMarked ? "▸" : " "} ${symbol(s.status)} ${i + 1}. ${s.id}  ${skillLabel(s)}${inside(s)}`, isMarked ? "accent" : undefined, STEP_INDENT);
+			add(`${isMarked ? "▸" : " "} ${stepSymbol(s)} ${i + 1}. ${s.id}  ${skillLabel(s)}${inside(s)}`, isMarked ? "accent" : undefined, STEP_INDENT);
 		} else {
 			const mark = isMarked ? paint("accent", "▸") : " ";
-			const head = `${mark} ${symbol(s.status, paint)} ${i + 1}. ${s.id}  ${skillLabel(s)}${inside(s)}`;
+			const head = `${mark} ${stepSymbol(s, paint)} ${i + 1}. ${s.id}  ${skillLabel(s)}${inside(s)}`;
 			lines.push(isMarked ? paint("accent", head) : head);
 		}
 		if (s.summary) detail(s.summary);
+		if (isInterrupted(s)) detail(`interrupted (${s.interrupted!.reason}): recoverable error, resumes from its progress record`, "error");
 		if (s.reason) detail(`why: ${s.reason}`, "muted");
 		s.alternatives.forEach((a, j) => detail(`${LETTERS[j]}) ${a.skill}: ${a.reason}`, "dim"));
 		// A pane may still hold a state parsed before the field existed.

@@ -17,8 +17,9 @@ const ran = (step) => ['done', 'failed'].includes(step.status) || (step.status =
 // Phases whose checks a swap restores as a step of their own when the old skill ran them inside.
 // A review never runs inside another step (ADR 0001), so it has nothing to restore.
 const RESTORED_PHASES = ['testing'];
-// Phases a step never runs inside another step for: a review is a cross-family review of its own.
-const NEVER_COVERED = ['review', 'framework-review', 'security', 'independent-review'];
+// The review phases, which are also their steps' ids. A step never runs inside another step for
+// them: a review is a cross-family review of its own.
+const REVIEW_PHASES = ['review', 'framework-review', 'security', 'independent-review'];
 
 const clone = (s) => JSON.parse(JSON.stringify(s));
 const fail = (msg) => {
@@ -151,7 +152,7 @@ function recalculateCoverage(state, invokes) {
   const notes = [];
   s.steps.forEach((step, k) => {
     if (step.status !== 'pending' || step.optional || step.skill == null || !(step.phases ?? []).length) return;
-    const phases = step.phases.filter((p) => !NEVER_COVERED.includes(p));
+    const phases = step.phases.filter((p) => !REVIEW_PHASES.includes(p));
     const cover = phases.length === 0 ? undefined : s.steps.slice(0, k)
       .find((x) => x.skill && x.covered_by == null && OPEN.includes(x.status) && invokes(x.skill, phases).length > 0);
     if (cover) {
@@ -250,4 +251,4 @@ function reply(state, text, invokes) {
   return { state: covered.state, notes: [...restored.notes, ...covered.notes] };
 }
 
-module.exports = { recalculateCoverage, reply, ran, setStep, setWorkflow, checkPrimaryOpen, setPrimary, setHandoff, applyReply, stepIndex, STEP_STATUSES, WORKFLOW_STATUSES, UNFINISHED, LETTERS };
+module.exports = { clone, fail, recalculateCoverage, reply, ran, setStep, setWorkflow, checkPrimaryOpen, setPrimary, setHandoff, applyReply, stepIndex, STEP_STATUSES, WORKFLOW_STATUSES, OPEN, CLOSED, UNFINISHED, REVIEW_PHASES, LETTERS };

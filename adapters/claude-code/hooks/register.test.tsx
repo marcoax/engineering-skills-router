@@ -385,3 +385,37 @@ test('/router-panel takes up a workflow found running at session start', async (
   expect(await ui.find({ type: 'Text', text: /1\. specification/ })).toBeTruthy()
   await ui.unmount()
 })
+
+// The state records its owner (ADR 0002): the session that owns it sees it at once.
+const ownedBy = (session: string) =>
+  JSON.stringify({ version: 1, ...selecting, task: '#956 Admin SEO', status: 'running', owner: { session, since: '2026-10-17T09:30:00Z' } })
+
+test('a workflow this session owns shows in full at session start', async ($, on) => {
+  on('session.id', () => ({ value: 'cc-owner' }))
+  await startWith($, on, ownedBy('cc-owner'))
+  const ui = await $.ui.mount({ ...BAND, surface: 'terminal' } as any)
+  expect(await ui.find({ type: 'Text', text: /1\. specification/ })).toBeTruthy()
+  expect(await ui.find({ type: 'Text', text: /elsewhere/ })).toBeFalsy()
+  await ui.unmount()
+})
+
+// A step stopped by a timeout or quota is a recoverable error in the band, not running work.
+test('an interrupted step shows as a recoverable error', async ($, on) => {
+  on('session.id', () => ({ value: 'cc-owner' }))
+  const owned = JSON.parse(ownedBy('cc-owner'))
+  owned.steps[1] = { ...step('implementation', 'running'), progress: { interrupted: { reason: 'timeout', at: '2026-10-17T09:31:00Z' } } }
+  await startWith($, on, JSON.stringify(owned))
+  const ui = await $.ui.mount({ ...BAND, surface: 'terminal' } as any)
+  expect(await ui.find({ type: 'Text', text: /recoverable error · step 2 implementation interrupted \(timeout\)/ })).toBeTruthy()
+  expect(await ui.find({ type: 'Text', text: /↻ 2\. implementation/ })).toBeTruthy()
+  expect(await ui.find({ type: 'Text', text: /router · running/ })).toBeFalsy()
+  await ui.unmount()
+})
+
+test('a workflow another session owns shows only the frozen line at session start', async ($, on) => {
+  on('session.id', () => ({ value: 'cc-other' }))
+  await startWith($, on, ownedBy('cc-owner'))
+  const ui = await $.ui.mount({ ...BAND, surface: 'terminal' } as any)
+  expect(await ui.find({ type: 'Text', text: /elsewhere/ })).toBeTruthy()
+  await ui.unmount()
+})

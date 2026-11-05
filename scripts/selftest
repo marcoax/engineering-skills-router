@@ -15,6 +15,10 @@ const STATE_MD = 'skills/engineering-router/state.md';
 // Never the maintainer's configuration: no explicit location, and an empty scratch XDG config root.
 delete process.env.ENGINEERING_ROUTER_CONFIG;
 process.env.XDG_CONFIG_HOME = path.join(tmp, 'xdg config');
+// Every scripts/state call runs as the session that owns the state.md example (ADR 0002).
+delete process.env.CLAUDE_CODE_SESSION_ID;
+delete process.env.PI_SESSION_ID;
+process.env.ROUTER_SESSION = 'session-example';
 for (const dir of ['catalog', 'scripts', 'skills']) fs.cpSync(path.join(ROOT, dir), path.join(tmp, dir), { recursive: true });
 fs.mkdirSync(path.join(tmp, 'config'));
 for (const dir of ['vendors', 'node_modules']) fs.symlinkSync(path.join(ROOT, dir), path.join(tmp, dir));
@@ -1258,6 +1262,217 @@ expectStateOk('unknown fields', variant((s) => { s.extra = 1; s.steps[0].extra =
   }
 }
 
+// Step results (step-result.md): a delegated step closes, or the workflow moves past it, only on a
+// validated delivery: a result for this step and attempt, a recognizable verdict and the
+// artifacts the step declared. Covers review → fixes → pull-request preparation → simulated
+// publication.
+{
+  const repo = fs.mkdtempSync(path.join(tmp, 'step-result-'));
+  fs.mkdirSync(path.join(repo, '.router/steps'), { recursive: true });
+  const stateFile = path.join(repo, '.router/state.json');
+  const read = () => JSON.parse(fs.readFileSync(stateFile, 'utf8'));
+  const step = (id) => read().steps.find((s) => s.id === id);
+  fs.writeFileSync(stateFile, JSON.stringify(variant((s) => {
+    Object.assign(s.steps[2], { status: 'done', outcome: 'Built' });
+    Object.assign(s.steps[3], { status: 'done', outcome: 'ran inside implementation', model: s.steps[2].model });
+    s.steps.push({ id: 'pull-request', phases: ['pull-request'], skill: 'mattpocock/pr', reason: 'r', summary: 's', alternatives: [],
+      confirm: false, covered_by: null, model: null, effort: null, status: 'pending', outcome: null });
+    s.handoff.issue = { number: 42, url: 'https://github.com/o/r/issues/42' };
+  })));
+  const st = (...a) => run('state', repo, ...a);
+  const ok = (label, r) => { if (!r.ok) fail(`step result, ${label}\n${r.out}`); return r; };
+  const refused = (label, r, ...msgs) => {
+    const missing = msgs.filter((m) => !r.out.includes(m));
+    if (r.ok || missing.length) fail(`step result, ${label}: expected a refusal naming\n  ${missing.join('\n  ')}\ngot:\n${r.out}`);
+    return r;
+  };
+  const put = (rel, content) => fs.writeFileSync(path.join(repo, rel), typeof content === 'string' ? content : JSON.stringify(content));
+  const attemptOf = (r) => r.out.match(/^attempt: (\S+)$/m)?.[1];
+
+  // A step without a declared delivery closes as before; one with it, only after a validated one.
+  ok('review running', st('step', 'review', 'running', '--model', 'gpt-6-sol'));
+  const expected = ok('expect the review', st('expect', 'review'));
+  const attempt = attemptOf(expected);
+  if (!attempt || !expected.out.includes('result: .router/steps/5-review.result.json')
+    || !expected.out.includes('requires: note .router/steps/5-review.md, findings .router/steps/5-review.findings.json'))
+    fail(`expect should print the result path, the attempt and the declared artifacts\n${expected.out}`);
+  refused('closing before a delivery', st('step', 'review', 'done', '--outcome', 'Reviewed'), 'needs an accepted delivery');
+  if (step('review').status !== 'running') fail('a refused close should leave the step running');
+
+  // Missing, malformed or deceptive results never pass.
+  refused('a missing result', st('deliver', 'review'), 'result: .router/steps/5-review.result.json not found');
+  put('.router/steps/5-review.result.json', 'Review complete.\nROUTER_STEP_READY\n');
+  refused('a bare marker', st('deliver', 'review'), 'no result JSON');
+  const result = (over) => ({ step: 'review', attempt, verdict: 'done', summary: 'No findings',
+    artifacts: { note: '.router/steps/5-review.md', findings: '.router/steps/5-review.findings.json' }, ...over });
+  put('.router/steps/5-review.result.json', result({ verdict: 'ROUTER_STEP_READY' }));
+  refused('an unrecognizable verdict', st('deliver', 'review'), 'result.verdict: no recognizable verdict');
+  put('.router/steps/5-review.result.json', result({ verdict: undefined }));
+  refused('a missing verdict', st('deliver', 'review'), 'result.verdict: no recognizable verdict');
+  put('.router/steps/5-review.result.json', result({ step: 'implementation' }));
+  refused('a result for another step', st('deliver', 'review'), 'result.step: "implementation" is not step review');
+  put('.router/steps/5-review.result.json', result({ attempt: 'stale' }));
+  refused('a result from another execution', st('deliver', 'review'), 'result.attempt: "stale" is not the current attempt');
+
+  // Declared success with a file missing: what is missing is named, what is valid is kept. The
+  // step's start headed its note with the run line: with nothing after it, it is empty.
+  if (fs.readFileSync(path.join(repo, '.router/steps/5-review.md'), 'utf8') !== `run: ${read().run}\n`) fail('a started step should have its note headed by the run');
+  put('.router/steps/5-review.findings.json', []);
+  put('.router/steps/5-review.result.json', result());
+  refused('a note with only its run line', st('deliver', 'review'), 'note: .router/steps/5-review.md is empty');
+  fs.rmSync(path.join(repo, '.router/steps/5-review.md'));
+  put('.router/steps/5-review.result.json', result());
+  const partial = refused('a declared artifact that is absent', st('deliver', 'review'), 'note: .router/steps/5-review.md not found');
+  if (!partial.out.includes('kept: findings .router/steps/5-review.findings.json')) fail(`a refused delivery should name the valid artifacts\n${partial.out}`);
+  if (step('review').result?.attempt !== attempt || step('review').status !== 'running') fail('a refused delivery should leave the step recoverable');
+  put('.router/steps/5-review.result.json', result({ artifacts: { findings: '.router/steps/5-review.findings.json' } }));
+  refused('an undeclared required artifact', st('deliver', 'review'), 'note: required, not delivered');
+  put('.router/steps/5-review.md', 'Reviewed the diff.\n');
+  put('.router/steps/5-review.result.json', result({ artifacts: { note: '../outside.md', findings: '.router/steps/5-review.findings.json' } }));
+  refused('an artifact outside the target repo', st('deliver', 'review'), 'note: must be a path inside the target repo');
+  // A note headed by another run is never this run's delivery (ADR 0002).
+  put('.router/steps/5-review.md', 'run: run-801\nReviewed #801.\n');
+  put('.router/steps/5-review.result.json', result());
+  refused('a note of another run', st('deliver', 'review'), 'note: .router/steps/5-review.md belongs to run run-801, not this run');
+  put('.router/steps/5-review.md', 'Reviewed the diff.\n');
+
+  // Invalid findings format; findings to fix lead to fixes, not to done.
+  const finding = { title: 'Export ignores the date filter', severity: 'high', found_by: ['review'] };
+  put('.router/steps/5-review.result.json', result());
+  put('.router/steps/5-review.findings.json', '{"title": "x"}');
+  refused('findings that are not an array', st('deliver', 'review'), 'findings: expected a JSON array');
+  put('.router/steps/5-review.findings.json', [{ ...finding, severity: 'huge' }]);
+  refused('a finding with an unknown severity', st('deliver', 'review'), 'findings[0].severity: one of critical, high, medium, low');
+  put('.router/steps/5-review.findings.json', [finding]);
+  refused('done with an actionable finding', st('deliver', 'review'), 'verdict done with 1 actionable finding');
+  // The reviewer reports; deciding is the supervisor's, after the fixes: a review's own decisions
+  // never let it skip them.
+  put('.router/steps/5-review.findings.json', [{ ...finding, decision: 'deferred' }]);
+  refused('a reviewer deciding its own findings', st('deliver', 'review'),
+    'findings[0].decision: a review\'s findings are decided after its fixes verdict, never by the review itself');
+  put('.router/steps/5-review.findings.json', []);
+  put('.router/steps/5-review.result.json', result({ verdict: 'fixes' }));
+  refused('fixes without a finding to fix', st('deliver', 'review'), 'verdict fixes needs at least one actionable finding');
+  put('.router/steps/5-review.findings.json', [finding]);
+  put('.router/steps/5-review.result.json', result({ verdict: 'fixes', summary: '1 finding to fix' }));
+  const fixes = ok('a review with findings to fix', st('deliver', 'review'));
+  if (!fixes.out.includes('fixes: 1 actionable finding') || step('review').status !== 'running' || step('review').result.verdict !== 'fixes')
+    fail(`a fixes verdict should keep the step running for the fixes\n${fixes.out}`);
+  refused('closing after a fixes verdict', st('step', 'review', 'done', '--outcome', 'Reviewed'), 'needs an accepted delivery');
+
+  // After the fixes, a new attempt: the old one is refused, the decided findings close the step.
+  // A review pass counts once per purpose: another pass on the step declares a distinct one.
+  refused('another review pass without a purpose', st('expect', 'review'), 'another pass of review needs --purpose');
+  refused('another review pass for the same purpose', st('expect', 'review', '--purpose', step('review').summary), 'already ran for that purpose');
+  const again = attemptOf(ok('expect the fixes delivery', st('expect', 'review', '--purpose', 'record the decisions after the fixes')));
+  if (step('review').result.purpose !== 'record the decisions after the fixes' || step('review').result.earlier?.[0]?.verdict !== 'fixes')
+    fail(`another pass should record its purpose and the earlier attempt: ${JSON.stringify(step('review').result)}`);
+  if (!again || again === attempt) fail('a new expectation should start a new attempt');
+  put('.router/steps/5-review.findings.json', [{ ...finding, decision: 'fixed' }]);
+  refused('the earlier attempt after a new expectation', st('deliver', 'review'), 'is not the current attempt');
+  put('.router/steps/5-review.result.json', result({ attempt: again, summary: '1 finding, fixed' }));
+  ok('fixes delivered', st('deliver', 'review'));
+  ok('close the review after its delivery', st('step', 'review', 'done', '--outcome', '1 finding, fixed'));
+  const closed = step('review').result;
+  if (closed.verdict !== 'done' || closed.artifacts.length !== 2) fail(`the accepted delivery should stay on the step: ${JSON.stringify(closed)}`);
+
+  // Pull-request preparation: body and consolidated findings in declared formats; absence of
+  // findings is an explicit empty array.
+  ok('pull request running', st('step', 'pull-request', 'running', '--model', 'claude-opus-5-5'));
+  const prAttempt = attemptOf(ok('expect the PR preparation', st('expect', 'pull-request')));
+  const prResult = (over) => ({ step: 'pull-request', attempt: prAttempt, verdict: 'done', summary: 'Prepared',
+    artifacts: { 'pr-body': '.router/steps/6-pull-request.pr-body.md', findings: '.router/steps/6-pull-request.findings.json' }, ...over });
+  put('.router/steps/6-pull-request.result.json', prResult());
+  put('.router/steps/6-pull-request.pr-body.md', 'Adds the export.\n');
+  refused('a PR body without the findings file', st('deliver', 'pull-request'), 'findings: .router/steps/6-pull-request.findings.json not found');
+  put('.router/steps/6-pull-request.findings.json', [{ ...finding, decision: 'fixed' }]);
+  refused('a PR body that does not close the issue', st('deliver', 'pull-request'), 'pr-body: must link the issue with "Closes #42"');
+  put('.router/steps/6-pull-request.findings.json', [finding]);
+  put('.router/steps/6-pull-request.pr-body.md', 'Adds the export.\n\nCloses #42\n');
+  refused('consolidated findings without a decision', st('deliver', 'pull-request'), 'verdict done with 1 actionable finding');
+  put('.router/steps/6-pull-request.findings.json', [{ ...finding, decision: 'fixed' }]);
+  ok('PR preparation delivered', st('deliver', 'pull-request'));
+  const bodyPath = ok('artifact path', st('artifact', 'pull-request', 'pr-body')).out.trim();
+  if (bodyPath !== path.join(repo, '.router/steps/6-pull-request.pr-body.md')) fail(`artifact should print the accepted file's path, got ${bodyPath}`);
+  refused('an artifact the step did not deliver', st('artifact', 'pull-request', 'note'), 'no accepted note');
+
+  // Issue-free: no issue to close, so the body needs no `Closes` line.
+  const withIssue = fs.readFileSync(stateFile, 'utf8');
+  const issueFreeRun = read();
+  issueFreeRun.handoff.issue = null;
+  issueFreeRun.handoff.spec = 'docs/specs/export.md';
+  issueFreeRun.steps[5].result = { ...issueFreeRun.steps[5].result, verdict: null, artifacts: [] };
+  fs.writeFileSync(stateFile, JSON.stringify(issueFreeRun));
+  put('.router/steps/6-pull-request.pr-body.md', 'Adds the export (spec docs/specs/export.md).\n');
+  ok('an issue-free PR body without Closes', st('deliver', 'pull-request'));
+  fs.writeFileSync(stateFile, withIssue);
+  put('.router/steps/6-pull-request.pr-body.md', 'Adds the export.\n\nCloses #42\n');
+
+  // Simulated publication: the record takes the accepted findings; gh is a stub.
+  const bin = fs.mkdtempSync(path.join(tmp, 'gh-'));
+  const published = path.join(bin, 'body.md');
+  fs.writeFileSync(path.join(bin, 'gh'), `#!/bin/sh\ncase "$1 $2" in\n  "pr view") cat "${published}" ;;\n  "pr edit") cp "$5" "${published}" ;;\nesac\n`, { mode: 0o755 });
+  fs.copyFileSync(bodyPath, published);
+  const env = { ...process.env, PATH: `${bin}${path.delimiter}${process.env.PATH}` };
+  // A broken delivered findings file is named as such, not as a --findings the caller never gave.
+  const deliveredFindings = step('pull-request').result.artifacts.find((a) => a.kind === 'findings').path;
+  const findingsText = fs.readFileSync(path.join(repo, deliveredFindings), 'utf8');
+  fs.writeFileSync(path.join(repo, deliveredFindings), '{broken');
+  const broken = spawnSync(path.join(tmp, 'scripts/record'), [repo, '--pr', '7'], { encoding: 'utf8', env });
+  if (broken.status === 0 || !broken.stderr.includes(`${deliveredFindings} (delivered by the pull-request step):`) || broken.stderr.includes('--findings'))
+    fail(`scripts/record should name the delivered findings file it could not read\n${broken.stdout}${broken.stderr}`);
+  fs.writeFileSync(path.join(repo, deliveredFindings), findingsText);
+  const rec = spawnSync(path.join(tmp, 'scripts/record'), [repo, '--pr', '7'], { encoding: 'utf8', env });
+  const { parseRecord } = require(path.join(ROOT, 'scripts/lib/runs'));
+  const back = parseRecord(fs.readFileSync(published, 'utf8'));
+  if (rec.status !== 0 || back.kind !== 'ok' || back.record.findings.length !== 1 || back.record.findings[0].decision !== 'fixed'
+    || !fs.readFileSync(published, 'utf8').startsWith('Adds the export.'))
+    fail(`publication should use the accepted body and findings\n${rec.stdout}${rec.stderr}`);
+  ok('close the pull request', st('step', 'pull-request', 'done', '--outcome', 'Opened #7'));
+
+  // A read-only reviewer's answer, saved as it came: its last json block is the result, its
+  // inline findings are written to the conventional path.
+  fs.writeFileSync(stateFile, JSON.stringify(variant((s) => { s.steps[4].status = 'running'; })));
+  const roAttempt = attemptOf(ok('expect a read-only review', st('expect', 'review', '--requires', 'findings')));
+  const answer = path.join(repo, 'answer.md');
+  fs.writeFileSync(answer, `backend codex · gpt-6-sol · high\n\nNothing to report. ROUTER_STEP_READY\n\n\`\`\`json\n${JSON.stringify(
+    { step: 'review', attempt: roAttempt, verdict: 'done', summary: 'No findings', artifacts: { findings: [] } })}\n\`\`\`\n`);
+  ok('a read-only review delivered from its answer', st('deliver', 'review', answer));
+  if (fs.readFileSync(path.join(repo, '.router/steps/5-review.findings.json'), 'utf8').trim() !== '[]'
+    || step('review').result.artifacts[0]?.path !== '.router/steps/5-review.findings.json')
+    fail(`inline findings should be saved to the conventional path: ${JSON.stringify(step('review').result)}`);
+
+  // A delegated step closes as done only on an accepted delivery, expected or not; a skill step run
+  // in the main session (no subagents) says so. Router, conversational, covered and pre-run steps
+  // close as before.
+  fs.writeFileSync(stateFile, JSON.stringify(variant(() => {})));
+  refused('a delegated step closed without a delivery', st('step', 'implementation', 'done', '--outcome', 'Built'), 'needs an accepted delivery');
+  if (step('implementation').status !== 'running') fail('a refused close should leave the delegated step running');
+  ok('a skill step run in the main session', st('step', 'implementation', 'done', '--outcome', 'Built', '--main-session'));
+  if (step('testing').status !== 'done') fail('the covered step should close with its covering step');
+  fs.writeFileSync(stateFile, JSON.stringify(variant((s) => {
+    Object.assign(s.steps[0], { status: 'running', outcome: null });
+    Object.assign(s.steps[1], { status: 'running', outcome: null });
+  })));
+  ok('a conversational step closes in the main session', st('step', 'specification', 'done', '--outcome', 'Spec published'));
+  ok('a router step closes as before', st('step', 'branch', 'done', '--outcome', 'Branch created'));
+  fs.writeFileSync(stateFile, JSON.stringify(variant((s) => { delete s.run; })));
+  ok('a state written before runs closes as before', st('step', 'implementation', 'done', '--outcome', 'Built'));
+  if (!fs.readFileSync(path.join(ROOT, 'skills/engineering-router/SKILL.md'), 'utf8').includes('--main-session'))
+    fail('SKILL.md §6 should say how a skill step run in the main session closes');
+
+  // Blocked: the blocker is named and the step waits for it; the step closes no other way.
+  fs.writeFileSync(stateFile, JSON.stringify(variant(() => {})));
+  const blocked = { step: 'implementation', attempt: attemptOf(ok('expect the implementation', st('expect', 'implementation'))),
+    verdict: 'blocked', summary: 'Stuck', artifacts: {} };
+  put('.router/steps/3-implementation.result.json', blocked);
+  refused('blocked without what remains', st('deliver', 'implementation'), 'result.remaining: required when the verdict is blocked');
+  put('.router/steps/3-implementation.result.json', { ...blocked, remaining: 'The export needs a DB index nobody approved' });
+  ok('blocked delivered', st('deliver', 'implementation'));
+  if (step('implementation').status !== 'waiting' || read().status !== 'waiting') fail('a blocked verdict should leave the step and workflow waiting');
+  if (st('expect', 'review').ok) fail('expect should refuse a step that is not running');
+}
+
 // setStep: a covered step takes its covering step's step model; one with its own agent record
 // keeps it, whichever side of the covering step's close it is recorded on.
 {
@@ -1293,7 +1508,7 @@ expectStateOk('unknown fields', variant((s) => { s.extra = 1; s.steps[0].extra =
   expectOk('step running with a bare model ID', st('step', 'implementation', 'running', '--model', 'claude-opus-5-5'));
   if (read().steps[3].model !== 'claude-opus-5-5') fail(`a covered step should take its covering step's model when it starts: ${JSON.stringify(read().steps[3])}`);
   // Closing from an agent record overwrites the model; the covered step follows it.
-  expectOk('step done', st('step', 'implementation', 'done', '--outcome', 'Built', '--model', 'claude-sonnet-5-5', '--effort', 'high'));
+  expectOk('step done', st('step', 'implementation', 'done', '--outcome', 'Built', '--model', 'claude-sonnet-5-5', '--effort', 'high', '--main-session'));
   let s = read();
   if (s.steps[3].status !== 'done' || s.steps[3].outcome !== 'ran inside implementation') fail(`a covering step should close its covered step: ${JSON.stringify(s.steps[3])}`);
   if (s.steps[3].model !== 'claude-sonnet-5-5' || s.steps[3].effort !== 'high') fail(`a covered step should take its covering step's model and effort: ${JSON.stringify(s.steps[3])}`);
@@ -1340,7 +1555,7 @@ expectStateOk('unknown fields', variant((s) => { s.extra = 1; s.steps[0].extra =
   if (st('reply', '1b').ok) fail('swaps apply only while selecting');
 
   // Fresh CLI processes retain the boundary and skip both completed and disabled steps.
-  expectOk('close the review and disable verification before pause', st('step', 'review', 'done', '--outcome', 'Reviewed', '--model', 'gpt-6-sol'));
+  expectOk('close the review and disable verification before pause', st('step', 'review', 'done', '--outcome', 'Reviewed', '--model', 'gpt-6-sol', '--main-session'));
   expectOk('disable verification before pause', st('reply', '6off'));
   const paused = st('reply', 'pause');
   expectOk('pause at the boundary', paused);
@@ -1376,6 +1591,219 @@ expectStateOk('unknown fields', variant((s) => { s.extra = 1; s.steps[0].extra =
   if (cls?.policy !== 2 || !cls.rationale?.risk || !Array.isArray(cls.facts)) fail(`scripts/record should carry the classification\n${rec.out}`);
   fs.writeFileSync(findingsFile, JSON.stringify([{ title: 'x', severity: 'high', found_by: ['review-9'], decision: 'fixed' }]));
   if (run('record', repo, '--findings', findingsFile).ok) fail('scripts/record should refuse a finding from a step not in the workflow');
+}
+
+// Ownership and runs (ADR 0002): only the owning session changes a workflow, through every
+// scripts/state command; two concurrent claims leave one owner; a takeover is explicit and the
+// previous owner is refused after it; a workflow without an owner is claimed before any change.
+// A run's state and notes stay together: notes of another run are never this run's evidence,
+// and a new run or a discard archives the previous one instead of deleting it.
+{
+  const repo = fs.mkdtempSync(path.join(tmp, 'owner-'));
+  fs.mkdirSync(path.join(repo, '.router'));
+  const stateFile = path.join(repo, '.router/state.json');
+  const read = () => JSON.parse(fs.readFileSync(stateFile, 'utf8'));
+  const st = (...a) => run('state', repo, ...a);
+  const as = (session, ...a) => run('state', repo, ...a, '--session', session);
+  const expectOk = (label, r) => { if (!r.ok) fail(`scripts/state ${label}\n${r.out}`); };
+  const expectRefused = (label, r, msg) => {
+    const before = fs.readFileSync(stateFile, 'utf8');
+    if (r.ok || !r.out.includes(msg)) fail(`scripts/state ${label}: expected "${msg}"\ngot:\n${r.out}`);
+    if (fs.readFileSync(stateFile, 'utf8') !== before) fail(`scripts/state ${label}: a refused change must leave the state as it was`);
+  };
+  const example = stateExample();
+  if (example.owner?.session !== process.env.ROUTER_SESSION || typeof example.run !== 'string')
+    fail('the state.md example should record its run and an owner, the session selftest runs as');
+  fs.writeFileSync(stateFile, JSON.stringify(example));
+
+  // The owner advances the workflow; any other session is refused, whatever command it runs.
+  expectOk('step by the owner', st('step', 'review', 'running', '--model', 'gpt-6-sol'));
+  for (const cmd of [['step', 'review', 'done', '--outcome', 'x'], ['workflow', 'paused'], ['handoff', 'branch', 'other'], ['reply', 'pause']])
+    expectRefused(`${cmd[0]} by another session`, as('intruder', ...cmd), `owned by session ${example.owner.session}`);
+  expectRefused('a claim by another session', as('intruder', 'claim'), `owned by session ${example.owner.session}`);
+  expectOk('claim by the owner again', st('claim'));
+
+  // An explicit takeover moves ownership, only once the user confirmed the owner is closed; the
+  // previous owner is refused from then on. The owner itself has nothing to take over.
+  expectRefused('a takeover without the user\'s confirmation', as('rescuer', 'takeover'), '--previous-closed');
+  expectRefused('a takeover by the owner', st('takeover', '--previous-closed'), 'already owns');
+  const took = as('rescuer', 'takeover', '--previous-closed');
+  expectOk('takeover', took);
+  let s = read();
+  if (s.owner.session !== 'rescuer' || s.owner.previous !== example.owner.session) fail(`takeover should record the new owner and the previous one: ${JSON.stringify(s.owner)}`);
+  expectRefused('a write by the previous owner', st('step', 'review', 'done', '--outcome', 'x'), 'owned by session rescuer');
+  expectOk('a write by the new owner', as('rescuer', 'workflow', 'paused'));
+  if (!as('rescuer', 'owner').out.includes('owner: rescuer') || !st('owner').out.includes('another session')) fail(`owner should say who owns the workflow\n${st('owner').out}`);
+
+  // No session identity: nothing changes.
+  const anonymous = spawnSync(path.join(tmp, 'scripts/state'), [repo, 'workflow', 'paused'], {
+    encoding: 'utf8', env: Object.fromEntries(Object.entries(process.env).filter(([k]) => !['ROUTER_SESSION', 'CLAUDE_CODE_SESSION_ID', 'PI_SESSION_ID'].includes(k))) });
+  if (anonymous.status === 0 || !anonymous.stderr.includes('no session identity')) fail(`a write without a session identity should be refused\n${anonymous.stderr}`);
+  // The usage line names every command.
+  const usage = run('state').out.split('\n')[0];
+  for (const cmd of ['compose', 'step', 'workflow', 'handoff', 'reply', 'primary', 'show', 'model', 'expect', 'deliver', 'artifact',
+    'progress', 'check', 'interrupt', 'recover', 'claim', 'takeover', 'owner', 'discard', 'reconcile'])
+    if (!usage.split(/[\s|]/).includes(cmd)) fail(`the scripts/state usage line should name ${cmd}\n${usage}`);
+
+  // A workflow written before ownership: every change waits for an explicit claim.
+  fs.writeFileSync(stateFile, JSON.stringify(variant((x) => { delete x.owner; delete x.run; })));
+  expectRefused('a write to an unowned workflow', st('step', 'review', 'running'), 'no owner recorded');
+  expectOk('claim an unowned workflow', st('claim'));
+  if (read().owner?.session !== process.env.ROUTER_SESSION) fail('claim should record this session as owner');
+  expectOk('a write after the claim', st('step', 'review', 'running'));
+  // Nobody to hand over from: an unowned workflow is claimed, never taken over.
+  fs.writeFileSync(stateFile, JSON.stringify(variant((x) => { delete x.owner; })));
+  expectRefused('a takeover of an unowned workflow', st('takeover', '--previous-closed'), 'claim it');
+
+  // Concurrent commands are serialized by .router/state.lock. The window between reading and
+  // writing the state, and between finding a lock stale and breaking it, is widened from outside
+  // the scripts: a preloaded module slows those reads down, so nothing test-only ships in them.
+  const slow = path.join(tmp, 'slow-state-io.js');
+  fs.writeFileSync(slow, `const fs = require('node:fs');
+const hold = (ms) => ms > 0 && Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms);
+const { readFileSync, statSync } = fs;
+fs.readFileSync = function (p, ...a) { const r = readFileSync.call(this, p, ...a); if (String(p).endsWith('/.router/state.json')) hold(Number(process.env.SLOW_STATE_READ_MS)); return r; };
+fs.statSync = function (p, ...a) { const r = statSync.call(this, p, ...a); if (String(p).endsWith('/.router/state.lock')) hold(Number(process.env.SLOW_LOCK_STAT_MS)); return r; };
+`);
+  const raceClaims = (label, { stale = false, delayB = 0 } = {}) => {
+    fs.writeFileSync(stateFile, JSON.stringify(variant((x) => { delete x.owner; })));
+    const lockFile = path.join(repo, '.router/state.lock');
+    if (stale) {
+      // A crashed command's lock, older than 30 s.
+      fs.writeFileSync(lockFile, '99999 crashed\n');
+      fs.utimesSync(lockFile, new Date(Date.now() - 60000), new Date(Date.now() - 60000));
+    }
+    const script = path.join(tmp, 'scripts/state');
+    const race = spawnSync('sh', ['-c', `{ "$0" "$1" claim --session a > "$1/a.out" 2>&1; echo $? > "$1/a.code"; } &
+{ sleep "$2"; "$0" "$1" claim --session b > "$1/b.out" 2>&1; echo $? > "$1/b.code"; } & wait`, script, repo, String(delayB)],
+    { encoding: 'utf8', env: { ...process.env, NODE_OPTIONS: `--require ${slow}`, SLOW_STATE_READ_MS: '150', SLOW_LOCK_STAT_MS: stale ? '150' : '0' } });
+    if (race.status !== 0) fail(`${label}: concurrent claims did not run\n${race.stderr}`);
+    const codes = ['a', 'b'].map((who) => fs.readFileSync(path.join(repo, `${who}.code`), 'utf8').trim());
+    const outs = ['a', 'b'].map((w) => fs.readFileSync(path.join(repo, `${w}.out`), 'utf8'));
+    const winners = ['a', 'b'].filter((_, j) => codes[j] === '0');
+    if (winners.length !== 1 || read().owner?.session !== winners[0] || outs.some((o) => o.includes('holds')))
+      fail(`${label}: two concurrent claims should leave exactly one owner, the other refused as not the owner; got exits ${codes} and owner ${JSON.stringify(read().owner)}\n${outs.join('\n')}`);
+    if (fs.existsSync(lockFile)) fail(`${label}: the lock should be released`);
+    for (const f of ['a.out', 'b.out', 'a.code', 'b.code']) fs.rmSync(path.join(repo, f));
+  };
+  for (let i = 0; i < 6; i++) raceClaims(`concurrent claims ${i}`);
+  // Two commands finding the same stale lock: only one breaks it, never the other's fresh lock.
+  for (let i = 0; i < 4; i++) raceClaims(`concurrent claims over a stale lock ${i}`, { stale: true, delayB: 0.05 });
+  if (/TEST|HOLD/.test(fs.readFileSync(path.join(ROOT, 'scripts/state'), 'utf8'))) fail('scripts/state should hold no test hook');
+
+  // A step's note belongs to its run: starting the step names the note and its run line, and a
+  // note left at that path by another run is moved to that run's archive, not reused or deleted.
+  fs.writeFileSync(stateFile, JSON.stringify(example));
+  const notes = path.join(repo, '.router/steps');
+  fs.mkdirSync(notes, { recursive: true });
+  fs.writeFileSync(path.join(notes, '5-review.md'), 'run: run-801\nreview of #801: no findings\n');
+  fs.writeFileSync(path.join(notes, '1-specification.md'), `run: ${example.run}\nspec published\n`);
+  fs.writeFileSync(path.join(notes, '2-branch.md'), 'branch created (written before runs)\n');
+  const started = st('step', 'review', 'running');
+  expectOk('step running with a foreign note in place', started);
+  if (fs.readFileSync(path.join(notes, '5-review.md'), 'utf8') !== `run: ${example.run}\n`) fail('a foreign note should leave the step\'s note path to a new one headed by this run');
+  if (fs.readFileSync(path.join(repo, '.router/runs/run-801/steps/5-review.md'), 'utf8') !== 'run: run-801\nreview of #801: no findings\n')
+    fail('a foreign note should move to its own run\'s archive, unchanged');
+  if (!started.out.includes(`note: .router/steps/5-review.md, first line \`run: ${example.run}\``)) fail(`step running should name the step's note and its run line\n${started.out}`);
+  // This run's note, or one without a run line (this step's own before an interruption), stays.
+  fs.writeFileSync(path.join(notes, '5-review.md'), `run: ${example.run}\nhalf done\n`);
+  expectOk('step running again', st('step', 'review', 'running'));
+  if (!fs.readFileSync(path.join(notes, '5-review.md'), 'utf8').includes('half done')) fail('a note of this run must be kept when its step starts again');
+  fs.writeFileSync(path.join(notes, '5-review.md'), 'half done, no run line\n');
+  expectOk('step running once more', st('step', 'review', 'running'));
+  if (!fs.existsSync(path.join(notes, '5-review.md'))) fail('a note without a run line must stay where it is');
+  // A note the step has not written yet is started with its run line, so the step only appends.
+  fs.rmSync(path.join(notes, '5-review.md'));
+  expectOk('step running without a note', st('step', 'review', 'running'));
+  if (fs.readFileSync(path.join(notes, '5-review.md'), 'utf8') !== `run: ${example.run}\n`) fail('starting a step should head its missing note with the run line');
+  // A run id read from a note never leads outside .router/runs/.
+  for (const evil of ['..', '../..', '../../escaped']) {
+    fs.writeFileSync(path.join(notes, '5-review.md'), `run: ${evil}\nplanted\n`);
+    expectOk(`step running over a note of run ${evil}`, st('step', 'review', 'running'));
+    const runs = path.join(repo, '.router/runs');
+    const moved = fs.readdirSync(runs, { recursive: true }).map((f) => path.join(runs, f)).filter((f) => fs.statSync(f).isFile() && fs.readFileSync(f, 'utf8') === `run: ${evil}\nplanted\n`);
+    if (moved.length !== 1 || fs.existsSync(path.join(repo, 'escaped')) || fs.existsSync(path.join(repo, '.router/steps/steps')))
+      fail(`a note of run ${JSON.stringify(evil)} should move inside .router/runs/, got ${JSON.stringify(moved)}`);
+    fs.rmSync(moved[0]);
+  }
+  fs.writeFileSync(path.join(notes, '5-review.md'), `run: ${example.run}\nreview started\n`);
+  fs.writeFileSync(path.join(notes, '3-implementation.md'), 'run: run-801\nimplementation of #801\n');
+
+  // Reconcile: state, branch, commits since the base, PR and notes side by side. A merged PR is
+  // evidence to reconcile, never proof that the open steps ran; foreign notes are not evidence.
+  const gitRepo = (...a) => spawnSync('git', ['-C', repo, '-c', 'user.name=t', '-c', 'user.email=t@t', ...a], { encoding: 'utf8', env: gitEnv });
+  gitRepo('init', '-q', '-b', '42-csv-export');
+  gitRepo('commit', '-q', '--allow-empty', '-m', 'base');
+  const base = gitRepo('rev-parse', 'HEAD').stdout.trim();
+  gitRepo('commit', '-q', '--allow-empty', '-m', 'work');
+  gitRepo('commit', '-q', '--allow-empty', '-m', 'more work');
+  s = read();
+  s.handoff.base_commit = base;
+  s.handoff.pr = { number: 77, url: 'https://example.test/pr/77' };
+  fs.writeFileSync(stateFile, JSON.stringify(s));
+  const bin = fs.mkdtempSync(path.join(tmp, 'gh-'));
+  fs.writeFileSync(path.join(bin, 'gh'), '#!/bin/sh\necho MERGED\n', { mode: 0o755 });
+  // Run from a git hook, the shell names another repository (GIT_DIR): reconcile reads the target's.
+  const other = fs.mkdtempSync(path.join(tmp, 'other-repo-'));
+  spawnSync('git', ['-C', other, 'init', '-q', '-b', 'unrelated'], { env: gitEnv });
+  const reconcile = spawnSync(path.join(tmp, 'scripts/state'), [repo, 'reconcile'], { encoding: 'utf8',
+    env: { ...gitEnv, GIT_DIR: path.join(other, '.git'), GIT_WORK_TREE: other, PATH: `${bin}:${process.env.PATH}` } });
+  const out = reconcile.stdout;
+  if (reconcile.status !== 0) fail(`reconcile\n${out}${reconcile.stderr}`);
+  for (const line of [
+    `run: ${example.run}`,
+    `owner: ${example.owner.session} since ${example.owner.since} (this session)`,
+    'branch: 42-csv-export (checked out)',
+    `commits: 2 since base ${base.slice(0, 7)}`,
+    'pr: #77 MERGED: evidence to reconcile, not proof the open steps ran (open: implementation, testing, review)',
+    'note: .router/steps/1-specification.md (this run)',
+    'note: .router/steps/2-branch.md (no run line: unverified)',
+    'note: .router/steps/3-implementation.md (run run-801: not evidence for this run)',
+    'next: 3. implementation (running)',
+  ]) if (!out.split('\n').includes(line)) fail(`reconcile should print "${line}"\n${out}`);
+  if (fs.readFileSync(stateFile, 'utf8') !== JSON.stringify(s)) fail('reconcile must not change the state');
+
+  // Discard keeps the run: state and notes move together to the run's archive.
+  expectRefused('a discard by another session', as('intruder', 'discard'), 'owned by session');
+  expectOk('discard', st('discard'));
+  const archived = path.join(repo, '.router/runs', example.run);
+  if (fs.existsSync(stateFile) || fs.existsSync(notes)) fail('discard should leave no current state or notes');
+  if (JSON.parse(fs.readFileSync(path.join(archived, 'state.json'), 'utf8')).task !== example.task || !fs.existsSync(path.join(archived, 'steps/1-specification.md')))
+    fail('discard should archive the state with its notes');
+}
+
+// A new run is owned from its start by the session that composed it, under a fresh run id; the
+// previous finished run is archived with its notes; another session's selection is not replaced.
+{
+  const repo = fs.mkdtempSync(path.join(tmp, 'owner-compose-'));
+  const stateFile = path.join(repo, '.router/state.json');
+  const composed = path.join(tmp, 'owner-composed.json');
+  const read = () => JSON.parse(fs.readFileSync(stateFile, 'utf8'));
+  const fresh = variant((s) => {
+    s.status = 'selecting';
+    s.steps.forEach((x) => Object.assign(x, { status: 'pending', outcome: null, model: null }));
+    s.handoff.branch = null;
+    s.handoff.base_commit = null;
+  });
+  fs.writeFileSync(composed, JSON.stringify(fresh));
+  const compose = (...a) => run('state', repo, 'compose', ...a, composed);
+  let r = compose('--new');
+  if (!r.ok) fail(`compose --new\n${r.out}`);
+  const first = read();
+  if (first.owner?.session !== process.env.ROUTER_SESSION || !first.run || first.run === fresh.run) fail(`compose --new should own the run under a fresh run id: ${JSON.stringify([first.run, first.owner])}`);
+  r = compose();
+  if (!r.ok || read().run !== first.run || read().owner.session !== first.owner.session) fail(`a recomposition keeps the run and its owner\n${r.out}`);
+  if (run('state', repo, 'compose', composed, '--session', 'intruder').ok) fail('another session should not recompose the run');
+  if (run('state', repo, 'compose', '--new', composed, '--session', 'intruder').ok) fail('another session should not replace a selection it does not own');
+  // Finished: the next run archives it with its notes.
+  fs.mkdirSync(path.join(repo, '.router/steps'));
+  fs.writeFileSync(path.join(repo, '.router/steps/1-specification.md'), `run: ${first.run}\nspec\n`);
+  fs.writeFileSync(stateFile, JSON.stringify({ ...read(), status: 'done' }));
+  r = compose('--new');
+  if (!r.ok || read().run === first.run) fail(`compose --new after a finished run\n${r.out}`);
+  if (!fs.existsSync(path.join(repo, '.router/runs', first.run, 'state.json')) || !fs.existsSync(path.join(repo, '.router/runs', first.run, 'steps/1-specification.md'))
+    || fs.existsSync(path.join(repo, '.router/steps/1-specification.md')))
+    fail('a new run should archive the previous run with its notes');
 }
 
 // A swap recalculates coverage from the newly selected skill's `invokes` before go: a step that
@@ -1420,7 +1848,7 @@ expectStateOk('unknown fields', variant((s) => { s.extra = 1; s.steps[0].extra =
   // Closing the implementation leaves the independent checks pending.
   expectOk('go', st('reply', 'go'));
   expectOk('implementation running', st('step', 'implementation', 'running', '--model', 'claude-opus-5-5'));
-  expectOk('implementation done', st('step', 'implementation', 'done', '--outcome', 'Built'));
+  expectOk('implementation done', st('step', 'implementation', 'done', '--outcome', 'Built', '--main-session'));
   for (const id of ['testing', 'review']) {
     if (byId(id).status !== 'pending') fail(`${id} should stay pending when the implementation closes: ${JSON.stringify(byId(id))}`);
   }
@@ -1440,7 +1868,7 @@ expectStateOk('unknown fields', variant((s) => { s.extra = 1; s.steps[0].extra =
   if (r.out.includes('review runs inside')) fail(`a review never runs inside implement\n${r.out}`);
   reviewOnItsOwn('swap to implement');
   expectOk('go', st('reply', 'go'));
-  expectOk('implementation done', st('step', 'implementation', 'done', '--outcome', 'Built'));
+  expectOk('implementation done', st('step', 'implementation', 'done', '--outcome', 'Built', '--main-session'));
   if (byId('testing').status !== 'done' || byId('review').status !== 'pending')
     fail(`testing closes with its implementation, the review stays open: ${JSON.stringify(read().steps)}`);
 
@@ -1606,6 +2034,166 @@ expectStateOk('unknown fields', variant((s) => { s.extra = 1; s.steps[0].extra =
   s = read();
   if (!r.ok || !r.out.includes('classification: revised under policy 2') || s.risk !== 'high' || s.classification.facts.length !== 1)
     fail(`an explicit recomposition may revise the classification under the current policy\n${r.out}`);
+}
+
+// Progress records (ADR 0003): a running step saves its progress and checks as it goes, so a
+// timeout or quota stop loses nothing. `recover` reads them against the current checkout: it keeps
+// completed steps and commits, lists uncommitted work, reuses only checks whose files are unchanged
+// and whose environment matches, never reports a check it cannot prove, and bounds retries without
+// switching model.
+{
+  const repo = fs.mkdtempSync(path.join(tmp, 'progress-'));
+  const g = (...a) => spawnSync('git', ['-C', repo, '-c', 'user.name=t', '-c', 'user.email=t@t', ...a], { encoding: 'utf8', env: gitEnv });
+  const put = (f, text) => {
+    fs.mkdirSync(path.dirname(path.join(repo, f)), { recursive: true });
+    fs.writeFileSync(path.join(repo, f), text);
+  };
+  g('init', '-q', '-b', 'export');
+  put('src/export.js', 'v1');
+  put('test/export.test.js', 't1');
+  put('README.md', 'r1');
+  fs.writeFileSync(path.join(repo, '.git/info/exclude'), '.router/\n');
+  g('add', '.');
+  g('commit', '-qm', 'base');
+  const stateFile = path.join(repo, '.router/state.json');
+  fs.mkdirSync(path.dirname(stateFile));
+  fs.writeFileSync(stateFile, JSON.stringify(variant((s) => { s.handoff.branch = 'export'; delete s.steps[2].progress; })));
+  const read = () => JSON.parse(fs.readFileSync(stateFile, 'utf8'));
+  const st = (...a) => run('state', repo, ...a);
+  const expectOk = (label, r) => { if (!r.ok) fail(`scripts/state ${label}\n${r.out}`); };
+  const recover = (label, ...a) => {
+    const r = st('recover', ...a);
+    if (!r.ok) fail(`recover, ${label}\n${r.out}`);
+    return r.out;
+  };
+  const expectLines = (label, out, ...lines) => {
+    const missing = lines.filter((l) => !out.includes(l));
+    if (missing.length) fail(`recover, ${label}: expected\n  ${missing.join('\n  ')}\ngot:\n${out}`);
+  };
+  const head = () => g('rev-parse', 'HEAD').stdout.trim();
+
+  // A step interrupted before it saved anything: said so, with nothing reported as done or checked.
+  let out = recover('no progress record');
+  expectLines('no progress record', out, '3. implementation: running, no progress record: rebuild it from git and the step note; report nothing as done or checked');
+  if (/reuse:/.test(out)) fail(`recover without a progress record must reuse no check\n${out}`);
+  expectOk('progress without next', st('progress', 'implementation', '--done', 'export written'));
+  expectLines('incomplete record', recover('incomplete record'), '3. implementation: incomplete progress record: no next work');
+
+  // Interrupted after its tests passed and its work was committed.
+  put('src/export.js', 'v2');
+  put('test/export.test.js', 't2');
+  g('add', '.');
+  g('commit', '-qm', 'export');
+  expectOk('check pass', st('check', 'implementation', 'pass', '--command', 'npm test', '--scope', 'src,test', '--env', 'node 22'));
+  expectOk('check interrupted', st('check', 'implementation', 'interrupted', '--command', 'npm run e2e', '--env', 'node 22'));
+  expectOk('progress', st('progress', 'implementation', '--done', 'export built and tested, committed', '--next', 'write the step note', '--limits', 'e2e not run to the end'));
+  expectOk('interrupt', st('interrupt', 'implementation', '--reason', 'timeout'));
+  let s = read();
+  if (s.status !== 'running' || s.steps[2].status !== 'running' || s.steps[2].progress?.interrupted?.reason !== 'timeout')
+    fail(`an interruption keeps the step and workflow running, neither done nor waiting for a decision: ${JSON.stringify(s.steps[2])}`);
+  const saved = fs.readFileSync(stateFile, 'utf8');
+  // Without the current environment nothing recorded can be shown to hold: every check reruns.
+  expectLines('environment not given', recover('environment not given'),
+    'rerun: npm test (node 22) on src, test: environment not given (recover --env)');
+  out = recover('after test and commit', '--env', 'node 22');
+  expectLines('after test and commit', out,
+    '1. specification: done, kept',
+    '3. implementation: interrupted (timeout), retry 1 of 2',
+    'done: export built and tested, committed',
+    'next: write the step note',
+    'limits: e2e not run to the end',
+    `checkout: at the recorded commit ${head().slice(0, 7)} on export`,
+    'reuse: npm test (node 22) on src, test: pass',
+    'rerun: npm run e2e (node 22) on .: interrupted',
+    'model: claude-bridge/claude-opus-5-5 as recorded; another model or family only with the user\'s yes',
+    'continue: step 3 implementation: write the step note');
+  if (fs.readFileSync(stateFile, 'utf8') !== saved) fail('recover must not change the state');
+
+  // A change outside a check's scope keeps it; another environment or a change inside reruns it.
+  put('README.md', 'r2');
+  expectLines('change outside scope', recover('change outside scope', '--env', 'node 22'), 'reuse: npm test (node 22) on src, test: pass');
+  // An ignored file named in a check's scope (a gitignored .env) is part of what the check ran on.
+  put('.gitignore', '.env\n');
+  put('.env', 'KEY=1');
+  g('add', '.gitignore');
+  g('commit', '-qm', 'ignore env');
+  expectOk('check with an ignored file in scope', st('check', 'implementation', 'pass', '--command', 'npm run config', '--scope', 'src,.env', '--env', 'node 22'));
+  expectLines('ignored file unchanged', recover('ignored file unchanged', '--env', 'node 22'), 'reuse: npm run config (node 22) on src, .env: pass');
+  put('.env', 'KEY=2');
+  expectLines('ignored file changed', recover('ignored file changed', '--env', 'node 22'), 'rerun: npm run config (node 22) on src, .env: its files changed since');
+  expectLines('other environment', recover('other environment', '--env', 'node 20'), 'rerun: npm test (node 22) on src, test: environment is node 20');
+  put('src/export.js', 'v3');
+  g('commit', '-qam', 'more');
+  expectLines('later change', recover('later change', '--env', 'node 22'),
+    'rerun: npm test (node 22) on src, test: its files changed since',
+    'checkout: 1 commit(s) after the recorded commit');
+
+  // A partial fix not committed: kept as it is and listed, with retries bounded on the same model.
+  put('src/fix.js', 'partial');
+  put('src/export.js', 'v4');
+  expectOk('progress on a partial fix', st('progress', 'implementation', '--done', 'fix half done', '--next', 'finish the fix in src/fix.js'));
+  expectOk('interrupt on quota', st('interrupt', 'implementation', '--reason', 'quota'));
+  out = recover('partial fix');
+  expectLines('partial fix', out, 'uncommitted: src/export.js, src/fix.js', '3. implementation: interrupted (quota), retry 2 of 2', 'continue: step 3 implementation: finish the fix in src/fix.js');
+  if (fs.readFileSync(path.join(repo, 'src/fix.js'), 'utf8') !== 'partial') fail('recover must leave partial changes as they are');
+  expectOk('third interruption', st('interrupt', 'implementation', '--reason', 'quota'));
+  out = recover('retries used up');
+  expectLines('retries used up', out,
+    '3. implementation: interrupted (quota), retries used up (3 interruptions): ask the user to retry, change model or stop',
+    'model: claude-bridge/claude-opus-5-5 as recorded');
+  if (read().steps[2].model !== 'claude-bridge/claude-opus-5-5') fail('an interruption must not change the step model');
+  // Past the retries the step goes on only with the user's yes, recorded.
+  const usedUpError = 'step implementation: retries used up (3 interruptions): ask the user, then pass --user-approved';
+  const refusedRetry = st('progress', 'implementation', '--done', 'fix half done', '--next', 'finish the fix');
+  if (refusedRetry.ok || !refusedRetry.out.includes(usedUpError)) fail(`progress past the retries should be refused\n${refusedRetry.out}`);
+  const refusedExpect = st('expect', 'implementation');
+  if (refusedExpect.ok || !refusedExpect.out.includes(usedUpError)) fail(`expect past the retries should be refused\n${refusedExpect.out}`);
+  expectOk('a retry the user approved', st('progress', 'implementation', '--done', 'fix half done', '--next', 'finish the fix in src/fix.js', '--user-approved'));
+  if (read().steps[2].progress.approved !== 3) fail(`the user's yes is recorded with the interruptions it covers: ${JSON.stringify(read().steps[2].progress)}`);
+  expectLines('retry approved', recover('retry approved', '--env', 'node 22'), '3. implementation: running, after 3 interruption(s), retry approved by the user');
+
+  // Completing the fix: a rerun check replaces the earlier one with the same command.
+  put('src/fix.js', 'done');
+  g('add', '.');
+  g('commit', '-qm', 'fix');
+  expectOk('check pass again', st('check', 'implementation', 'pass', '--command', 'npm test', '--scope', 'src,test', '--env', 'node 22'));
+  expectOk('progress after the fix', st('progress', 'implementation', '--done', 'fix committed and tested', '--next', 'write the step note'));
+  s = read();
+  if (s.steps[2].progress.checks.length !== 3 || s.steps[2].progress.interrupted !== null)
+    fail(`a check replaces its earlier run, and new progress ends the interruption: ${JSON.stringify(s.steps[2].progress)}`);
+  expectLines('after the fix', recover('after the fix', '--env', 'node 22'), 'reuse: npm test (node 22) on src, test: pass', '3. implementation: running, after 3 interruption(s)');
+  expectOk('step done', st('step', 'implementation', 'done', '--outcome', 'Built', '--main-session'));
+  // A finished step keeps its checks, for the pull request step to reuse.
+  expectLines('implementation done', recover('implementation done', '--env', 'node 22'), '3. implementation: done, kept', 'reuse: npm test (node 22) on src, test: pass', 'continue: step 5 review: not started');
+
+  // A recorded commit missing from the checkout: nothing recorded is trusted.
+  fs.writeFileSync(stateFile, JSON.stringify(variant((s) => {
+    s.handoff.branch = 'export';
+    s.steps[2].progress = { ...read().steps[2].progress, head: 'deadbeef'.repeat(5) };
+  })));
+  expectLines('commit not in history', recover('commit not in history', '--env', 'node 22'),
+    'checkout: recorded commit deadbee is not in this checkout\'s history: stop and ask before continuing',
+    'rerun: npm test (node 22) on src, test: its recorded commit is not in this checkout');
+
+  // Refused changes name the reason.
+  const expectRefused = (label, r, msg) => { if (r.ok || !r.out.includes(`error: ${msg}`)) fail(`scripts/state ${label}: expected error: ${msg}\ngot:\n${r.out}`); };
+  expectRefused('bad result', st('check', 'implementation', 'maybe', '--command', 'x', '--env', 'e'), 'check result must be pass | fail | interrupted');
+  expectRefused('check without environment', st('check', 'implementation', 'pass', '--command', 'x'), 'check needs --command and --env');
+  expectRefused('interrupt without reason', st('interrupt', 'implementation'), 'interrupt needs --reason');
+  expectRefused('interrupt a pending step', st('interrupt', 'review', '--reason', 'timeout'), 'step review is pending: only a running step records progress');
+  // check-state reads the record's format from state.md.
+  expectState('progress record', variant((s) => {
+    s.steps[2].progress.checks[0].result = 'maybe';
+    s.steps[2].progress.at = 'yesterday';
+  }), 'steps[2].progress.checks[0].result: must be "pass" | "fail" | "interrupted", got "maybe"',
+  'steps[2].progress.at: must be ISO-8601 UTC');
+}
+
+// The workflow overhead eval (#81) runs the sample task through these scripts; its properties
+// (checks reused only when proven, recovery, bounded retries, one pass per purpose) must hold.
+{
+  const r = spawnSync(process.execPath, [path.join(ROOT, 'evals/workflow-overhead/run.js')], { encoding: 'utf8' });
+  if (r.status !== 0) fail(`evals/workflow-overhead/run.js\n${r.stdout}${r.stderr}`);
 }
 
 // The run's primary family lives in the state: written from the preferences when the state has
@@ -1837,6 +2425,18 @@ ${primary ? `  primary: ${primary}\n` : ''}  effort: medium
   const named = [...(section(1).match(/unfinished workflow:.*? with status ((?:`\w+`(?:, | or )?)+)/)?.[1] ?? '').matchAll(/`(\w+)`/g)].map((m) => m[1]);
   if (JSON.stringify(named.sort()) !== JSON.stringify([...UNFINISHED].sort()))
     fail(`router SKILL.md §1 should name the unfinished statuses ${UNFINISHED.join(', ')}; names ${named.join(', ')}`);
+  // §6: a delegation brief names its fields and gives paths instead of copies (#81); updates tell
+  // the four situations apart.
+  const brief = ['Goal', 'Authorized scope', 'References', 'Constraints', 'Evidence already available', 'Expected output'];
+  const missingFields = brief.filter((f) => !section(6).includes(`**${f}**`));
+  if (missingFields.length || !/never copies/.test(section(6))) fail(`router SKILL.md §6 should name the brief fields (missing: ${missingFields.join(', ')}) and give paths, never copies`);
+  const updates = ['running', 'waiting for your decision', 'recoverable error', 'done'].filter((u) => !section(6).includes(`- **${u}**`));
+  if (updates.length) fail(`router SKILL.md §6 should tell updates apart: missing ${updates.join(', ')}`);
+  // After implementation: work repeated per item is measured under load, and an extra review pass
+  // declares its purpose through expect.
+  const after = fs.readFileSync(path.join(ROOT, 'skills/engineering-router/after-implementation.md'), 'utf8');
+  if (!/\*\*Per-item cost\.\*\*/.test(after) || !/representative load/.test(after)) fail('after-implementation.md should require a per-item cost check under a representative load');
+  if (!/--purpose/.test(after) || /have a fresh reviewer check it/.test(after)) fail('after-implementation.md should run another review pass only with a declared --purpose');
 }
 
 const adapterDir = path.join(ROOT, 'adapters/pi');

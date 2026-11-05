@@ -3,9 +3,10 @@
 // The router's only way to change `.router/state.json` after writing it the first time.
 // Every change is validated with scripts/check-state; an invalid one is not kept.
 //
-//   step <n|id> <status> [--outcome "..."] [--model <model ID>] [--effort low|medium|high]
+//   step <n|id> <status> [--outcome "..."] [--model <model ID>] [--effort low|medium|high] [--main-session]
 //        pending | running | waiting | done | skipped | failed; done, skipped and failed need
-//        an outcome. A step that covers others carries them: running starts them and gives
+//        an outcome. A delegated step (step-result.md) is done only on an accepted delivery;
+//        --main-session closes a skill step that ran in the main session (no subagents). A step that covers others carries them: running starts them and gives
 //        those still open without a model its model and effort; done or failed closes those
 //        still open with its model and effort. A running or waiting step sets the workflow's
 //        status.
@@ -36,11 +37,54 @@
 //                            config/preferences.yaml, else the run's primary; a review step
 //                            (review, framework-review, security, independent-review) the
 //                            family opposite to the step that wrote the code
+//   expect <n|id> [--requires note,findings,pr-body] [--purpose "..."]
+//                            opens a running step's delivery (step-result.md): a new attempt, and
+//                            the artifacts it must deliver (by default from the step). Prints the
+//                            result path, the attempt and the artifact paths for the step's brief.
+//                            Another pass of a review after an accepted verdict needs a --purpose
+//                            none of its earlier passes had.
+//   deliver <n|id> [<file>]  checks the step's result (default: its conventional result path) and
+//                            its artifacts; refuses with what is missing and what is valid, the
+//                            attempt left open. done lets the step close, fixes keeps it running,
+//                            blocked leaves it waiting.
+//   artifact <n|id> <kind>   the path of an artifact an accepted done delivery carries
+//   progress <n|id> --done "..." [--next "..."] [--limits "..."] [--user-approved]
+//                            a running step's progress record (state.md "Progress"), with the
+//                            checkout's branch, HEAD and uncommitted paths; ends an interruption.
+//                            Past its retries (and for expect) it needs --user-approved
+//   check <n|id> pass|fail|interrupted --command "..." --env "..." [--scope <path>,<path>]
+//                            a check the running step ran, tied to the content of its scope
+//                            (default: the whole repo); a rerun of a command replaces its result
+//   interrupt <n|id> --reason "..."
+//                            the running step stopped before it ended (timeout, quota, model
+//                            unavailable): it stays running, neither done nor waiting
+//   recover [--env "..."]    read-only: each open step's record against the current checkout,
+//                            which checks hold and which rerun, and where to continue (resume.md)
+//
+// Ownership (ADR 0002): only the session in the state's `owner` changes the workflow; any other
+// is refused, as is any change to a workflow with no owner recorded until it is claimed. The
+// session is `--session <id>`, else $ROUTER_SESSION, $CLAUDE_CODE_SESSION_ID or $PI_SESSION_ID.
+// `compose --new` makes this session the owner of a new run.
+//   claim                    this session becomes owner of a workflow with no owner (or keeps it);
+//                            refused when another session owns it
+//   takeover --previous-closed
+//                            the explicit handover, once the user confirmed the owning session is
+//                            closed: this session becomes owner, the previous one is recorded and
+//                            refused from then on. An unowned workflow is claimed instead.
+//   owner                    who owns the workflow: this session, another one, or none recorded
+//   discard                  archives the state and its notes in .router/runs/<run>/ and removes them
+//   reconcile                the state beside the repo, for a resume: run, owner, branch, commits
+//                            since the base, the PR's state (gh), each note in .router/steps/ with
+//                            the run it belongs to, and the next step. Changes nothing.
+// `step <n> running` starts the step's note, `.router/steps/<n>-<id>.md`, headed `run: <run>`; a
+// note another run left there moves to that run's archive. Locking, notes, archives and the
+// reconciliation are in lib/run-files.js.
 const fs = require('node:fs');
 const path = require('node:path');
 const { spawnSync } = require('node:child_process');
 const ops = require('./lib/state-ops');
 const models = require('./lib/models');
+const files = require('./lib/run-files');
 // The user configuration in effect (scripts/config), never the target repo's, read when a command
 // needs it; an unreadable one stops the command with its errors instead of passing for the defaults.
 let loaded;
@@ -63,7 +107,7 @@ const invokesFor = (target) => {
 
 const [target, command, ...rest] = process.argv.slice(2);
 if (!target || !command) {
-  console.error('usage: scripts/state <target-repo> step|workflow|handoff|reply|primary|show|model ...');
+  console.error('usage: scripts/state <target-repo> compose|step|workflow|handoff|reply|primary|show|model|expect|deliver|artifact|progress|check|interrupt|recover|claim|takeover|owner|discard|reconcile ...');
   process.exit(1);
 }
 const file = path.join(target, '.router', 'state.json');
@@ -71,6 +115,33 @@ const die = (msg, code = 1) => {
   console.error(`error: ${msg}`);
   process.exit(code);
 };
+// The session running this command (ADR 0002); --session is taken out before the other flags.
+const sessionAt = rest.indexOf('--session');
+const flagSession = sessionAt >= 0 ? rest.splice(sessionAt, 2)[1] : undefined;
+const SESSION_ENV = ['ROUTER_SESSION', 'CLAUDE_CODE_SESSION_ID', 'PI_SESSION_ID'];
+const session = flagSession || SESSION_ENV.map((k) => process.env[k]).find(Boolean) || null;
+const noIdentity = `no session identity: pass --session <id> or set ROUTER_SESSION (${SESSION_ENV.join(', ')} are read)`;
+const now = () => new Date().toISOString().replace(/\.\d{3}Z$/, 'Z');
+// Flags take a value, except these switches.
+const SWITCHES = ['new', 'json', 'previous-closed', 'main-session', 'user-approved'];
+const flags = {};
+const args = [];
+for (let i = 0; i < rest.length; i++) {
+  if (!rest[i].startsWith('--')) args.push(rest[i]);
+  else if (SWITCHES.includes(rest[i].slice(2))) flags[rest[i].slice(2)] = true;
+  else flags[rest[i].slice(2)] = rest[++i] ?? '';
+}
+
+const READ_ONLY = ['show', 'model', 'owner', 'reconcile', 'artifact', 'recover'];
+// One change at a time: every writing command holds `.router/state.lock` from reading the state
+// to writing it, so two sessions claiming at once leave one owner.
+if (!READ_ONLY.includes(command) && (command === 'compose' || fs.existsSync(path.dirname(file)))) {
+  try {
+    files.lock(path.dirname(file));
+  } catch (e) {
+    die(e.message);
+  }
+}
 if (command === 'compose') compose();
 if (!fs.existsSync(file)) die(`.router/state.json not found in ${target}`);
 const before = fs.readFileSync(file, 'utf8');
@@ -79,6 +150,14 @@ try {
   state = JSON.parse(before);
 } catch (e) {
   die(`invalid JSON in ${file}: ${e.message}`);
+}
+
+// Refuses a change by any session but the owner (ADR 0002).
+function requireOwner(current) {
+  const owner = current?.owner?.session;
+  if (!owner) die(`no owner recorded for the workflow in ${target}: claim it first with \`scripts/state ${target} claim\`, once no other session runs it (resume.md)`);
+  if (!session) die(noIdentity);
+  if (owner !== session) die(`the workflow in ${target} is owned by session ${owner} since ${current.owner.since}; this session (${session}) may not change it. Once the user confirms that session is closed, take it over explicitly with \`scripts/state ${target} takeover --previous-closed\` (resume.md)`);
 }
 
 // The composed workflow in `file` becomes the state, or the reason it cannot is printed.
@@ -102,8 +181,18 @@ function compose() {
   const errors = [];
   if (isNew && ops.UNFINISHED.includes(previous?.status))
     die(`an unfinished workflow (${previous.status}) is in ${target}: resume it or discard it first (resume.md)`);
+  if (isNew) {
+    // A new run is owned by this session from its start; another session's selection stays.
+    if (!session) die(noIdentity);
+    if (previous?.status === 'selecting' && previous.owner?.session) requireOwner(previous);
+    next.run = `${now().replace(/[-:]/g, '')}-${files.token(2)}`;
+    next.owner = { session, since: now(), previous: null };
+  }
   if (!isNew) {
     if (![...ops.UNFINISHED, 'selecting'].includes(previous?.status)) die(`no workflow to recompose in ${target}: start one with compose --new`);
+    requireOwner(previous);
+    next.run = previous.run;
+    next.owner = previous.owner;
     // Completed work stays as it ran; only the remaining work is reconsidered.
     for (const old of previous.steps.filter(ops.ran)) {
       const i = next.steps.findIndex((x) => x?.id === old.id);
@@ -143,8 +232,10 @@ function compose() {
   errors.push(...classified.errors.map((e) => (e.startsWith('classification') ? e : `classification: ${e}`)));
   if (errors.length) die(errors.join('\nerror: '));
   const covered = ops.recalculateCoverage({ ...next, status: 'selecting' }, invokesFor(target));
+  // A new run archives the previous one, its notes with it, once the new state is valid.
+  const archived = () => (isNew && previous ? [`archived: the previous run in ${files.archive(target, previous)}`] : []);
   write(covered.state, previous ? JSON.stringify(previous) : null, `compose${isNew ? ' --new' : ''}`,
-    [classified.line, ...covered.notes.map((n) => `coverage: ${n}`)]);
+    [classified.line, ...covered.notes.map((n) => `coverage: ${n}`)], archived);
 }
 
 // The classification (classification.md) a composed workflow carries. A recomposition that does not
@@ -164,10 +255,10 @@ function classify(next, previous) {
 }
 
 // Writes `next` (primary and time filled in), validates it with check-state and restores
-// `before` (null: no file) when it is invalid.
-function write(next, before, label, lines = []) {
+// `before` (null: no file) when it is invalid. `after` runs once it is kept and returns more lines.
+function write(next, before, label, lines = [], after = () => []) {
   if (next.primary == null) next.primary = models.preferredPrimary(prefs());
-  next.updated_at = new Date().toISOString().replace(/\.\d{3}Z$/, 'Z');
+  next.updated_at = now();
   fs.mkdirSync(path.dirname(file), { recursive: true });
   fs.writeFileSync(file, `${JSON.stringify(next, null, 2)}\n`);
   const check = spawnSync(path.join(__dirname, 'check-state'), [target], { encoding: 'utf8' });
@@ -177,15 +268,8 @@ function write(next, before, label, lines = []) {
     die(`the change would make the state invalid; kept the previous state\n${check.stdout}${check.stderr}`);
   }
   console.log(`state: ${label} → workflow ${next.status}`);
-  for (const line of lines) console.log(line);
+  for (const line of [...lines, ...after()]) console.log(line);
   process.exit(0);
-}
-
-const flags = {};
-const args = [];
-for (let i = 0; i < rest.length; i++) {
-  if (rest[i].startsWith('--')) flags[rest[i].slice(2)] = rest[++i] ?? '';
-  else args.push(rest[i]);
 }
 
 if (command === 'show') {
@@ -230,11 +314,72 @@ if (command === 'model') {
   process.exit(0);
 }
 
+const ownerLine = () => {
+  const o = state.owner;
+  if (!o?.session) return 'owner: none recorded (claim it before any change, once no other session runs it)';
+  const whose = o.session === session ? 'this session' : `another session${session ? `, not this one (${session})` : ''}`;
+  return `owner: ${o.session} since ${o.since} (${whose})`;
+};
+if (command === 'owner') {
+  console.log(ownerLine());
+  process.exit(0);
+}
+if (command === 'reconcile') {
+  for (const line of files.reconcile(target, state, ownerLine())) console.log(line);
+  process.exit(0);
+}
+
+if (command === 'claim' || command === 'takeover') {
+  if (!session) die(noIdentity);
+  const owner = state.owner?.session;
+  if (command === 'claim' && owner && owner !== session) requireOwner(state);
+  if (command === 'takeover') {
+    // The handover's precondition is the user's word that the owner is closed (resume.md).
+    if (!owner) die(`no owner recorded for the workflow in ${target}: claim it instead with \`scripts/state ${target} claim\``);
+    if (owner === session) die(`this session (${session}) already owns the workflow in ${target}: nothing to take over`);
+    if (!('previous-closed' in flags)) die(`the workflow in ${target} is owned by session ${owner}: take it over only once the user confirms that session is closed, with --previous-closed`);
+  }
+  const claimed = owner === session ? state.owner : { session, since: now(), previous: command === 'takeover' ? owner : null };
+  write({ ...state, owner: claimed }, before, command);
+}
+if (command === 'discard') {
+  requireOwner(state);
+  const dir = files.archive(target, state);
+  fs.rmSync(file);
+  console.log(`state: discarded → archived in ${dir}`);
+  process.exit(0);
+}
+
+const results = require('./lib/step-result');
+if (command === 'artifact') {
+  try {
+    console.log(path.join(target, results.artifact(state, args[0], args[1])));
+  } catch (e) {
+    die(e.message);
+  }
+  process.exit(0);
+}
+
+const progress = require('./lib/progress');
+if (command === 'recover') {
+  for (const line of progress.recovery(state, progress.checkout(target), flags.env)) console.log(line);
+  process.exit(0);
+}
+
+// Every command below changes the workflow: only its owner may (ADR 0002).
+requireOwner(state);
+
 let next;
 let logged = args;
 const notes = [];
+const lines = [];
 try {
-  if (command === 'step') next = ops.setStep(state, args[0], args[1], flags);
+  if (command === 'step') {
+    // A delegated step closes as done only on an accepted delivery (step-result.md).
+    const unaccepted = args[1] === 'done' && results.closeProblem(state, args[0], { inSession: flags['main-session'] === true });
+    if (unaccepted) die(unaccepted);
+    next = ops.setStep(state, args[0], args[1], flags);
+  }
   else if (command === 'workflow') next = ops.setWorkflow(state, args[0]);
   else if (command === 'primary' || (command === 'reply' && args[0]?.toLowerCase() === 'primary')) {
     // The primary question's answer, or the workflow reply that changes a preset family.
@@ -247,7 +392,7 @@ try {
   else if (command === 'handoff') {
     let values = args.slice(1);
     if (args[0] === 'base' && values[0] === 'HEAD') {
-      const r = spawnSync('git', ['-C', target, 'rev-parse', 'HEAD'], { encoding: 'utf8' });
+      const r = spawnSync('git', ['-C', target, 'rev-parse', 'HEAD'], { encoding: 'utf8', env: require('./lib/git-env')() });
       if (r.status !== 0) die(`git rev-parse HEAD failed in ${target}: ${r.stderr.trim()}`);
       values = [r.stdout.trim()];
     }
@@ -258,10 +403,46 @@ try {
     next = replied.state;
     notes.push(...replied.notes);
   }
+  else if (command === 'expect') {
+    const requires = flags.requires === undefined ? undefined : flags.requires.split(',').map((k) => k.trim()).filter(Boolean);
+    const attempt = files.token(4);
+    const retry = progress.retryProblem(state, args[0], { approved: flags['user-approved'] === true });
+    if (retry) die(retry);
+    const expected = results.expect(state, args[0], { requires, attempt, purpose: flags.purpose });
+    next = expected.state;
+    lines.push(...expected.lines);
+  } else if (command === 'deliver') {
+    const resultPath = results.paths(state, ops.stepIndex(state, args[0])).result;
+    const read = (rel) => {
+      const f = rel === resultPath && args[1] ? path.resolve(args[1]) : path.join(target, rel);
+      return fs.existsSync(f) && fs.statSync(f).isFile() ? fs.readFileSync(f, 'utf8') : null;
+    };
+    const delivered = results.deliver(state, args[0], read);
+    if (delivered.problems) {
+      // Refused: nothing is written, the attempt stays open, the valid artifacts stay as they are.
+      for (const p of delivered.problems) console.error(`error: ${p}`);
+      for (const k of delivered.kept) console.error(`kept: ${k}`);
+      process.exit(1);
+    }
+    for (const w of delivered.writes) fs.writeFileSync(path.join(target, w.path), w.content);
+    next = delivered.state;
+    lines.push(...delivered.lines);
+  }
+  else if (['progress', 'check', 'interrupt'].includes(command)) {
+    const checkout = progress.checkout(target);
+    if (command === 'progress') next = progress.recordProgress(state, args[0], { ...flags, approved: flags['user-approved'] === true }, checkout, now());
+    if (command === 'check') {
+      const scope = flags.scope?.split(',').map((p) => p.trim()).filter(Boolean);
+      next = progress.recordCheck(state, args[0], { result: args[1], command: flags.command, scope, environment: flags.env }, checkout, now());
+    }
+    if (command === 'interrupt') next = progress.recordInterruption(state, args[0], flags.reason, checkout, now());
+  }
   else die(`unknown command ${command}`);
 } catch (e) {
   die(e.message, e.code === 'RECOMPOSE' ? 2 : 1);
 }
 
 // A state written without a primary family takes the preferences'; a stored one stays for the run.
-write(next, before, `${command} ${logged.join(' ')}`, notes.map((n) => `coverage: ${n}`));
+// A started step gets its note, headed by the run (ADR 0002).
+const started = () => (command === 'step' && args[1] === 'running' && next.run ? [files.startNote(target, next, ops.stepIndex(next, args[0]))] : []);
+write(next, before, `${command} ${logged.join(' ')}`, [...notes.map((n) => `coverage: ${n}`), ...lines], started);
