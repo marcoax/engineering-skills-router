@@ -37,6 +37,8 @@ declare module 'claude-code' {
       base_commit: string | null
       pr: RouterRef | null
     }
+    // The session that may change the workflow; null when none is recorded.
+    owner: { session: string; since: string } | null
   }
 
   interface RouterReview {

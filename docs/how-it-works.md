@@ -72,7 +72,7 @@ They fill any phase but `framework-review`, on equal terms with the vendor skill
 
 ## State and subagents
 
-While running, the router keeps `.router/state.json` and one note per step in `.router/steps/` in the target repo (git-excluded). Where the agent supports subagents, each skill step runs in a fresh subagent on the session's model; steps that talk with the user (requirements, specification, setup) stay in the main session. The review findings you choose to fix are fixed in a fresh subagent too. An unfinished workflow can be resumed later, also from a new session.
+While running, the router keeps `.router/state.json` and one note per step in `.router/steps/` in the target repo (git-excluded). Where the agent supports subagents, each skill step runs in a fresh subagent on the session's model; steps that talk with the user (requirements, specification, setup) stay in the main session. The review findings you choose to fix are fixed in a fresh subagent too. An unfinished workflow can be resumed later, also from a new session. One session owns it, and `scripts/state` refuses changes from any other until that session hands it over explicitly with `takeover`. Each run has an id: its notes carry it, notes of another run never count as evidence, and a finished or discarded run is archived with its notes in `.router/runs/` ([ADR 0002](adr/0002-workflow-ownership.md)).
 
 ## Context at a step boundary
 

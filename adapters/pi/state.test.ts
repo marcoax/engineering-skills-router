@@ -112,6 +112,17 @@ test("an unfinished workflow at session start is another session's until taken u
 	for (const command of ["cat .router/state.json", "scripts/statefile", "git status", "scripts/state-ops.js"]) assert.equal(runsStateScript(command), false, command);
 });
 
+test("an unfinished workflow this session owns is its own at session start", () => {
+	const s = parsed({ ...example(), owner: { session: "pi-1", since: "2026-10-17T09:30:00Z", previous: null } });
+	assert.deepEqual(s.owner, { session: "pi-1", since: "2026-10-17T09:30:00Z" });
+	assert.equal(isForeignAtStart(s, "pi-1"), false);
+	assert.equal(isForeignAtStart(s, "pi-2"), true);
+	assert.equal(isForeignAtStart(s), true);
+	const unowned = parsed({ ...example(), owner: null });
+	assert.equal(unowned.owner, null);
+	assert.equal(isForeignAtStart(unowned, "pi-1"), true);
+});
+
 test("replies use the selection syntax with positions in steps", () => {
 	const s = parsed(example());
 	assert.equal(replyFor(s, { kind: "go" }), "go");

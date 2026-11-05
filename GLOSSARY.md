@@ -28,6 +28,14 @@ _Avoid_: session model (for a step), default model
 The moment after one step has closed and before the next one starts. The step's note and the workflow state are written, so it is the only point where the workflow can pause and resume in a new session without losing work.
 _Avoid_: checkpoint, mid-step pause
 
+**Run**:
+One execution of a workflow, from `compose --new` to its end, identified by `run` in `.router/state.json`. Its step notes start with `run: <run>`; a note of another run is never this run's evidence. A finished or discarded run is archived with its notes in `.router/runs/<run>/`.
+_Avoid_: session (a run can outlive one)
+
+**Owner**:
+The one session that may change a run's state (`owner.session`), enforced by `scripts/state`. It changes only through `claim` (no owner yet) or an explicit `takeover` ([ADR 0002](docs/adr/0002-workflow-ownership.md)).
+_Avoid_: lock holder (the lock lasts one command)
+
 **Primary family**:
 The model family (`claude` or `openai`) a run's steps run on unless their phase sets its own. Each run keeps its own in `.router/state.json`, starting from `primary` in the user's `preferences.yaml`.
 _Avoid_: default model, main model

@@ -36,6 +36,22 @@
 //                            config/preferences.yaml, else the run's primary; a review step
 //                            (review, framework-review, security, independent-review) the
 //                            family opposite to the step that wrote the code
+//
+// Ownership (ADR 0002): only the session in the state's `owner` changes the workflow; any other
+// is refused, as is any change to a workflow with no owner recorded until it is claimed. The
+// session is `--session <id>`, else $ROUTER_SESSION, $CLAUDE_CODE_SESSION_ID or $PI_SESSION_ID.
+// `compose --new` makes this session the owner of a new run.
+//   claim                    this session becomes owner of a workflow with no owner (or keeps it);
+//                            refused when another session owns it
+//   takeover                 the explicit handover: this session becomes owner, the previous one
+//                            is recorded and refused from then on. Only once that session is closed.
+//   owner                    who owns the workflow: this session, another one, or none recorded
+//   discard                  archives the state and its notes in .router/runs/<run>/ and removes them
+//   reconcile                the state beside the repo, for a resume: run, owner, branch, commits
+//                            since the base, the PR's state (gh), each note in .router/steps/ with
+//                            the run it belongs to, and the next step. Changes nothing.
+// `step <n> running` writes the step's note, `.router/steps/<n>-<id>.md`, headed `run: <run>`;
+// a note another run left there moves to that run's archive.
 const fs = require('node:fs');
 const path = require('node:path');
 const { spawnSync } = require('node:child_process');
@@ -71,14 +87,102 @@ const die = (msg, code = 1) => {
   console.error(`error: ${msg}`);
   process.exit(code);
 };
+// The session running this command (ADR 0002); --session is taken out before the other flags.
+const sessionAt = rest.indexOf('--session');
+const flagSession = sessionAt >= 0 ? rest.splice(sessionAt, 2)[1] : undefined;
+const SESSION_ENV = ['ROUTER_SESSION', 'CLAUDE_CODE_SESSION_ID', 'PI_SESSION_ID'];
+const me = flagSession || SESSION_ENV.map((k) => process.env[k]).find(Boolean) || null;
+const noIdentity = `no session identity: pass --session <id> or set ROUTER_SESSION (${SESSION_ENV.join(', ')} are read)`;
+const now = () => new Date().toISOString().replace(/\.\d{3}Z$/, 'Z');
+const READ_ONLY = ['show', 'model', 'owner', 'reconcile'];
+if (!READ_ONLY.includes(command) && (command === 'compose' || fs.existsSync(path.dirname(file)))) lock();
 if (command === 'compose') compose();
 if (!fs.existsSync(file)) die(`.router/state.json not found in ${target}`);
 const before = fs.readFileSync(file, 'utf8');
+// selftest widens the window between reading and writing, so concurrent commands overlap.
+const hold = Number(process.env.ROUTER_STATE_TEST_HOLD_MS);
+if (hold > 0) Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, hold);
 let state;
 try {
   state = JSON.parse(before);
 } catch (e) {
   die(`invalid JSON in ${file}: ${e.message}`);
+}
+
+// One change at a time: every writing command holds `.router/state.lock` from reading the state
+// to writing it, so two sessions claiming at once leave one owner. A lock older than 30 s is a
+// crashed command's and is taken over.
+function lock() {
+  const lockFile = path.join(target, '.router', 'state.lock');
+  fs.mkdirSync(path.dirname(lockFile), { recursive: true });
+  const deadline = Date.now() + 10000;
+  for (;;) {
+    try {
+      fs.writeFileSync(lockFile, `${process.pid}\n`, { flag: 'wx' });
+      break;
+    } catch (e) {
+      if (e.code !== 'EEXIST') throw e;
+    }
+    try {
+      if (Date.now() - fs.statSync(lockFile).mtimeMs > 30000) fs.rmSync(lockFile, { force: true });
+    } catch {
+      // Released meanwhile.
+    }
+    if (Date.now() > deadline) die(`another scripts/state command holds ${lockFile}: retry, or remove it if none is running`);
+    Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 20);
+  }
+  process.on('exit', () => fs.rmSync(lockFile, { force: true }));
+}
+
+// Refuses a change by any session but the owner (ADR 0002).
+function requireOwner(current) {
+  const owner = current?.owner?.session;
+  if (!owner) die(`no owner recorded for the workflow in ${target}: claim it first with \`scripts/state ${target} claim\`, once no other session runs it (resume.md)`);
+  if (!me) die(noIdentity);
+  if (owner !== me) die(`the workflow in ${target} is owned by session ${owner} since ${current.owner.since}; this session (${me}) may not change it. Once that session is closed, take it over explicitly with \`scripts/state ${target} takeover\` (resume.md)`);
+}
+
+// A run's archive, .router/runs/<run>/ (a state without a run: legacy-<updated_at>), never reused.
+function archiveDir(current) {
+  const run = current?.run ?? `legacy-${String(current?.updated_at ?? 'unknown').replace(/\W/g, '')}`;
+  const base = path.join(target, '.router', 'runs', String(run).replace(/[^\w.-]/g, '-'));
+  let dir = base;
+  for (let i = 2; fs.existsSync(dir); i++) dir = `${base}-${i}`;
+  return dir;
+}
+
+// Moves the run `current` (its state, and `.router/steps/`) to its archive; returns the archive.
+function archive(current) {
+  const dir = archiveDir(current);
+  fs.mkdirSync(dir, { recursive: true });
+  fs.writeFileSync(path.join(dir, 'state.json'), `${JSON.stringify(current, null, 2)}\n`);
+  const steps = path.join(target, '.router', 'steps');
+  if (fs.existsSync(steps)) fs.renameSync(steps, path.join(dir, 'steps'));
+  return path.relative(target, dir);
+}
+
+// The run a note belongs to: its first line `run: <run>`, else null.
+const noteRun = (text) => text.match(/^run: (\S+)/)?.[1] ?? null;
+
+// A started step's note, headed by its run; a note another run left at that path moves to that
+// run's archive. Returns the `note:` line.
+function startNote(state, i) {
+  const rel = path.join('.router', 'steps', `${i + 1}-${state.steps[i].id}.md`);
+  const note = path.join(target, rel);
+  let moved = '';
+  if (fs.existsSync(note)) {
+    const other = noteRun(fs.readFileSync(note, 'utf8'));
+    if (other === state.run) return `note: ${rel}`;
+    const dir = path.join(target, '.router', 'runs', other ?? 'unknown', 'steps');
+    fs.mkdirSync(dir, { recursive: true });
+    let dest = path.join(dir, path.basename(note));
+    for (let n = 2; fs.existsSync(dest); n++) dest = path.join(dir, `${path.basename(note, '.md')}-${n}.md`);
+    fs.renameSync(note, dest);
+    moved = ` (the note ${other ? `of run ${other}` : 'without a run line'} there moved to ${path.relative(target, dest)})`;
+  }
+  fs.mkdirSync(path.dirname(note), { recursive: true });
+  fs.writeFileSync(note, `run: ${state.run}\n`);
+  return `note: ${rel}${moved}`;
 }
 
 // The composed workflow in `file` becomes the state, or the reason it cannot is printed.
@@ -102,8 +206,18 @@ function compose() {
   const errors = [];
   if (isNew && ops.UNFINISHED.includes(previous?.status))
     die(`an unfinished workflow (${previous.status}) is in ${target}: resume it or discard it first (resume.md)`);
+  if (isNew) {
+    // A new run is owned by this session from its start; another session's selection stays.
+    if (!me) die(noIdentity);
+    if (previous?.status === 'selecting' && previous.owner?.session) requireOwner(previous);
+    next.run = `${now().replace(/[-:]/g, '')}-${require('node:crypto').randomBytes(2).toString('hex')}`;
+    next.owner = { session: me, since: now(), previous: null };
+  }
   if (!isNew) {
     if (![...ops.UNFINISHED, 'selecting'].includes(previous?.status)) die(`no workflow to recompose in ${target}: start one with compose --new`);
+    requireOwner(previous);
+    next.run = previous.run;
+    next.owner = previous.owner;
     // Completed work stays as it ran; only the remaining work is reconsidered.
     for (const old of previous.steps.filter(ops.ran)) {
       const i = next.steps.findIndex((x) => x?.id === old.id);
@@ -143,8 +257,10 @@ function compose() {
   errors.push(...classified.errors.map((e) => (e.startsWith('classification') ? e : `classification: ${e}`)));
   if (errors.length) die(errors.join('\nerror: '));
   const covered = ops.recalculateCoverage({ ...next, status: 'selecting' }, invokesFor(target));
+  // A new run archives the previous one, its notes with it, once the new state is valid.
+  const archived = () => (isNew && previous ? [`archived: the previous run in ${archive(previous)}`] : []);
   write(covered.state, previous ? JSON.stringify(previous) : null, `compose${isNew ? ' --new' : ''}`,
-    [classified.line, ...covered.notes.map((n) => `coverage: ${n}`)]);
+    [classified.line, ...covered.notes.map((n) => `coverage: ${n}`)], archived);
 }
 
 // The classification (classification.md) a composed workflow carries. A recomposition that does not
@@ -164,10 +280,10 @@ function classify(next, previous) {
 }
 
 // Writes `next` (primary and time filled in), validates it with check-state and restores
-// `before` (null: no file) when it is invalid.
-function write(next, before, label, lines = []) {
+// `before` (null: no file) when it is invalid. `after` runs once it is kept and returns more lines.
+function write(next, before, label, lines = [], after = () => []) {
   if (next.primary == null) next.primary = models.preferredPrimary(prefs());
-  next.updated_at = new Date().toISOString().replace(/\.\d{3}Z$/, 'Z');
+  next.updated_at = now();
   fs.mkdirSync(path.dirname(file), { recursive: true });
   fs.writeFileSync(file, `${JSON.stringify(next, null, 2)}\n`);
   const check = spawnSync(path.join(__dirname, 'check-state'), [target], { encoding: 'utf8' });
@@ -177,7 +293,7 @@ function write(next, before, label, lines = []) {
     die(`the change would make the state invalid; kept the previous state\n${check.stdout}${check.stderr}`);
   }
   console.log(`state: ${label} → workflow ${next.status}`);
-  for (const line of lines) console.log(line);
+  for (const line of [...lines, ...after()]) console.log(line);
   process.exit(0);
 }
 
@@ -230,6 +346,75 @@ if (command === 'model') {
   process.exit(0);
 }
 
+const ownerLine = () => {
+  const o = state.owner;
+  if (!o?.session) return 'owner: none recorded (claim it before any change, once no other session runs it)';
+  const whose = o.session === me ? 'this session' : `another session${me ? `, not this one (${me})` : ''}`;
+  return `owner: ${o.session} since ${o.since} (${whose})`;
+};
+if (command === 'owner') {
+  console.log(ownerLine());
+  process.exit(0);
+}
+if (command === 'reconcile') {
+  reconcile();
+  process.exit(0);
+}
+
+// What a resume compares (resume.md): the state against the branch, the commits since the base,
+// the PR and the notes. Prints facts; deciding what they prove is the router's.
+function reconcile() {
+  const h = state.handoff ?? {};
+  const open = state.steps.filter((s) => ['pending', 'running', 'waiting'].includes(s.status));
+  const git = (...a) => spawnSync('git', ['-C', target, ...a], { encoding: 'utf8' });
+  console.log(`run: ${state.run ?? 'none recorded (a state written before runs)'}`);
+  console.log(ownerLine());
+  console.log(`workflow: ${state.status}`);
+  const head = git('rev-parse', '--abbrev-ref', 'HEAD');
+  const current = head.status === 0 ? head.stdout.trim() : null;
+  if (!h.branch) console.log(`branch: none recorded${current ? ` (checked out: ${current})` : ''}`);
+  else console.log(`branch: ${h.branch} (${current === h.branch ? 'checked out' : current ? `not checked out; ${current} is` : 'no git repository'})`);
+  if (h.base_commit) {
+    const tip = h.branch && git('rev-parse', '--verify', '--quiet', h.branch).status === 0 ? h.branch : 'HEAD';
+    const count = git('rev-list', '--count', `${h.base_commit}..${tip}`);
+    console.log(count.status === 0
+      ? `commits: ${count.stdout.trim()} since base ${h.base_commit.slice(0, 7)}`
+      : `commits: unknown, base ${h.base_commit.slice(0, 7)} not found`);
+  } else console.log('commits: no base recorded');
+  if (h.pr) {
+    const gh = spawnSync('gh', ['pr', 'view', h.pr.url || String(h.pr.number), '--json', 'state', '-q', '.state'], { cwd: target, encoding: 'utf8', timeout: 15000 });
+    const prState = gh.status === 0 ? gh.stdout.trim() : null;
+    const openIds = open.map((s) => s.id).join(', ');
+    if (!prState) console.log(`pr: #${h.pr.number} state unknown (gh: ${(gh.stderr || gh.error?.message || '').trim().split('\n')[0]})`);
+    else if (prState === 'MERGED' && open.length) console.log(`pr: #${h.pr.number} MERGED: evidence to reconcile, not proof the open steps ran (open: ${openIds})`);
+    else console.log(`pr: #${h.pr.number} ${prState}`);
+  } else console.log('pr: none');
+  const dir = path.join(target, '.router', 'steps');
+  for (const name of fs.existsSync(dir) ? fs.readdirSync(dir).filter((f) => f.endsWith('.md')).sort() : []) {
+    const owner = noteRun(fs.readFileSync(path.join(dir, name), 'utf8'));
+    const whose = owner === null ? 'no run line: unverified' : owner === state.run ? 'this run' : `run ${owner}: not evidence for this run`;
+    console.log(`note: ${path.join('.router', 'steps', name)} (${whose})`);
+  }
+  const i = state.steps.findIndex((s) => !['done', 'skipped'].includes(s.status));
+  console.log(i < 0 ? 'next: none, every step closed' : `next: ${i + 1}. ${state.steps[i].id} (${state.steps[i].status})`);
+}
+
+if (command === 'claim' || command === 'takeover') {
+  if (!me) die(noIdentity);
+  const owner = state.owner?.session;
+  if (command === 'claim' && owner && owner !== me) requireOwner(state);
+  const claimed = owner === me ? state.owner : { session: me, since: now(), previous: command === 'takeover' ? owner ?? null : null };
+  write({ ...state, owner: claimed }, before, command);
+}
+if (command === 'discard') {
+  requireOwner(state);
+  const dir = archive(state);
+  fs.rmSync(file);
+  console.log(`state: discarded → archived in ${dir}`);
+  process.exit(0);
+}
+requireOwner(state);
+
 let next;
 let logged = args;
 const notes = [];
@@ -264,4 +449,6 @@ try {
 }
 
 // A state written without a primary family takes the preferences'; a stored one stays for the run.
-write(next, before, `${command} ${logged.join(' ')}`, notes.map((n) => `coverage: ${n}`));
+// A started step gets its note, headed by the run (ADR 0002).
+const started = () => (command === 'step' && args[1] === 'running' && next.run ? [startNote(next, ops.stepIndex(next, args[0]))] : []);
+write(next, before, `${command} ${logged.join(' ')}`, notes.map((n) => `coverage: ${n}`), started);

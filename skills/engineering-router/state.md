@@ -122,7 +122,9 @@ The router writes this file in the **target repo** during a workflow so that ada
     "branch": "42-csv-export",
     "base_commit": "3f2a9c1e7b4d8f0a6c5e2b9d1f3a7c4e8b0d2f6a",
     "pr": null
-  }
+  },
+  "run": "20261017T093000Z-4f2a",
+  "owner": { "session": "session-example", "since": "2026-10-17T09:30:00Z", "previous": null }
 }
 ```
 
@@ -143,6 +145,8 @@ The router writes this file in the **target repo** during a workflow so that ada
 | `updated_at` | string | ISO-8601 UTC time of the last write. |
 | `steps` | Step[] | All steps in execution order, including router steps and covered steps. |
 | `handoff` | Handoff | What the steps have produced so far. |
+| `run` (optional) | string | The run's id, set by `compose --new`: the first line of each of its step notes is `run: <run>`, and `.router/runs/<run>/` keeps the run once it is archived ([ADR 0002](../../docs/adr/0002-workflow-ownership.md)). Missing in a state written before it. |
+| `owner` (optional) | Owner \| null | The session that may change the workflow; `null` or missing in a state written before it, which is claimed before any change. |
 
 Workflow `status`:
 
@@ -154,6 +158,16 @@ Workflow `status`:
 | `done` | Stopped at the open pull request, or the last step finished. |
 | `paused` | The user paused the workflow to resume it later (`resume`). |
 | `stopped` | The user stopped the workflow. |
+
+## Owner
+
+Set by `scripts/state`: `compose --new`, `claim` and `takeover`. Every other change is refused unless it comes from this session ([ADR 0002](../../docs/adr/0002-workflow-ownership.md)).
+
+| Field | Type | Meaning |
+|---|---|---|
+| `session` | string | The owning session's id: `--session`, else `ROUTER_SESSION`, `CLAUDE_CODE_SESSION_ID` or `PI_SESSION_ID`. |
+| `since` | string | ISO-8601 UTC time the session became owner. |
+| `previous` (optional) | string \| null | The session that owned the workflow before an explicit `takeover`; `null` otherwise. |
 
 ## Classification
 

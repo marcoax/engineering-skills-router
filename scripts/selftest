@@ -15,6 +15,10 @@ const STATE_MD = 'skills/engineering-router/state.md';
 // Never the maintainer's configuration: no explicit location, and an empty scratch XDG config root.
 delete process.env.ENGINEERING_ROUTER_CONFIG;
 process.env.XDG_CONFIG_HOME = path.join(tmp, 'xdg config');
+// Every scripts/state call runs as the session that owns the state.md example (ADR 0002).
+delete process.env.CLAUDE_CODE_SESSION_ID;
+delete process.env.PI_SESSION_ID;
+process.env.ROUTER_SESSION = 'session-example';
 for (const dir of ['catalog', 'scripts', 'skills']) fs.cpSync(path.join(ROOT, dir), path.join(tmp, dir), { recursive: true });
 fs.mkdirSync(path.join(tmp, 'config'));
 for (const dir of ['vendors', 'node_modules']) fs.symlinkSync(path.join(ROOT, dir), path.join(tmp, dir));
@@ -1376,6 +1380,165 @@ expectStateOk('unknown fields', variant((s) => { s.extra = 1; s.steps[0].extra =
   if (cls?.policy !== 2 || !cls.rationale?.risk || !Array.isArray(cls.facts)) fail(`scripts/record should carry the classification\n${rec.out}`);
   fs.writeFileSync(findingsFile, JSON.stringify([{ title: 'x', severity: 'high', found_by: ['review-9'], decision: 'fixed' }]));
   if (run('record', repo, '--findings', findingsFile).ok) fail('scripts/record should refuse a finding from a step not in the workflow');
+}
+
+// Ownership and runs (ADR 0002): only the owning session changes a workflow, through every
+// scripts/state command; two concurrent claims leave one owner; a takeover is explicit and the
+// previous owner is refused after it; a workflow without an owner is claimed before any change.
+// A run's state and notes stay together: notes of another run are never this run's evidence,
+// and a new run or a discard archives the previous one instead of deleting it.
+{
+  const repo = fs.mkdtempSync(path.join(tmp, 'owner-'));
+  fs.mkdirSync(path.join(repo, '.router'));
+  const stateFile = path.join(repo, '.router/state.json');
+  const read = () => JSON.parse(fs.readFileSync(stateFile, 'utf8'));
+  const st = (...a) => run('state', repo, ...a);
+  const as = (session, ...a) => run('state', repo, ...a, '--session', session);
+  const expectOk = (label, r) => { if (!r.ok) fail(`scripts/state ${label}\n${r.out}`); };
+  const expectRefused = (label, r, msg) => {
+    const before = fs.readFileSync(stateFile, 'utf8');
+    if (r.ok || !r.out.includes(msg)) fail(`scripts/state ${label}: expected "${msg}"\ngot:\n${r.out}`);
+    if (fs.readFileSync(stateFile, 'utf8') !== before) fail(`scripts/state ${label}: a refused change must leave the state as it was`);
+  };
+  const example = stateExample();
+  if (example.owner?.session !== process.env.ROUTER_SESSION || typeof example.run !== 'string')
+    fail('the state.md example should record its run and an owner, the session selftest runs as');
+  fs.writeFileSync(stateFile, JSON.stringify(example));
+
+  // The owner advances the workflow; any other session is refused, whatever command it runs.
+  expectOk('step by the owner', st('step', 'review', 'running', '--model', 'gpt-6-sol'));
+  for (const cmd of [['step', 'review', 'done', '--outcome', 'x'], ['workflow', 'paused'], ['handoff', 'branch', 'other'], ['reply', 'pause']])
+    expectRefused(`${cmd[0]} by another session`, as('intruder', ...cmd), `owned by session ${example.owner.session}`);
+  expectRefused('a claim by another session', as('intruder', 'claim'), `owned by session ${example.owner.session}`);
+  expectOk('claim by the owner again', st('claim'));
+
+  // An explicit takeover moves ownership; the previous owner is refused from then on.
+  const took = as('rescuer', 'takeover');
+  expectOk('takeover', took);
+  let s = read();
+  if (s.owner.session !== 'rescuer' || s.owner.previous !== example.owner.session) fail(`takeover should record the new owner and the previous one: ${JSON.stringify(s.owner)}`);
+  expectRefused('a write by the previous owner', st('step', 'review', 'done', '--outcome', 'x'), 'owned by session rescuer');
+  expectOk('a write by the new owner', as('rescuer', 'step', 'review', 'done', '--outcome', 'Reviewed'));
+  if (!as('rescuer', 'owner').out.includes('owner: rescuer') || !st('owner').out.includes('another session')) fail(`owner should say who owns the workflow\n${st('owner').out}`);
+
+  // No session identity: nothing changes.
+  const anonymous = spawnSync(path.join(tmp, 'scripts/state'), [repo, 'workflow', 'paused'], {
+    encoding: 'utf8', env: Object.fromEntries(Object.entries(process.env).filter(([k]) => !['ROUTER_SESSION', 'CLAUDE_CODE_SESSION_ID', 'PI_SESSION_ID'].includes(k))) });
+  if (anonymous.status === 0 || !anonymous.stderr.includes('no session identity')) fail(`a write without a session identity should be refused\n${anonymous.stderr}`);
+
+  // A workflow written before ownership: every change waits for an explicit claim.
+  fs.writeFileSync(stateFile, JSON.stringify(variant((x) => { delete x.owner; delete x.run; })));
+  expectRefused('a write to an unowned workflow', st('step', 'review', 'running'), 'no owner recorded');
+  expectOk('claim an unowned workflow', st('claim'));
+  if (read().owner?.session !== process.env.ROUTER_SESSION) fail('claim should record this session as owner');
+  expectOk('a write after the claim', st('step', 'review', 'running'));
+
+  // Concurrent claims of an unowned workflow: one owner, the other refused.
+  for (let i = 0; i < 8; i++) {
+    fs.writeFileSync(stateFile, JSON.stringify(variant((x) => { delete x.owner; })));
+    const script = path.join(tmp, 'scripts/state');
+    const race = spawnSync('sh', ['-c', `{ "$0" "$1" claim --session a > "$1/a.out" 2>&1; echo $? > "$1/a.code"; } &
+{ "$0" "$1" claim --session b > "$1/b.out" 2>&1; echo $? > "$1/b.code"; } & wait`, script, repo],
+    { encoding: 'utf8', env: { ...process.env, ROUTER_STATE_TEST_HOLD_MS: '150' } });
+    if (race.status !== 0) fail(`concurrent claims did not run\n${race.stderr}`);
+    const codes = ['a', 'b'].map((who) => fs.readFileSync(path.join(repo, `${who}.code`), 'utf8').trim());
+    const winners = ['a', 'b'].filter((_, j) => codes[j] === '0');
+    if (winners.length !== 1 || read().owner?.session !== winners[0])
+      fail(`two concurrent claims should leave exactly one owner, got exits ${codes} and owner ${JSON.stringify(read().owner)}\n${['a', 'b'].map((w) => fs.readFileSync(path.join(repo, `${w}.out`), 'utf8')).join('\n')}`);
+  }
+  for (const f of ['a.out', 'b.out', 'a.code', 'b.code']) fs.rmSync(path.join(repo, f));
+
+  // A step's note belongs to its run: starting the step writes the run line first, and a note
+  // left at that path by another run is moved to that run's archive, not reused or deleted.
+  fs.writeFileSync(stateFile, JSON.stringify(example));
+  const notes = path.join(repo, '.router/steps');
+  fs.mkdirSync(notes, { recursive: true });
+  fs.writeFileSync(path.join(notes, '5-review.md'), 'run: run-801\nreview of #801: no findings\n');
+  fs.writeFileSync(path.join(notes, '1-specification.md'), `run: ${example.run}\nspec published\n`);
+  fs.writeFileSync(path.join(notes, '2-branch.md'), 'branch created (written before runs)\n');
+  const started = st('step', 'review', 'running');
+  expectOk('step running with a foreign note in place', started);
+  if (fs.readFileSync(path.join(notes, '5-review.md'), 'utf8') !== `run: ${example.run}\n`) fail('a started step should get a note headed by its run');
+  if (fs.readFileSync(path.join(repo, '.router/runs/run-801/steps/5-review.md'), 'utf8') !== 'run: run-801\nreview of #801: no findings\n')
+    fail('a foreign note should move to its own run\'s archive, unchanged');
+  if (!started.out.includes('note: .router/steps/5-review.md')) fail(`step running should name the step's note\n${started.out}`);
+  expectOk('step running again', st('step', 'review', 'running'));
+  fs.appendFileSync(path.join(notes, '5-review.md'), 'half done\n');
+  expectOk('step running once more', st('step', 'review', 'running'));
+  if (!fs.readFileSync(path.join(notes, '5-review.md'), 'utf8').includes('half done')) fail('a note of this run must be kept when its step starts again');
+  fs.writeFileSync(path.join(notes, '3-implementation.md'), 'run: run-801\nimplementation of #801\n');
+
+  // Reconcile: state, branch, commits since the base, PR and notes side by side. A merged PR is
+  // evidence to reconcile, never proof that the open steps ran; foreign notes are not evidence.
+  const gitRepo = (...a) => spawnSync('git', ['-C', repo, '-c', 'user.name=t', '-c', 'user.email=t@t', ...a], { encoding: 'utf8', env: gitEnv });
+  gitRepo('init', '-q', '-b', '42-csv-export');
+  gitRepo('commit', '-q', '--allow-empty', '-m', 'base');
+  const base = gitRepo('rev-parse', 'HEAD').stdout.trim();
+  gitRepo('commit', '-q', '--allow-empty', '-m', 'work');
+  gitRepo('commit', '-q', '--allow-empty', '-m', 'more work');
+  s = read();
+  s.handoff.base_commit = base;
+  s.handoff.pr = { number: 77, url: 'https://example.test/pr/77' };
+  fs.writeFileSync(stateFile, JSON.stringify(s));
+  const bin = fs.mkdtempSync(path.join(tmp, 'gh-'));
+  fs.writeFileSync(path.join(bin, 'gh'), '#!/bin/sh\necho MERGED\n', { mode: 0o755 });
+  const reconcile = spawnSync(path.join(tmp, 'scripts/state'), [repo, 'reconcile'], { encoding: 'utf8', env: { ...gitEnv, PATH: `${bin}:${process.env.PATH}` } });
+  const out = reconcile.stdout;
+  if (reconcile.status !== 0) fail(`reconcile\n${out}${reconcile.stderr}`);
+  for (const line of [
+    `run: ${example.run}`,
+    `owner: ${example.owner.session} since ${example.owner.since} (this session)`,
+    'branch: 42-csv-export (checked out)',
+    `commits: 2 since base ${base.slice(0, 7)}`,
+    'pr: #77 MERGED: evidence to reconcile, not proof the open steps ran (open: implementation, testing, review)',
+    'note: .router/steps/1-specification.md (this run)',
+    'note: .router/steps/2-branch.md (no run line: unverified)',
+    'note: .router/steps/3-implementation.md (run run-801: not evidence for this run)',
+    'next: 3. implementation (running)',
+  ]) if (!out.split('\n').includes(line)) fail(`reconcile should print "${line}"\n${out}`);
+  if (fs.readFileSync(stateFile, 'utf8') !== JSON.stringify(s)) fail('reconcile must not change the state');
+
+  // Discard keeps the run: state and notes move together to the run's archive.
+  expectRefused('a discard by another session', as('intruder', 'discard'), 'owned by session');
+  expectOk('discard', st('discard'));
+  const archived = path.join(repo, '.router/runs', example.run);
+  if (fs.existsSync(stateFile) || fs.existsSync(notes)) fail('discard should leave no current state or notes');
+  if (JSON.parse(fs.readFileSync(path.join(archived, 'state.json'), 'utf8')).task !== example.task || !fs.existsSync(path.join(archived, 'steps/1-specification.md')))
+    fail('discard should archive the state with its notes');
+}
+
+// A new run is owned from its start by the session that composed it, under a fresh run id; the
+// previous finished run is archived with its notes; another session's selection is not replaced.
+{
+  const repo = fs.mkdtempSync(path.join(tmp, 'owner-compose-'));
+  const stateFile = path.join(repo, '.router/state.json');
+  const composed = path.join(tmp, 'owner-composed.json');
+  const read = () => JSON.parse(fs.readFileSync(stateFile, 'utf8'));
+  const fresh = variant((s) => {
+    s.status = 'selecting';
+    s.steps.forEach((x) => Object.assign(x, { status: 'pending', outcome: null, model: null }));
+    s.handoff.branch = null;
+    s.handoff.base_commit = null;
+  });
+  fs.writeFileSync(composed, JSON.stringify(fresh));
+  const compose = (...a) => run('state', repo, 'compose', ...a, composed);
+  let r = compose('--new');
+  if (!r.ok) fail(`compose --new\n${r.out}`);
+  const first = read();
+  if (first.owner?.session !== process.env.ROUTER_SESSION || !first.run || first.run === fresh.run) fail(`compose --new should own the run under a fresh run id: ${JSON.stringify([first.run, first.owner])}`);
+  r = compose();
+  if (!r.ok || read().run !== first.run || read().owner.session !== first.owner.session) fail(`a recomposition keeps the run and its owner\n${r.out}`);
+  if (run('state', repo, 'compose', composed, '--session', 'intruder').ok) fail('another session should not recompose the run');
+  if (run('state', repo, 'compose', '--new', composed, '--session', 'intruder').ok) fail('another session should not replace a selection it does not own');
+  // Finished: the next run archives it with its notes.
+  fs.mkdirSync(path.join(repo, '.router/steps'));
+  fs.writeFileSync(path.join(repo, '.router/steps/1-specification.md'), `run: ${first.run}\nspec\n`);
+  fs.writeFileSync(stateFile, JSON.stringify({ ...read(), status: 'done' }));
+  r = compose('--new');
+  if (!r.ok || read().run === first.run) fail(`compose --new after a finished run\n${r.out}`);
+  if (!fs.existsSync(path.join(repo, '.router/runs', first.run, 'state.json')) || !fs.existsSync(path.join(repo, '.router/runs', first.run, 'steps/1-specification.md'))
+    || fs.existsSync(path.join(repo, '.router/steps/1-specification.md')))
+    fail('a new run should archive the previous run with its notes');
 }
 
 // A swap recalculates coverage from the newly selected skill's `invokes` before go: a step that

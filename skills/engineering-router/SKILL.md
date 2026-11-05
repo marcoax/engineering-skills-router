@@ -39,7 +39,7 @@ Then run `scripts/validate-catalog`. When it prints errors, show them with the f
 
 ## 1. Classify
 
-First look for an unfinished workflow: `.router/state.json` in the target repo with status `running`, `waiting`, `paused` or `stopped`. If there is one, follow [resume.md](resume.md) before anything else: a resumed workflow keeps its skills, and the selector runs again only when the user asks to recompose.
+First look for an unfinished workflow: `.router/state.json` in the target repo with status `running`, `waiting`, `paused` or `stopped`. Look before asking which task to run when the invocation names none. If there is one, follow [resume.md](resume.md) before anything else: it checks which session owns the workflow (`scripts/state <target repo> owner`) and asks for an explicit handover when another one does; a resumed workflow keeps its skills, and the selector runs again only when the user asks to recompose.
 
 Read the task (fetch it first if it is an issue URL or number; read the file if it is a path to a spec in the target repo). Inspect the target repo enough to judge brownfield vs greenfield, to locate the code the task touches (files or components the task names, or a quick search), and whether `docs/agents/issue-tracker.md`, `docs/agents/skills.yaml` (the project's own skills), `GLOSSARY.md` or `docs/adr/` exist.
 
