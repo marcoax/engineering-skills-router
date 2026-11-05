@@ -3,36 +3,52 @@
 // recognizable verdict and the declared artifacts in their formats. Pure functions on the
 // parsed state; the caller reads files through `read(rel)` (its text, or null when absent).
 const path = require('node:path');
-const { setStep, stepIndex } = require('./state-ops');
+const { clone, fail, setStep, stepIndex, REVIEW_PHASES } = require('./state-ops');
 const { findingsProblems } = require('./runs');
+const { STEPS_DIR, notePath, noteRun, noteBody } = require('./run-files');
 
 const VERDICTS = ['done', 'fixes', 'blocked'];
 const KINDS = ['note', 'findings', 'pr-body'];
-const REVIEW_STEPS = ['review', 'framework-review', 'security', 'independent-review'];
-const STEPS_DIR = '.router/steps';
+// Phases whose steps converse with the user and run in the main session (SKILL.md §6).
+const MAIN_SESSION_PHASES = ['requirements', 'clarification', 'specification', 'setup'];
 
-const clone = (s) => JSON.parse(JSON.stringify(s));
-const fail = (msg) => {
-  throw new Error(msg);
-};
 
 // The conventional paths of a step's result and artifacts, relative to the target repo.
 function paths(state, i) {
   const base = `${STEPS_DIR}/${i + 1}-${state.steps[i].id}`;
-  return { result: `${base}.result.json`, note: `${base}.md`, findings: `${base}.findings.json`, 'pr-body': `${base}.pr-body.md` };
+  return { result: `${base}.result.json`, note: notePath(state, i), findings: `${base}.findings.json`, 'pr-body': `${base}.pr-body.md` };
+}
+
+const isReview = (step) => REVIEW_PHASES.includes(step.id);
+
+// Whether a step is delegated, so it owes a delivery: a skill step of a run (a state written
+// before runs is legacy), neither run inside another step nor conversational.
+const delegated = (state, step) => Boolean(state.run) && step.skill != null && !step.covered_by
+  && !(step.phases ?? []).some((p) => MAIN_SESSION_PHASES.includes(p));
+
+// Why step `ref` may not close as done yet, or null. A delegated step needs an accepted done
+// delivery, unless it ran in the main session (`inSession`: the harness has no subagents).
+function closeProblem(state, ref, { inSession = false } = {}) {
+  const i = stepIndex(state, ref);
+  const step = state.steps[i];
+  if (inSession || !delegated(state, step) || step.result?.verdict === 'done') return null;
+  return `step ${step.id}: a delegated step needs an accepted delivery to close as done: \`expect ${i + 1}\` before it starts, then \`deliver ${i + 1}\` (step-result.md); a skill step run in the main session closes with --main-session`;
 }
 
 // What a step delivers unless the caller declares otherwise: every step its note; a review its
 // findings too; the pull-request preparation the body and the consolidated findings.
 function defaultRequires(step) {
   if (step.id === 'pull-request') return ['pr-body', 'findings'];
-  if (REVIEW_STEPS.includes(step.id)) return ['note', 'findings'];
+  if (isReview(step)) return ['note', 'findings'];
   return ['note'];
 }
 
 // Opens a delivery for a running step: a new attempt, which makes any earlier attempt's result
-// stale. Returns { state, lines } with the lines the step's brief carries.
-function expect(state, ref, { requires, attempt }) {
+// stale; the earlier attempts stay listed. A review pass counts once per purpose (#81): the first
+// one's is the step's summary, and another pass after an accepted verdict declares a distinct
+// `purpose`; a retry of an attempt that delivered nothing keeps its purpose. Returns
+// { state, lines } with the lines the step's brief carries.
+function expect(state, ref, { requires, attempt, purpose }) {
   const s = clone(state);
   const i = stepIndex(s, ref);
   const step = s.steps[i];
@@ -40,12 +56,21 @@ function expect(state, ref, { requires, attempt }) {
   const kinds = requires ?? defaultRequires(step);
   const unknown = kinds.filter((k) => !KINDS.includes(k));
   if (unknown.length) fail(`--requires: unknown artifact ${unknown.join(', ')} (${KINDS.join(', ')})`);
-  step.result = { attempt, requires: kinds, verdict: null, artifacts: [], remaining: null };
+  const old = step.result;
+  const earlier = old ? [...(old.earlier ?? []), { attempt: old.attempt, purpose: old.purpose ?? null, verdict: old.verdict }] : [];
+  const passed = earlier.filter((e) => e.verdict !== null);
+  if (isReview(step) && passed.length) {
+    if (!purpose) fail(`another pass of ${step.id} needs --purpose "<what it checks that the earlier passes did not>": a review counts once per purpose`);
+    if (passed.some((e) => e.purpose === purpose)) fail(`${step.id} already ran for that purpose (${purpose}): declare what this pass adds`);
+  }
+  const pass = purpose || old?.purpose || step.summary || null;
+  step.result = { attempt, requires: kinds, verdict: null, artifacts: [], remaining: null, purpose: pass, earlier };
   const p = paths(s, i);
-  return {
-    state: s,
-    lines: [`result: ${p.result}`, `attempt: ${attempt}`, `requires: ${kinds.map((k) => `${k} ${p[k]}`).join(', ')}`],
-  };
+  const lines = [`result: ${p.result}`, `attempt: ${attempt}`, `requires: ${kinds.map((k) => `${k} ${p[k]}`).join(', ')}`];
+  if (pass) lines.push(`purpose: ${pass}`);
+  // The note is started headed by its run (run-files.js startNote): the step appends below it.
+  if (s.run && kinds.includes('note')) lines.push(`note: keep its first line \`run: ${s.run}\` and append below it`);
+  return { state: s, lines };
 }
 
 // The result object in a delivered text: the whole text as JSON, or its last ```json block
@@ -125,9 +150,9 @@ function deliver(state, ref, read) {
     }
     const own = [];
     // A note headed by another run (`run: <id>`, ADR 0002) is that run's, never this delivery.
-    const noteRun = kind === 'note' ? content.match(/^run: (\S+)/)?.[1] : undefined;
-    if (!content.replace(/^run: \S+\n?/, '').trim()) own.push(`${kind}: ${rel} is empty`);
-    else if (noteRun && state.run && noteRun !== state.run) own.push(`note: ${rel} belongs to run ${noteRun}, not this run`);
+    const run = kind === 'note' ? noteRun(content) : null;
+    if (!noteBody(content).trim()) own.push(`${kind}: ${rel} is empty`);
+    else if (run && state.run && run !== state.run) own.push(`note: ${rel} belongs to run ${run}, not this run`);
     else if (kind === 'findings') {
       let list;
       try {
@@ -137,6 +162,11 @@ function deliver(state, ref, read) {
       }
       if (list !== undefined) {
         own.push(...findingsProblems(list, ids, { decided: false }));
+        // A review reports; its findings are decided by the supervisor once the fixes ran.
+        if (isReview(step) && !(expected.earlier ?? []).some((e) => e.verdict === 'fixes') && Array.isArray(list))
+          list.forEach((f, j) => {
+            if (f?.decision !== undefined) own.push(`findings[${j}].decision: a review's findings are decided after its fixes verdict, never by the review itself: deliver fixes`);
+          });
         if (!own.length) findings = list;
       }
     } else if (kind === 'pr-body' && state.handoff?.issue?.number != null) {
@@ -158,7 +188,7 @@ function deliver(state, ref, read) {
   if (problems.length) return refuse(problems, kept);
 
   let s = clone(state);
-  s.steps[i].result = { attempt: expected.attempt, requires: expected.requires, verdict, artifacts, remaining };
+  s.steps[i].result = { ...expected, verdict, artifacts, remaining };
   const lines = [];
   if (verdict === 'blocked') {
     s = setStep(s, i + 1, 'waiting');
@@ -177,4 +207,4 @@ function artifact(state, ref, kind) {
   return found.path;
 }
 
-module.exports = { expect, deliver, artifact, paths, defaultRequires, VERDICTS, KINDS };
+module.exports = { expect, deliver, artifact, paths, defaultRequires, closeProblem, VERDICTS, KINDS };

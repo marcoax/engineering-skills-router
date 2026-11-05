@@ -19,6 +19,8 @@ declare module 'claude-code' {
     model: string | null
     status: string
     outcome: string | null
+    // The last interruption of a running step, until it saves progress again.
+    interrupted: { reason: string; at: string } | null
   }
 
   interface RouterSnapshot {

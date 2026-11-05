@@ -189,7 +189,7 @@ Set by `scripts/state`: `compose --new`, `claim` and `takeover`. Every other cha
 |---|---|---|
 | `session` | string | The owning session's id: `--session`, else `ROUTER_SESSION`, `CLAUDE_CODE_SESSION_ID` or `PI_SESSION_ID`. |
 | `since` | string | ISO-8601 UTC time the session became owner. |
-| `previous` (optional) | string \| null | The session that owned the workflow before an explicit `takeover`; `null` otherwise. |
+| `previous` | string \| null | The session that owned the workflow before an explicit `takeover`; `null` otherwise. |
 
 ## Classification
 
@@ -261,6 +261,7 @@ A step's latest progress, rewritten by `progress`; `branch`, `head` and `changes
 | `limits` | string \| null | Known limits and open points; `null` when none. |
 | `interrupted` | Interruption \| null | The last interruption, until the step saves progress again. |
 | `interruptions` | integer | How many times the step was interrupted; it is retried at most twice ([resume.md](resume.md)). |
+| `approved` (optional) | integer \| null | The interruptions the user's yes to another retry covers (`progress --user-approved`); past the retries, `progress` and `expect` are refused until it reaches `interruptions`; `null` until the user approves one. |
 | `checks` | Check[] | The checks the step ran, one per command: a rerun replaces the earlier one. |
 
 ## Interruption
@@ -301,6 +302,16 @@ A check's result holds only for the content it ran on: `recover` reuses a passin
 | `verdict` | null \| "done" \| "fixes" \| "blocked" | The accepted verdict; `null` while the delivery is expected. |
 | `artifacts` | {kind, path}[] | The accepted artifacts, each path relative to the target repo; empty while expected. |
 | `remaining` | string \| null | What blocks the step or is left, from a `blocked` (or any) delivery. |
+| `purpose` (optional) | string \| null | What this attempt is for: the step's summary on its first pass; another pass of a review after an accepted verdict declares its own, distinct one (a review counts once per purpose). |
+| `earlier` (optional) | Attempt[] | The step's earlier attempts, oldest first; a review's findings carry decisions only after one of them delivered `fixes`. |
+
+## Attempt
+
+| Field | Type | Meaning |
+|---|---|---|
+| `attempt` | string | The earlier attempt's token. |
+| `purpose` | string \| null | Its purpose. |
+| `verdict` | null \| "done" \| "fixes" \| "blocked" | Its accepted verdict; `null` when it delivered nothing. |
 
 ## Handoff
 

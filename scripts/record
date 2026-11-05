@@ -38,14 +38,16 @@ const ids = new Set(state.steps.map((s) => s.id));
 const prepared = state.steps.find((s) => s.id === 'pull-request')?.result;
 const preparedFindings = prepared?.verdict === 'done' ? prepared.artifacts.find((a) => a.kind === 'findings') : null;
 const findingsFile = flags.findings || (preparedFindings ? path.join(target, preparedFindings.path) : null);
+// Errors name where the findings came from: the caller's --findings or the step's delivered file.
+const findingsSource = flags.findings ? '--findings' : preparedFindings ? `${preparedFindings.path} (delivered by the pull-request step)` : null;
 let findings = [];
 if (findingsFile) {
   try {
     findings = JSON.parse(fs.readFileSync(findingsFile, 'utf8'));
   } catch (e) {
-    die(`--findings: ${e.message}`);
+    die(`${findingsSource}: ${e.message}`);
   }
-  const problems = findingsProblems(findings, ids, { at: '--findings' });
+  const problems = findingsProblems(findings, ids, { at: findingsSource });
   if (problems.length) die(problems[0]);
   findings = findings.map(({ title, severity, found_by, decision }) => ({ title, severity, found_by, decision }));
 }

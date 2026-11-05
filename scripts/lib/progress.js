@@ -5,17 +5,13 @@ const crypto = require('node:crypto');
 const fs = require('node:fs');
 const path = require('node:path');
 const { spawnSync } = require('node:child_process');
-const { stepIndex } = require('./state-ops');
+const { clone, fail, stepIndex, CLOSED } = require('./state-ops');
 
 const RESULTS = ['pass', 'fail', 'interrupted'];
 // An interrupted step is retried at most this many times before the user decides.
 const RETRIES = 2;
 const ROUTER_DIR = '.router/';
 
-const clone = (s) => JSON.parse(JSON.stringify(s));
-const fail = (msg) => {
-  throw new Error(msg);
-};
 const short = (sha) => sha.slice(0, 7);
 
 // The target's checkout: branch, HEAD, uncommitted paths, and what recover asks of git. Outside
@@ -37,12 +33,15 @@ function checkout(target) {
     const file = e.slice(3);
     if (!file.startsWith(ROUTER_DIR)) changes.push(file);
   }
-  // SHA-256 over each file in scope (its path, then its content as it is on disk), sorted.
+  // SHA-256 over each file in scope (its path, then its content as it is on disk), sorted. A path
+  // named in the scope counts even when ignored (a gitignored .env); the whole tree ('.') does not.
   const content = (scope) => {
     const listed = git('ls-files', '-z', '--cached', '--others', '--exclude-standard', '--', ...scope);
-    if (listed == null || head == null) return null;
+    const named = scope.filter((e) => e !== '.');
+    const ignored = named.length ? git('ls-files', '-z', '--others', '--ignored', '--exclude-standard', '--', ...named) : '';
+    if (listed == null || ignored == null || head == null) return null;
     const hash = crypto.createHash('sha256');
-    for (const file of [...new Set(listed.split('\0').filter((f) => f && !f.startsWith(ROUTER_DIR)))].sort()) {
+    for (const file of [...new Set(`${listed}\0${ignored}`.split('\0').filter((f) => f && !f.startsWith(ROUTER_DIR)))].sort()) {
       const p = path.join(target, file);
       const stat = fs.statSync(p, { throwIfNoEntry: false });
       hash.update(`${file}\0`);
@@ -56,78 +55,95 @@ function checkout(target) {
   return { branch, head, changes: changes.sort(), content, isAncestor, commitsSince };
 }
 
-const empty = () => ({ at: null, branch: null, head: null, changes: [], done: null, next: null, limits: null, interrupted: null, interruptions: 0, checks: [] });
+const empty = () => ({ at: null, branch: null, head: null, changes: [], done: null, next: null, limits: null, interrupted: null, interruptions: 0, approved: null, checks: [] });
+
+// Whether a step was interrupted more often than it may be retried without the user's yes.
+const usedUp = (p) => Boolean(p) && p.interruptions > RETRIES && (p.approved ?? 0) < p.interruptions;
+
+// Why step `ref` may not go on (new progress, a new delivery) yet, or null: past its retries it
+// needs the user's yes, which `approved` records with the interruptions it covers.
+function retryProblem(state, ref, { approved = false } = {}) {
+  const step = state.steps[stepIndex(state, ref)];
+  if (approved || !usedUp(step.progress)) return null;
+  return `step ${step.id}: retries used up (${step.progress.interruptions} interruptions): ask the user, then pass --user-approved`;
+}
 
 // The running step `ref` with its progress refreshed from the checkout, in a copy of `state`.
-function refreshed(state, ref, co, at) {
+function refreshed(state, ref, checkout, at) {
   const s = clone(state);
   const step = s.steps[stepIndex(s, ref)];
   if (step.status !== 'running') fail(`step ${step.id} is ${step.status}: only a running step records progress`);
-  step.progress = Object.assign(step.progress ?? empty(), { at, branch: co.branch, head: co.head, changes: co.changes });
+  step.progress = Object.assign(step.progress ?? empty(), { at, branch: checkout.branch, head: checkout.head, changes: checkout.changes });
   return { s, p: step.progress };
 }
 
 // What the step has done and the first work still needed. A new record replaces the previous
-// one's lines and ends its interruption: the step is running again.
-function recordProgress(state, ref, { done, next, limits }, co, at) {
-  const { s, p } = refreshed(state, ref, co, at);
+// one's lines and ends its interruption: the step is running again. Past the retries it needs
+// `approved`, the user's yes, recorded.
+function recordProgress(state, ref, { done, next, limits, approved }, checkout, at) {
+  const problem = retryProblem(state, ref, { approved });
+  if (problem) fail(problem);
+  const { s, p } = refreshed(state, ref, checkout, at);
   Object.assign(p, { done: done || null, next: next || null, limits: limits || null, interrupted: null });
+  if (approved && p.interruptions > RETRIES) p.approved = p.interruptions;
   return s;
 }
 
 // A check the step ran, tied to the content of its scope; a rerun replaces the earlier result.
-function recordCheck(state, ref, { result, command, scope, environment }, co, at) {
+function recordCheck(state, ref, { result, command, scope, environment }, checkout, at) {
   if (!RESULTS.includes(result)) fail(`check result must be ${RESULTS.join(' | ')}`);
   if (!command || !environment) fail('check needs --command and --env');
   const paths = scope?.length ? scope : ['.'];
-  const { s, p } = refreshed(state, ref, co, at);
+  const { s, p } = refreshed(state, ref, checkout, at);
   p.checks = [...p.checks.filter((c) => c.command !== command),
-    { command, scope: paths, environment, result, head: co.head, content: co.content(paths), at }];
+    { command, scope: paths, environment, result, head: checkout.head, content: checkout.content(paths), at }];
   return s;
 }
 
 // The step stopped before it ended (timeout, quota, unavailable model): neither done nor waiting.
-function recordInterruption(state, ref, reason, co, at) {
+function recordInterruption(state, ref, reason, checkout, at) {
   if (!reason) fail('interrupt needs --reason');
-  const { s, p } = refreshed(state, ref, co, at);
+  const { s, p } = refreshed(state, ref, checkout, at);
   p.interrupted = { reason, at };
   p.interruptions += 1;
   return s;
 }
 
-// Why a recorded check must run again in this checkout, or null when its result still holds.
-function rerunReason(c, co, env, history) {
+// Why a recorded check must run again in this checkout, or null when its result still holds. The
+// environment the check would run in now must be given and match: unknown, it proves nothing.
+function rerunReason(c, checkout, env, history) {
   if (c.result === 'interrupted') return 'interrupted';
   if (c.result === 'fail') return 'it failed';
-  if (!co.head) return 'not a git checkout';
-  if (!history || (c.head && !co.isAncestor(c.head))) return 'its recorded commit is not in this checkout';
-  if (env && env !== c.environment) return `environment is ${env}`;
-  if (c.content == null || co.content(c.scope) !== c.content) return 'its files changed since';
+  if (!checkout.head) return 'not a git checkout';
+  if (!history || (c.head && !checkout.isAncestor(c.head))) return 'its recorded commit is not in this checkout';
+  if (!env) return 'environment not given (recover --env)';
+  if (env !== c.environment) return `environment is ${env}`;
+  if (c.content == null || checkout.content(c.scope) !== c.content) return 'its files changed since';
   return null;
 }
 
 // The recorded commit must be in this checkout's history for anything recorded to be trusted.
-const inHistory = (p, co) => Boolean(p.head && co.head && (p.head === co.head || co.isAncestor(p.head)));
+const inHistory = (p, checkout) => Boolean(p.head && checkout.head && (p.head === checkout.head || checkout.isAncestor(p.head)));
 
 // One line per recorded check: reuse it, or rerun it and why.
-const checkLines = (p, co, env) => p.checks.map((c) => {
+const checkLines = (p, checkout, env) => p.checks.map((c) => {
   const label = `${c.command} (${c.environment}) on ${c.scope.join(', ')}`;
-  const why = rerunReason(c, co, env, inHistory(p, co));
+  const why = rerunReason(c, checkout, env, inHistory(p, checkout));
   return why ? `   rerun: ${label}: ${why}` : `   reuse: ${label}: pass`;
 });
 
 // The recovery plan, one line each: completed steps kept with their checks, each open step's record checked against
 // the checkout, which checks hold and which rerun, and where to continue. Changes nothing.
-function recovery(state, co, env) {
+function recovery(state, checkout, env) {
   const lines = [`recover: ${state.task} · workflow ${state.status}`];
   const branch = state.handoff?.branch;
-  if (branch && co.branch !== branch) lines.push(`branch: on ${co.branch ?? 'no branch'}, the run works on ${branch}: check it out first`);
-  if (co.changes.length) lines.push(`uncommitted: ${co.changes.join(', ')}`);
+  if (branch && checkout.branch !== branch) lines.push(`branch: on ${checkout.branch ?? 'no branch'}, the run works on ${branch}: check it out first`);
+  if (checkout.changes.length) lines.push(`uncommitted: ${checkout.changes.join(', ')}`);
   let next = null;
   state.steps.forEach((step, i) => {
     const n = `${i + 1}. ${step.id}`;
-    if (['done', 'skipped', 'failed'].includes(step.status)) {
-      lines.push(`${n}: ${step.status}, kept`, ...(step.progress ? checkLines(step.progress, co, env) : []));
+    if (CLOSED.includes(step.status)) {
+      lines.push(`${n}: ${step.status}, kept`, ...(step.progress ? checkLines(step.progress, checkout, env) : []));
       return;
     }
     if (step.status === 'pending') {
@@ -140,28 +156,29 @@ function recovery(state, co, env) {
       next ??= `step ${i + 1} ${step.id}: from git and the step note`;
       return;
     }
-    const usedUp = p.interruptions > RETRIES;
+    const stuck = usedUp(p);
+    const approved = p.interruptions > RETRIES && !stuck ? ', retry approved by the user' : '';
     if (p.interrupted) {
-      lines.push(`${n}: interrupted (${p.interrupted.reason}), ${usedUp
+      lines.push(`${n}: interrupted (${p.interrupted.reason}), ${stuck
         ? `retries used up (${p.interruptions} interruptions): ask the user to retry, change model or stop`
-        : `retry ${p.interruptions} of ${RETRIES}`}`);
-    } else lines.push(`${n}: ${step.status}${p.interruptions ? `, after ${p.interruptions} interruption(s)` : ''}`);
+        : approved ? `retry approved by the user` : `retry ${p.interruptions} of ${RETRIES}`}`);
+    } else lines.push(`${n}: ${step.status}${p.interruptions ? `, after ${p.interruptions} interruption(s)` : ''}${approved}`);
     if (!p.next) lines.push(`${n}: incomplete progress record: no next work`);
     lines.push(`   done: ${p.done ?? 'not recorded'}`, `   next: ${p.next ?? 'not recorded'}`);
     if (p.limits) lines.push(`   limits: ${p.limits}`);
-    const history = inHistory(p, co);
-    if (!p.head || !co.head) lines.push('   checkout: not a git checkout: rerun every check');
-    else if (p.head === co.head) lines.push(`   checkout: at the recorded commit ${short(p.head)} on ${co.branch ?? 'a detached HEAD'}`);
-    else if (history) lines.push(`   checkout: ${co.commitsSince(p.head)} commit(s) after the recorded commit ${short(p.head)}`);
+    const history = inHistory(p, checkout);
+    if (!p.head || !checkout.head) lines.push('   checkout: not a git checkout: rerun every check');
+    else if (p.head === checkout.head) lines.push(`   checkout: at the recorded commit ${short(p.head)} on ${checkout.branch ?? 'a detached HEAD'}`);
+    else if (history) lines.push(`   checkout: ${checkout.commitsSince(p.head)} commit(s) after the recorded commit ${short(p.head)}`);
     else lines.push(`   checkout: recorded commit ${short(p.head)} is not in this checkout's history: stop and ask before continuing`);
-    const gone = p.changes.filter((f) => !co.changes.includes(f));
+    const gone = p.changes.filter((f) => !checkout.changes.includes(f));
     if (gone.length) lines.push(`   no longer uncommitted: ${gone.join(', ')} (committed or discarded since the record: check before continuing)`);
-    lines.push(...checkLines(p, co, env));
+    lines.push(...checkLines(p, checkout, env));
     lines.push(`   model: ${step.model ?? 'none recorded'} as recorded; another model or family only with the user's yes`);
-    next ??= usedUp || !history ? `ask the user before step ${i + 1} ${step.id}` : `step ${i + 1} ${step.id}: ${p.next ?? 'from git and the step note'}`;
+    next ??= stuck || !history ? `ask the user before step ${i + 1} ${step.id}` : `step ${i + 1} ${step.id}: ${p.next ?? 'from git and the step note'}`;
   });
   lines.push(`continue: ${next ?? 'nothing left'}`);
   return lines;
 }
 
-module.exports = { checkout, recordProgress, recordCheck, recordInterruption, recovery, RESULTS, RETRIES };
+module.exports = { checkout, recordProgress, recordCheck, recordInterruption, retryProblem, recovery, RESULTS, RETRIES };
