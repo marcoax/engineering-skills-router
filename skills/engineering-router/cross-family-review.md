@@ -26,9 +26,10 @@ Where the review runs through `review_other_family`, call that tool instead. Pas
 - the step skill's `SKILL.md` path (absolute), to read and follow;
 - the base commit and the command `git diff <base commit>...HEAD`;
 - the issue or spec;
-- the instruction to only report findings, never edit.
+- the instruction to only report findings, never edit;
+- the lines `scripts/state <target repo> expect <n> --requires findings` printed, and the instruction to end the answer with its step result as a json block, findings inline ([step-result.md](step-result.md)).
 
-Its answer opens with the backend, model and effort that ran: record those in the step's `model` and use its text as the step's findings.
+Its answer opens with the backend, model and effort that ran: record those in the step's `model`. Save the answer unchanged to a file and pass it to `scripts/state <target repo> deliver <n> <file>`; the delivered findings, not the prose, are the step's findings.
 
 When the tool or subagent fails (an error, a wrong `unverified` provider ID, a quota), say why and ask once for the rest of the run: retry, run the remaining reviews as same-family reviews, or stop. Never fall back without asking.
 

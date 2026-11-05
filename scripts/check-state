@@ -181,6 +181,22 @@ for (const [status, allowed] of Object.entries(STEP_STATUSES_FOR_WORKFLOW)) {
     errors.push(`status: ${status} requires a step with status ${allowed.join(' or ')}`);
 }
 
+// A step that owes a delivery (step-result.md) closes as done only on an accepted done verdict
+// carrying every artifact it declared.
+const ARTIFACT_KINDS = ['note', 'findings', 'pr-body'];
+steps.forEach((s, i) => {
+  const r = isObj(s) ? s.result : null;
+  if (!isObj(r)) return;
+  const where = `steps[${i}].result`;
+  if (Array.isArray(r.requires)) for (const k of r.requires) if (!ARTIFACT_KINDS.includes(k)) errors.push(`${where}.requires: unknown artifact ${json(k)}`);
+  if (s.status === 'done' && r.verdict !== 'done')
+    errors.push(`${where}: step ${s.id} done needs an accepted delivery (deliver a done verdict first), got verdict ${json(r.verdict)}`);
+  if (r.verdict === 'done' && Array.isArray(r.requires) && Array.isArray(r.artifacts)) {
+    const have = new Set(r.artifacts.filter(isObj).map((a) => a.kind));
+    for (const k of r.requires) if (!have.has(k)) errors.push(`${where}.artifacts: verdict done without the required ${k}`);
+  }
+});
+
 errors.forEach((e) => console.log(`error: ${e}`));
 console.log(errors.length === 0 ? `state OK (${file})` : `${errors.length} error(s)`);
 process.exit(errors.length === 0 ? 0 : 1);

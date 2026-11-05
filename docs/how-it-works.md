@@ -72,7 +72,7 @@ They fill any phase but `framework-review`, on equal terms with the vendor skill
 
 ## State and subagents
 
-While running, the router keeps `.router/state.json` and one note per step in `.router/steps/` in the target repo (git-excluded). Where the agent supports subagents, each skill step runs in a fresh subagent on the session's model; steps that talk with the user (requirements, specification, setup) stay in the main session. The review findings you choose to fix are fixed in a fresh subagent too. An unfinished workflow can be resumed later, also from a new session.
+While running, the router keeps `.router/state.json` and one note per step in `.router/steps/` in the target repo (git-excluded). Where the agent supports subagents, each skill step runs in a fresh subagent on the session's model; steps that talk with the user (requirements, specification, setup) stay in the main session. The review findings you choose to fix are fixed in a fresh subagent too. A delegated step moves on only when `scripts/state … deliver` accepts its step result: a JSON object for that step and attempt with a verdict (`done`, `fixes`, `blocked`) and the files the step declared (note, findings, PR body), so a phrase in an answer never counts as success ([step-result.md](../skills/engineering-router/step-result.md)). An unfinished workflow can be resumed later, also from a new session.
 
 ## Context at a step boundary
 

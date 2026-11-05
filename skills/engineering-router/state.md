@@ -196,6 +196,7 @@ Checked by `scripts/check-classification` and by `scripts/state … compose`. A 
 | `effort` (optional) | `"low"` \| `"medium"` \| `"high"` \| null | The step's effort, from the agent record or the one passed to the step ([models.md](models.md)); `null` when neither names one (the harness default). Never taken from the session. |
 | `status` | string | Step status, see below. |
 | `outcome` | string \| null | One-line result once the step ends. |
+| `result` (optional) | Result \| null | The delivery a delegated step owes ([step-result.md](step-result.md)): set by `scripts/state … expect`, accepted by `… deliver`. A step that has one closes as `done` only on an accepted `done` verdict. `null` or absent for a step that declares none. |
 
 Step `status`:
 
@@ -215,6 +216,16 @@ Step `status`:
 | `skill` | string | The selector's default for the step. |
 | `reason` | string | Its one-line reason. |
 | `alternatives` | `{skill, reason}[]` | The selector's alternatives for the step. |
+
+## Result
+
+| Field | Type | Meaning |
+|---|---|---|
+| `attempt` | string | The current execution's token; a result naming another one is stale. |
+| `requires` | string[] | The artifacts this step must deliver: `note`, `findings`, `pr-body`. |
+| `verdict` | null \| "done" \| "fixes" \| "blocked" | The accepted verdict; `null` while the delivery is expected. |
+| `artifacts` | {kind, path}[] | The accepted artifacts, each path relative to the target repo; empty while expected. |
+| `remaining` | string \| null | What blocks the step or is left, from a `blocked` (or any) delivery. |
 
 ## Handoff
 
