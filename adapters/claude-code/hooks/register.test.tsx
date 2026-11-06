@@ -479,3 +479,35 @@ test('checklist navigation reaches every point in a small pane, including after 
   await ui.press({ key: 'manual-checklist' })
   await ui.unmount()
 })
+
+test('an oversized checklist point can be read in both directions without changing the selected point', async ($, on) => {
+  const sent: string[] = []
+  on('prompt.submit', (_, e) => { sent.push(e.text); return { text: e.text } })
+  await startWith($, on, JSON.stringify({ version: 1, ...selecting, status: 'done', run: 'wrapped', manual_checklist: [
+    { id: 'long', action: 'Try '.repeat(100) + 'ACTION-END', expected: 'Expect '.repeat(100) + 'EXPECTED-END', checked: false },
+    { id: 'short', action: 'Next point', expected: 'Short result', checked: true },
+  ] }))
+  const ui = await $.ui.mount({ ...PANE, props: { ...PANE.props, bodyColumns: 38 }, viewport: { rows: 14, columns: 40 }, surface: 'terminal' } as any)
+  await ui.press({ key: 'manual-checklist' })
+  expect(await ui.find({ type: 'Text', text: /\[ \] 1\. Try/ })).toBeTruthy()
+  expect(await ui.find({ type: 'Text', text: /EXPECTED-END/ })).toBeFalsy()
+  let sawActionEnd = false
+  for (let i = 0; i < 100; i++) {
+    await ui.press({ key: 'manual-scroll-down' })
+    sawActionEnd ||= Boolean(await ui.find({ type: 'Text', text: /ACTION-END/ }))
+  }
+  expect(sawActionEnd).toBe(true)
+  expect(await ui.find({ type: 'Text', text: /EXPECTED-END/ })).toBeTruthy()
+  await ui.press({ key: 'manual-toggle' })
+  expect(sent.at(-1)).toBe('checklist wrapped long on')
+  for (let i = 0; i < 100; i++) await ui.press({ key: 'manual-scroll-up' })
+  expect(await ui.find({ type: 'Text', text: /\[ \] 1\. Try/ })).toBeTruthy()
+  for (let i = 0; i < 100; i++) await ui.press({ key: 'manual-scroll-down' })
+  await ui.press({ key: 'manual-next' })
+  expect(await ui.find({ type: 'Text', text: /\[x\] 2\. Next point/ })).toBeTruthy()
+  await ui.press({ key: 'manual-toggle' })
+  expect(sent.at(-1)).toBe('checklist wrapped short off')
+  await ui.press({ key: 'manual-prev' })
+  expect(await ui.find({ type: 'Text', text: /\[ \] 1\. Try/ })).toBeTruthy()
+  await ui.unmount()
+})

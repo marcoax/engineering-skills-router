@@ -28,7 +28,7 @@ The repo is its own marketplace (`.claude-plugin/marketplace.json`), named `engi
 
 `/router-panel` toggles the pane. In the pane the buttons carry hotkeys: `g` go · `j`/`k` next/previous step · `a`/`b` swap skill · `o` on/off an optional step · `f` full path (light workflow) · `e` edit · `p` pause · `r` resume · `x` stop (press twice).
 
-When implementation produces a manual checklist, the pane shows action and expected result. Press `c` (checklist), `j`/`k` to select a point, then `t` (tick/untick); `c` returns to steps. Ticks are optional personal reminders, not verification evidence. They persist with the run across reopening and resume. The owning router applies each intent; until it succeeds, the pane keeps the saved tick, so a refusal never appears as saved.
+When implementation produces a manual checklist, the pane shows action and expected result. Press `c` (checklist), `j`/`k` to select a point, `h`/`l` to scroll up/down within a long point, then `t` (tick/untick); `c` returns to steps. Ticks are optional personal reminders, not verification evidence. They persist with the run across reopening and resume. The owning router applies each intent; until it succeeds, the pane keeps the saved tick, so a refusal never appears as saved.
 
 ## Cross-family review
 

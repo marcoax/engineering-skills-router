@@ -7,12 +7,23 @@ import * as path from "node:path";
 import { spawnSync } from "node:child_process";
 
 // Only host primitives are stubbed: run the real extension, overlay and file polling.
-// Hooks are confined to this Node test process; no optional Pi runtime is installed here.
+// Hooks are confined to this Node test process; no optional Pi runtime is required.
+// shortcut: wrapping models plain text only, use the real TUI for ANSI/Unicode fixtures.
 const sources: Record<string, string> = {
  "@earendil-works/pi-tui": `export const Key = {ctrlAlt: k => 'ctrl+alt+' + k};
  export const matchesKey = (data, key) => data === key;
  export const truncateToWidth = (s, width) => s.slice(0, width);
- export const wrapTextWithAnsi = s => [s];`,
+ export const wrapTextWithAnsi = (s, width) => {
+  const lines = [];
+  while (s.length > width) {
+   const space = s.lastIndexOf(' ', width);
+   const end = space > 0 ? space : width;
+   lines.push(s.slice(0, end));
+   s = s.slice(end + (space > 0 ? 1 : 0));
+  }
+  lines.push(s);
+  return lines;
+ };`,
  "typebox": `export const Type = {Object: v => v, String: v => v};`,
 };
 const hooks = registerHooks({
@@ -123,4 +134,42 @@ test("Pi panel forwards personal tick/untick intents, displays only saved state 
  overlay.handleInput("c");
  overlay.handleInput("escape");
  assert.equal(focused, false);
+
+ await t.test("an oversized wrapped point scrolls in both directions without changing selection", async () => {
+  const wrapped = { ...state, status: "done", manual_checklist: [
+   { id: "long", action: "Try ".repeat(100) + "ACTION-END", expected: "Expect ".repeat(100) + "EXPECTED-END", checked: false },
+   { id: "short", action: "Next point", expected: "Short result", checked: true },
+  ] };
+  fs.writeFileSync(file, JSON.stringify(wrapped));
+  events.get("session_start")!({}, ctx);
+  await open();
+  overlay.handleInput("c");
+  const render = () => {
+   const lines = overlay.render(40);
+   assert.ok(lines.length <= 13, "the panel fits the short terminal");
+   assert.ok(lines.every((line: string) => line.length <= 40), "wrapped rows fit the narrow panel");
+   return lines.join("\n");
+  };
+  assert.match(render(), /\[ \] 1\. Try/);
+  assert.doesNotMatch(render(), /EXPECTED-END/);
+  let sawActionEnd = false;
+  for (let i = 0; i < 100; i++) {
+   overlay.handleInput("right");
+   sawActionEnd ||= /ACTION-END/.test(render());
+  }
+  assert.equal(sawActionEnd, true);
+  assert.match(render(), /EXPECTED-END/);
+  overlay.handleInput("space");
+  assert.equal(sent.at(-1).text, `checklist ${state.run} long on`);
+  for (let i = 0; i < 100; i++) { overlay.handleInput("left"); render(); }
+  assert.match(render(), /\[ \] 1\. Try/);
+  for (let i = 0; i < 100; i++) { overlay.handleInput("right"); render(); }
+  overlay.handleInput("down");
+  assert.match(render(), /\[x\] 2\. Next point/);
+  overlay.handleInput("space");
+  assert.equal(sent.at(-1).text, `checklist ${state.run} short off`);
+  overlay.handleInput("up");
+  assert.match(render(), /\[ \] 1\. Try/);
+  assert.equal(fs.readFileSync(file, "utf8"), JSON.stringify(wrapped), "scrolling and toggling never write state");
+ });
 });

@@ -41,6 +41,7 @@ class RouterOverlay implements Component {
 	handle: OverlayHandle | undefined;
 	private selected = 0;
 	private manualSelected: number | null = null;
+	private manualScroll = 0;
 	private top = 0;
 	private confirmStop = false;
 	private status: string | undefined;
@@ -65,6 +66,7 @@ class RouterOverlay implements Component {
 
 	// Called on every state file change; a new status hands the keyboard back to the editor.
 	update(state: State): void {
+		this.manualScroll = 0;
 		this.selected = Math.min(this.selected, Math.max(0, state.steps.length - 1));
 		if (!state.manual_checklist.length) this.manualSelected = null;
 		else if (this.manualSelected !== null) this.manualSelected = Math.min(this.manualSelected, state.manual_checklist.length - 1);
@@ -88,10 +90,14 @@ class RouterOverlay implements Component {
 			return;
 		} else if (matchesKey(data, "c") && state.run && state.manual_checklist.length) {
 			this.manualSelected = this.manualSelected === null ? 0 : null;
+			this.manualScroll = 0;
 			this.confirmStop = false;
 		} else if (this.manualSelected !== null) {
-			if (matchesKey(data, "up")) this.manualSelected = Math.max(0, this.manualSelected - 1);
-			else if (matchesKey(data, "down")) this.manualSelected = Math.min(state.manual_checklist.length - 1, this.manualSelected + 1);
+			if (matchesKey(data, "up") || matchesKey(data, "down")) {
+				this.manualSelected = Math.max(0, Math.min(state.manual_checklist.length - 1, this.manualSelected + (matchesKey(data, "up") ? -1 : 1)));
+				this.manualScroll = 0;
+			} else if (matchesKey(data, "left")) this.manualScroll = Math.max(0, this.manualScroll - 1);
+			else if (matchesKey(data, "right")) this.manualScroll++;
 			else if (matchesKey(data, "space")) {
 				const point = state.manual_checklist[this.manualSelected];
 				if (point) this.send({ kind: "checklist", id: point.id, checked: !point.checked });
@@ -149,7 +155,7 @@ class RouterOverlay implements Component {
 			body.push(...wrap(line));
 		}
 		const keys = this.handle?.isFocused()
-			? this.manualSelected !== null ? "↑↓ point · space tick/untick (personal) · c steps · esc editor" : keysFor(state)
+			? this.manualSelected !== null ? "↑↓ point · ←→ scroll · space tick/untick (personal) · c steps · esc editor" : keysFor(state)
 			: undefined;
 		const footer = keys
 			? this.confirmStop
@@ -164,7 +170,10 @@ class RouterOverlay implements Component {
 		const end = this.manualSelected !== null
 			? lineAt[(checklistStart[this.manualSelected + 1] ?? lines.length) - split] ?? body.length
 			: anchor + 1;
-		if (anchor < this.top || end > this.top + view) this.top = Math.max(0, anchor - 1);
+		if (this.manualSelected !== null) {
+			this.manualScroll = Math.min(this.manualScroll, Math.max(0, end - anchor - view));
+			this.top = anchor + this.manualScroll;
+		} else if (anchor < this.top || end > this.top + view) this.top = Math.max(0, anchor - 1);
 		this.top = Math.min(this.top, Math.max(0, body.length - view));
 
 		const border = (s: string) => th.fg("border", s);

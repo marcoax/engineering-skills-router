@@ -77,6 +77,8 @@ declare module 'claude-code' {
       selected: number
       // null: step view; otherwise the personal reminder selected in the pane.
       manualSelected: number | null
+      // Wrapped-line offset within the selected personal reminder.
+      manualScroll: number
       // True after the first `stop` press; the second press sends it.
       confirmStop: boolean
       // A finished workflow found at session start stays hidden until a new one begins.

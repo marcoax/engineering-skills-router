@@ -66,6 +66,7 @@ const describePlan = (plan: Plan) =>
 const state = atom({ plugin: 'engineering-router-panel', key: 'state' } as const, null)
 const selected = atom({ plugin: 'engineering-router-panel', key: 'selected' } as const, 0)
 const manualSelected = atom({ plugin: 'engineering-router-panel', key: 'manualSelected' } as const, null)
+const manualScroll = atom({ plugin: 'engineering-router-panel', key: 'manualScroll' } as const, 0)
 const confirmStop = atom({ plugin: 'engineering-router-panel', key: 'confirmStop' } as const, false)
 const isHidden = atom({ plugin: 'engineering-router-panel', key: 'isHidden' } as const, false)
 const foreign = atom({ plugin: 'engineering-router-panel', key: 'foreign' } as const, null)
@@ -162,6 +163,7 @@ export const register: Register = on => {
 
       const before = await read($, state)
       await update($, state, () => fresh)
+      await update($, manualScroll, () => 0)
       if (fresh && before && fresh.status !== before.status) {
         await update($, confirmStop, () => false)
       }
@@ -462,8 +464,11 @@ export const register: Register = on => {
     const { lines, checklistStart } = detailLines(s, isChoosing ? picked : -1, undefined, e.props.bodyColumns || Infinity, manual ?? -1)
     const room = Math.max(4, (e.viewport?.rows ?? 30) - 6)
     const anchor = Math.max(0, lines.findIndex(l => l.startsWith('▸')))
+    const manualStart = manual !== null ? checklistStart[manual] ?? 0 : 0
+    const manualEnd = manual !== null ? checklistStart[manual + 1] ?? lines.length : 0
+    const scroll = Math.min((await read($, manualScroll)) || 0, Math.max(0, manualEnd - manualStart - room))
     const top = manual !== null
-      ? checklistStart[manual] ?? 0
+      ? manualStart + scroll
       : isChoosing ? Math.max(0, anchor - 2) : Math.max(0, lines.length - room)
     const shown = lines.slice(top, top + room)
 
@@ -474,6 +479,10 @@ export const register: Register = on => {
     const press = (fn: () => void) => () => {
       void update($, confirmStop, () => false)
       fn()
+    }
+    const selectManual = async (index: number | null) => {
+      await update($, manualScroll, () => 0)
+      await update($, manualSelected, () => index)
     }
     const step = isChoosing ? picked : currentStep(s)
     const hasAlt = (i: number) => Boolean(s.steps[step]?.alternatives[i])
@@ -486,15 +495,21 @@ export const register: Register = on => {
         <Text dimColor>{KEYS[s.status] ? `${symbol(s.status)} ${workflowLabel(s)}` : workflowLabel(s)}</Text>
         <Box>
           {s.run && Boolean(s.manual_checklist?.length) && (
-            <Button key="manual-checklist" hotkey="c" onPress={press(() => void update($, manualSelected, () => manual === null ? 0 : null))}>
+            <Button key="manual-checklist" hotkey="c" onPress={press(() => void selectManual(manual === null ? 0 : null))}>
               {manual === null ? 'checklist' : 'steps'}
             </Button>
           )}
           {manual !== null && (
-            <Button key="manual-prev" hotkey="k" onPress={press(() => void update($, manualSelected, () => Math.max(0, manual - 1)))}>↑ point</Button>
+            <Button key="manual-prev" hotkey="k" onPress={press(() => void selectManual(Math.max(0, manual - 1)))}>↑ point</Button>
           )}
           {manual !== null && (
-            <Button key="manual-next" hotkey="j" onPress={press(() => void update($, manualSelected, () => Math.min(s.manual_checklist.length - 1, manual + 1)))}>↓ point</Button>
+            <Button key="manual-next" hotkey="j" onPress={press(() => void selectManual(Math.min(s.manual_checklist.length - 1, manual + 1)))}>↓ point</Button>
+          )}
+          {manual !== null && (
+            <Button key="manual-scroll-up" hotkey="h" onPress={press(() => void update($, manualScroll, () => Math.max(0, scroll - 1)))}>↑ line</Button>
+          )}
+          {manual !== null && (
+            <Button key="manual-scroll-down" hotkey="l" onPress={press(() => void update($, manualScroll, () => Math.min(Math.max(0, manualEnd - manualStart - room), scroll + 1)))}>↓ line</Button>
           )}
           {manual !== null && s.manual_checklist[manual] && (
             <Button key="manual-toggle" hotkey="t" onPress={press(() => {
