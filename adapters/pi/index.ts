@@ -40,6 +40,7 @@ const paintWith = (theme: Theme): Paint => (style, text) => theme.fg(style, text
 class RouterOverlay implements Component {
 	handle: OverlayHandle | undefined;
 	private selected = 0;
+	private manualSelected: number | null = null;
 	private top = 0;
 	private confirmStop = false;
 	private status: string | undefined;
@@ -59,12 +60,14 @@ class RouterOverlay implements Component {
 	}
 
 	private choosing(state: State): boolean {
-		return state.status === "selecting" && this.handle?.isFocused() === true;
+		return this.manualSelected === null && state.status === "selecting" && this.handle?.isFocused() === true;
 	}
 
 	// Called on every state file change; a new status hands the keyboard back to the editor.
 	update(state: State): void {
 		this.selected = Math.min(this.selected, Math.max(0, state.steps.length - 1));
+		if (!state.manual_checklist.length) this.manualSelected = null;
+		else if (this.manualSelected !== null) this.manualSelected = Math.min(this.manualSelected, state.manual_checklist.length - 1);
 		if (state.status !== this.status) {
 			this.confirmStop = false;
 			if (this.handle?.isFocused()) this.handle.unfocus();
@@ -73,7 +76,7 @@ class RouterOverlay implements Component {
 		this.tui.requestRender();
 	}
 
-	// Only reached while the overlay has focus, i.e. in a status with KEYS.
+	// Only reached while the overlay has focus; checklist mode also works on a closed run.
 	handleInput(data: string): void {
 		const state = this.getState();
 		if (matchesKey(data, SHORTCUT)) return this.close();
@@ -81,7 +84,19 @@ class RouterOverlay implements Component {
 		if (matchesKey(data, "escape")) {
 			this.confirmStop = false;
 			this.handle?.unfocus();
-		} else if (!state || !KEYS[status]) {
+		} else if (!state || !keysFor(state)) {
+			return;
+		} else if (matchesKey(data, "c") && state.run && state.manual_checklist.length) {
+			this.manualSelected = this.manualSelected === null ? 0 : null;
+			this.confirmStop = false;
+		} else if (this.manualSelected !== null) {
+			if (matchesKey(data, "up")) this.manualSelected = Math.max(0, this.manualSelected - 1);
+			else if (matchesKey(data, "down")) this.manualSelected = Math.min(state.manual_checklist.length - 1, this.manualSelected + 1);
+			else if (matchesKey(data, "space")) {
+				const point = state.manual_checklist[this.manualSelected];
+				if (point) this.send({ kind: "checklist", id: point.id, checked: !point.checked });
+			}
+		} else if (!KEYS[status]) {
 			return;
 		} else if (this.confirmStop) {
 			this.confirmStop = false;
@@ -121,11 +136,11 @@ class RouterOverlay implements Component {
 		const paint = paintWith(th);
 		const inner = Math.max(10, width - 2);
 		const choosing = this.choosing(state);
-		const { lines, stepStart } = detailLines(state, choosing ? this.selected : -1, paint);
+		const { lines, stepStart, checklistStart } = detailLines(state, choosing ? this.selected : -1, paint, Infinity, this.manualSelected ?? -1);
 
-		// Header and handoff stay pinned; only the steps scroll.
+		// Checklist navigation pins only the header, leaving room for action and expected result.
 		const wrap = (line: string) => wrapTextWithAnsi(line, inner - 1).map((l) => ` ${l}`);
-		const split = stepStart[0] ?? lines.length;
+		const split = this.manualSelected !== null ? 2 : stepStart[0] ?? lines.length;
 		const pinned = lines.slice(0, split).flatMap(wrap);
 		const body: string[] = [];
 		const lineAt: number[] = [];
@@ -133,7 +148,9 @@ class RouterOverlay implements Component {
 			lineAt.push(body.length);
 			body.push(...wrap(line));
 		}
-		const keys = this.handle?.isFocused() ? keysFor(state) : undefined;
+		const keys = this.handle?.isFocused()
+			? this.manualSelected !== null ? "↑↓ point · space tick/untick (personal) · c steps · esc editor" : keysFor(state)
+			: undefined;
 		const footer = keys
 			? this.confirmStop
 				? paint("warning", " press x again to stop · any other key cancels")
@@ -142,8 +159,12 @@ class RouterOverlay implements Component {
 
 		// Keep the selected (or active) step in view: 2 border rows and the footer take 3.
 		const view = Math.max(3, this.tui.terminal.rows - 3 - pinned.length);
-		const anchor = lineAt[(stepStart[choosing ? this.selected : currentStep(state)] ?? split) - split] ?? 0;
-		if (anchor < this.top || anchor >= this.top + view) this.top = Math.max(0, anchor - 1);
+		const target = this.manualSelected !== null ? checklistStart[this.manualSelected] : stepStart[choosing ? this.selected : currentStep(state)];
+		const anchor = lineAt[(target ?? split) - split] ?? 0;
+		const end = this.manualSelected !== null
+			? lineAt[(checklistStart[this.manualSelected + 1] ?? lines.length) - split] ?? body.length
+			: anchor + 1;
+		if (anchor < this.top || end > this.top + view) this.top = Math.max(0, anchor - 1);
 		this.top = Math.min(this.top, Math.max(0, body.length - view));
 
 		const border = (s: string) => th.fg("border", s);
@@ -285,7 +306,7 @@ export default function (pi: ExtensionAPI) {
 				onHandle: (handle) => {
 					if (!overlay) return;
 					overlay.handle = handle;
-					if (state && KEYS[state.status]) handle.focus();
+					if (state && keysFor(state)) handle.focus();
 				},
 			},
 		);

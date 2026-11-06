@@ -174,6 +174,8 @@ Give paths, never copies: the brief does not recopy this file, a skill's procedu
 
 Ending a reply while a subagent or check still runs is neither a pause nor done: say it is still running. Only `pause` pauses the workflow ([resume.md](resume.md)).
 
+**Panel checklist intents**, at any workflow status (including paused or done): forward `checklist <run> <id> on|off` unchanged with `scripts/state <target repo> reply "<intent>"` ([state.md, Manual point](state.md#manual-point)). Acknowledge only a successful write; report a refusal and leave the saved display alone. This is a personal reminder, not a request to resume, verify, fix or publish anything; retain the workflow's status and ownership.
+
 **Nested subagents.** A vendor skill may start subagents of its own (e.g. `code-review` runs its two axes in parallel). Tell every step subagent: where it cannot start subagents itself, run those parts in sequence in its own context, each with fresh eyes: it reuses the inputs already read (the diff, the issue, the spec), never an earlier part's conclusions, and says so in the step note (`code-review: axes run in sequence, no nested subagents`). The step stays in its subagent even then: in the main session, an independent step (a review, verification) would have seen the implementation.
 
 For each step:

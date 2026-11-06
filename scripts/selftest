@@ -25,7 +25,7 @@ for (const dir of ['vendors', 'node_modules']) fs.symlinkSync(path.join(ROOT, di
 
 const prefsFile = path.join(tmp, 'config/preferences.yaml');
 const fail = (msg) => { console.log(`FAIL: ${msg}`); process.exit(1); };
-const scriptTests = spawnSync(process.execPath, ['--test', path.join(ROOT, 'scripts/lib/git-env.test.js'), path.join(ROOT, 'scripts/lib/install-claude.test.js'), path.join(ROOT, 'scripts/lib/progress.test.js')], { encoding: 'utf8' });
+const scriptTests = spawnSync(process.execPath, ['--test', path.join(ROOT, 'scripts/lib/git-env.test.js'), path.join(ROOT, 'scripts/lib/install-claude.test.js'), path.join(ROOT, 'scripts/lib/progress.test.js'), path.join(ROOT, 'scripts/lib/manual-checklist.test.js')], { encoding: 'utf8' });
 if (scriptTests.status !== 0) fail(`Script tests\n${scriptTests.stdout}${scriptTests.stderr}`);
 const run = (script, ...args) => {
   const r = spawnSync(path.join(tmp, 'scripts', script), args, { encoding: 'utf8' });

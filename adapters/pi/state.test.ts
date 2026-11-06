@@ -256,3 +256,29 @@ test("detailLines without a width leaves lines whole", () => {
 	s.steps[0].summary = "x ".repeat(80).trim();
 	assert.ok(detailLines(s).lines.includes(`     ${s.steps[0].summary}`));
 });
+
+test("manual reminders render saved personal ticks and forward run-bound intent without optimistic changes", () => {
+ const raw = { ...example(), manual_checklist: [
+  { id: "export", action: "Open export as a reader", expected: "Only permitted rows", checked: false },
+  { id: "layout", action: "Resize the page", expected: "Controls remain visible", checked: true },
+ ] };
+ const s = parsed(raw);
+ assert.equal(s.run, raw.run);
+ assert.deepEqual(s.manual_checklist, raw.manual_checklist);
+ assert.deepEqual(parsed(example()).manual_checklist, []);
+ const lines = detailLines(s).lines.join("\n");
+ assert.match(lines, /Manual checklist · personal reminders, not verification/);
+ assert.match(lines, /\[ \] 1\. Open export as a reader/);
+ assert.match(lines, /expected: Only permitted rows/);
+ assert.match(lines, /\[x\] 2\. Resize the page/);
+ assert.equal(replyFor(s, { kind: "checklist", id: "export", checked: true }), `checklist ${raw.run} export on`);
+ assert.equal(replyFor(s, { kind: "checklist", id: "layout", checked: false }), `checklist ${raw.run} layout off`);
+ assert.equal(s.manual_checklist[0].checked, false);
+ assert.equal(replyFor(s, { kind: "checklist", id: "gone", checked: true }), undefined);
+ assert.equal(replyFor(parsed({ ...raw, run: undefined }), { kind: "checklist", id: "export", checked: true }), undefined);
+ assert.match(keysFor({ ...s, status: "done" }) ?? "", /c checklist/);
+ // Malformed optional reminders do not break legacy workflow display or offer wrong actions.
+ for (const manual_checklist of [null, {}, [{ id: "bad", action: "Action" }]]) {
+  assert.deepEqual(parsed({ ...raw, manual_checklist }).manual_checklist, []);
+ }
+});

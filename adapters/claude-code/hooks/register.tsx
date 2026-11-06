@@ -65,6 +65,7 @@ const describePlan = (plan: Plan) =>
 
 const state = atom({ plugin: 'engineering-router-panel', key: 'state' } as const, null)
 const selected = atom({ plugin: 'engineering-router-panel', key: 'selected' } as const, 0)
+const manualSelected = atom({ plugin: 'engineering-router-panel', key: 'manualSelected' } as const, null)
 const confirmStop = atom({ plugin: 'engineering-router-panel', key: 'confirmStop' } as const, false)
 const isHidden = atom({ plugin: 'engineering-router-panel', key: 'isHidden' } as const, false)
 const foreign = atom({ plugin: 'engineering-router-panel', key: 'foreign' } as const, null)
@@ -166,6 +167,7 @@ export const register: Register = on => {
       }
       if (fresh) {
         await update($, selected, i => Math.min(i, Math.max(0, fresh.steps.length - 1)))
+        await update($, manualSelected, i => i === null || !fresh.manual_checklist.length ? null : Math.min(i, fresh.manual_checklist.length - 1))
       }
     }
 
@@ -455,13 +457,14 @@ export const register: Register = on => {
 
     const picked = await read($, selected)
     const isStopArmed = await read($, confirmStop)
-    const isChoosing = s.status === 'selecting'
-    const { lines } = detailLines(s, isChoosing ? picked : -1, undefined, e.props.bodyColumns || Infinity)
+    const manual = s.run && s.manual_checklist?.length ? (await read($, manualSelected)) ?? null : null
+    const isChoosing = s.status === 'selecting' && manual === null
+    const { lines, checklistStart } = detailLines(s, isChoosing ? picked : -1, undefined, e.props.bodyColumns || Infinity, manual ?? -1)
     const room = Math.max(4, (e.viewport?.rows ?? 30) - 6)
     const anchor = Math.max(0, lines.findIndex(l => l.startsWith('▸')))
-    const top = isChoosing
-      ? Math.max(0, anchor - 2)
-      : Math.max(0, lines.length - room)
+    const top = manual !== null
+      ? checklistStart[manual] ?? 0
+      : isChoosing ? Math.max(0, anchor - 2) : Math.max(0, lines.length - room)
     const shown = lines.slice(top, top + room)
 
     const send = (choice: Choice) => {
@@ -482,6 +485,23 @@ export const register: Register = on => {
         ))}
         <Text dimColor>{KEYS[s.status] ? `${symbol(s.status)} ${workflowLabel(s)}` : workflowLabel(s)}</Text>
         <Box>
+          {s.run && Boolean(s.manual_checklist?.length) && (
+            <Button key="manual-checklist" hotkey="c" onPress={press(() => void update($, manualSelected, () => manual === null ? 0 : null))}>
+              {manual === null ? 'checklist' : 'steps'}
+            </Button>
+          )}
+          {manual !== null && (
+            <Button key="manual-prev" hotkey="k" onPress={press(() => void update($, manualSelected, () => Math.max(0, manual - 1)))}>↑ point</Button>
+          )}
+          {manual !== null && (
+            <Button key="manual-next" hotkey="j" onPress={press(() => void update($, manualSelected, () => Math.min(s.manual_checklist.length - 1, manual + 1)))}>↓ point</Button>
+          )}
+          {manual !== null && s.manual_checklist[manual] && (
+            <Button key="manual-toggle" hotkey="t" onPress={press(() => {
+              const point = s.manual_checklist[manual]
+              send({ kind: 'checklist', id: point.id, checked: !point.checked })
+            })}>{s.manual_checklist[manual].checked ? 'untick' : 'tick'} (personal)</Button>
+          )}
           {isChoosing && (
             <Button key="go" hotkey="g" variant="primary" onPress={press(() => send({ kind: 'go' }))}>
               go

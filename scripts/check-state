@@ -139,6 +139,20 @@ if (isObj(state.owner) && isStr(state.owner.since) && !isUtc(state.owner.since))
 const specFile = isObj(state.handoff) ? state.handoff.spec : null;
 if (isStr(specFile) && (path.isAbsolute(specFile) || path.normalize(specFile).split(path.sep)[0] === '..'))
   errors.push(`handoff.spec: must be a path relative to the target repo, got ${json(specFile)}`);
+if (Array.isArray(state.manual_checklist)) {
+  if (state.manual_checklist.length > 15) errors.push('manual_checklist: at most 15 points');
+  const ids = new Set();
+  const content = new Set();
+  state.manual_checklist.forEach((p, i) => {
+    if (!isObj(p)) return;
+    for (const k of ['id', 'action', 'expected']) if (isStr(p[k]) && !p[k].trim()) errors.push(`manual_checklist[${i}].${k}: must be nonempty`);
+    if (ids.has(p.id)) errors.push(`manual_checklist[${i}].id: duplicate id`);
+    ids.add(p.id);
+    const key = json([p.action, p.expected]);
+    if (content.has(key)) errors.push(`manual_checklist[${i}]: duplicate content`);
+    content.add(key);
+  });
+}
 const steps = Array.isArray(state.steps) ? state.steps : [];
 const hasId = (s) => isObj(s) && isStr(s.id);
 // First step with each id; a missing covered_by target is only reported when every step has

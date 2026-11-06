@@ -10,6 +10,10 @@
 //        those still open without a model its model and effort; done or failed closes those
 //        still open with its model and effort. A running or waiting step sets the workflow's
 //        status.
+//   checklist set <file>     JSON [{action, expected}], personal reminders, at most 15.
+//   checklist check <run> <id> on|off
+//                            owner-only personal tick; stale run/item intents are refused.
+//                            reply "checklist <run> <id> on|off" forwards the same intent.
 //   workflow <status>        selecting | running | waiting | done | paused | stopped
 //   handoff issue <n> <url> | spec <path> | ticket <n> <url> | branch <name> | base <sha|HEAD> | pr <n> <url>
 //   reply <reply>            a selection reply: go, 2b, 5on, 5off, primary <family>, stop, pause, resume.
@@ -107,7 +111,7 @@ const invokesFor = (target) => {
 
 const [target, command, ...rest] = process.argv.slice(2);
 if (!target || !command) {
-  console.error('usage: scripts/state <target-repo> compose|step|workflow|handoff|reply|primary|show|model|expect|deliver|artifact|progress|check|interrupt|recover|claim|takeover|owner|discard|reconcile ...');
+  console.error('usage: scripts/state <target-repo> compose|step|checklist|workflow|handoff|reply|primary|show|model|expect|deliver|artifact|progress|check|interrupt|recover|claim|takeover|owner|discard|reconcile ...');
   process.exit(1);
 }
 const file = path.join(target, '.router', 'state.json');
@@ -187,6 +191,7 @@ function compose() {
     if (previous?.status === 'selecting' && previous.owner?.session) requireOwner(previous);
     next.run = `${now().replace(/[-:]/g, '')}-${files.token(2)}`;
     next.owner = { session, since: now(), previous: null };
+    delete next.manual_checklist;
   }
   if (!isNew) {
     if (![...ops.UNFINISHED, 'selecting'].includes(previous?.status)) die(`no workflow to recompose in ${target}: start one with compose --new`);
@@ -201,6 +206,8 @@ function compose() {
     }
     next.primary = previous.primary ?? next.primary;
     next.handoff = previous.handoff;
+    if (previous.manual_checklist !== undefined) next.manual_checklist = previous.manual_checklist;
+    else delete next.manual_checklist;
   }
   const Catalog = require('./lib/catalog');
   Catalog.requireConfig();
@@ -379,6 +386,13 @@ try {
     const unaccepted = args[1] === 'done' && results.closeProblem(state, args[0], { inSession: flags['main-session'] === true });
     if (unaccepted) die(unaccepted);
     next = ops.setStep(state, args[0], args[1], flags);
+  }
+  else if (command === 'checklist' || (command === 'reply' && args.join(' ').startsWith('checklist '))) {
+    const checklist = require('./lib/manual-checklist');
+    const intent = command === 'reply' ? ['check', ...args.join(' ').trim().split(/\s+/).slice(1)] : args;
+    if (intent[0] === 'set' && intent.length === 2) next = checklist.set(state, JSON.parse(fs.readFileSync(intent[1], 'utf8')));
+    else if (intent[0] === 'check' && intent.length === 4) next = checklist.check(state, ...intent.slice(1));
+    else throw new Error('usage: checklist set <file> | checklist check <run> <id> on|off');
   }
   else if (command === 'workflow') next = ops.setWorkflow(state, args[0]);
   else if (command === 'primary' || (command === 'reply' && args[0]?.toLowerCase() === 'primary')) {

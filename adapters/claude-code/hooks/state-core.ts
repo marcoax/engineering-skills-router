@@ -28,7 +28,10 @@ export type Step = {
 export type Interruption = { reason: string; at: string };
 // The session that may change the workflow (state.md Owner); null when none is recorded.
 export type Owner = { session: string; since: string };
+export type ManualPoint = { id: string; action: string; expected: string; checked: boolean };
 export type State = {
+	run: string | null;
+	manual_checklist: ManualPoint[];
 	task: string;
 	type: string;
 	risk: string;
@@ -106,6 +109,12 @@ export function parseState(text: string): Parsed {
 	return {
 		kind: "ok",
 		state: {
+			run: strOrNull(raw.run),
+			manual_checklist: Array.isArray(raw.manual_checklist)
+				? raw.manual_checklist.filter((p): p is ManualPoint => isObj(p) &&
+					["id", "action", "expected"].every((k) => typeof p[k] === "string" && p[k].trim()) && typeof p.checked === "boolean")
+					.map((p) => ({ id: p.id, action: p.action, expected: p.expected, checked: p.checked }))
+				: [],
 			task: str(raw.task),
 			type: str(raw.type),
 			risk: str(raw.risk),
@@ -203,7 +212,8 @@ const LETTERS = "abcdefghijklmnopqrstuvwxyz";
 export type Choice =
 	| { kind: "go" | "edit" | "stop" | "pause" | "resume" | "full" }
 	| { kind: "swap"; step: number; alt: number }
-	| { kind: "switch"; step: number };
+	| { kind: "switch"; step: number }
+	| { kind: "checklist"; id: string; checked: boolean };
 
 // Panel keys per workflow status; a status without keys leaves the keyboard to the editor.
 export const KEYS: Record<string, string> = {
@@ -215,15 +225,20 @@ export const KEYS: Record<string, string> = {
 
 // The keys line for this state: KEYS, plus switching a light workflow to the full path.
 export function keysFor(state: State): string | undefined {
-	const keys = KEYS[state.status];
-	if (!keys || state.status !== "selecting" || state.path !== "light") return keys;
-	return keys.replace(" · e edit", " · f full path · e edit");
+	let keys = KEYS[state.status];
+	if (keys && state.status === "selecting" && state.path === "light") keys = keys.replace(" · e edit", " · f full path · e edit");
+	if (state.run && state.manual_checklist?.length) return ["c checklist", keys ?? "esc editor"].join(" · ");
+	return keys;
 }
 
 // Chat reply in the router's selection syntax. `step` and `alt` are 0-based indexes
 // into `steps` and that step's `alternatives`; undefined when the swap does not exist
 // or the switched step is not optional. An optional step that is off is `skipped`.
 export function replyFor(state: State, choice: Choice): string | undefined {
+	if (choice.kind === "checklist") {
+		if (!state.run || !state.manual_checklist?.some((p) => p.id === choice.id)) return undefined;
+		return `checklist ${state.run} ${choice.id} ${choice.checked ? "on" : "off"}`;
+	}
 	if (choice.kind === "switch") {
 		const step = state.steps[choice.step];
 		if (!step?.optional) return undefined;
@@ -235,7 +250,7 @@ export function replyFor(state: State, choice: Choice): string | undefined {
 	return `${choice.step + 1}${LETTERS[choice.alt]}`;
 }
 
-export type Detail = { lines: string[]; stepStart: number[] };
+export type Detail = { lines: string[]; stepStart: number[]; checklistStart: number[] };
 
 // Breaks `line` into pieces no wider than `width`, at spaces where it can; the pieces after
 // the first start with `indent`. A word longer than the room is cut.
@@ -269,7 +284,7 @@ const STEP_INDENT = "     ";
 // Overlay body: header, handoff (short, so it stays in view), every step with its details. `stepStart[i]` is the
 // line where step i begins, for scrolling. `marked` gets a selection marker. With a `width`, lines wrap to it and
 // keep their indentation; wrap only with the plain paint, as color codes would count as width.
-export function detailLines(state: State, marked = -1, paint: Paint = plain, width = Infinity): Detail {
+export function detailLines(state: State, marked = -1, paint: Paint = plain, width = Infinity, markedChecklist = -1): Detail {
 	const lines: string[] = [];
 	const add = (text: string, style?: Style, indent = "  ") => {
 		for (const piece of wrapLine(text, width, indent)) lines.push(style ? paint(style, piece) : piece);
@@ -318,7 +333,17 @@ export function detailLines(state: State, marked = -1, paint: Paint = plain, wid
 			else lines.push(paint("muted", `${STEP_INDENT}optional`) + (s.outcome ? ` · → ${s.outcome}` : ""));
 		} else if (s.outcome) detail(`→ ${s.outcome}`);
 	});
-	return { lines, stepStart };
+	const checklistStart: number[] = [];
+	if (state.manual_checklist?.length) {
+		lines.push("");
+		add("Manual checklist · personal reminders, not verification", "accent");
+		state.manual_checklist.forEach((p, i) => {
+			checklistStart.push(lines.length);
+			add(`${i === markedChecklist ? "▸" : " "} [${p.checked ? "x" : " "}] ${i + 1}. ${p.action}`, undefined, STEP_INDENT);
+			detail(`expected: ${p.expected}`);
+		});
+	}
+	return { lines, stepStart, checklistStart };
 }
 
 // Step the overlay follows when nobody is choosing: the active one, else the first not finished.

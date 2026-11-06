@@ -25,6 +25,8 @@ What the change really does, as points to check: built from `git diff <base comm
 - Tag each point `[agent]` when a command, a test, an HTTP request or a scripted browser can show the result, `[you]` when it needs a person's eye or judgment (layout, responsive, themes, copy, real data).
 - The checklist is a help, never a gate: the user may skip it.
 
+After implementation, save these points for the panels with `scripts/state <target repo> checklist set <file>`: the file is JSON `[{"action":"where → action (login/seed if needed)","expected":"expected result"}]` ([state.md, Manual point](state.md#manual-point)). Refresh it after behavior-changing fixes; unchanged content keeps the user's ticks, changed/new content starts unchecked. Keep `[agent]`/`[you]` attribution and verification evidence in the existing textual checklist and notes, not in the panel state. Panel ticks are only personal reminders: never derive verification results, findings, fixes, PR ticks or run-record counts from them. Missing, empty or unchecked panel points do not delay reviews, verification or the PR.
+
 ## Implementation outcome
 
 When the implementation step ends, show a concise outcome with the files changed since the base commit and the manual checklist, then start the review. Leave `[you]` points for the PR; they do not block its creation or count as passed. If the user explicitly requested a check here, wait on the next unfinished step, fix and commit what they report, then resume under [autonomy.md](autonomy.md). The check is a pause, not an extra step.

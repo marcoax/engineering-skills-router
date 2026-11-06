@@ -24,6 +24,8 @@ declare module 'claude-code' {
   }
 
   interface RouterSnapshot {
+    run: string | null
+    manual_checklist: { id: string; action: string; expected: string; checked: boolean }[]
     task: string
     type: string
     risk: string
@@ -73,6 +75,8 @@ declare module 'claude-code' {
       state: RouterSnapshot | null
       // 0-based step the pane marks while the workflow is `selecting`.
       selected: number
+      // null: step view; otherwise the personal reminder selected in the pane.
+      manualSelected: number | null
       // True after the first `stop` press; the second press sends it.
       confirmStop: boolean
       // A finished workflow found at session start stays hidden until a new one begins.
