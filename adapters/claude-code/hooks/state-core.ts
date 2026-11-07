@@ -28,10 +28,10 @@ export type Step = {
 export type Interruption = { reason: string; at: string };
 // The session that may change the workflow (state.md Owner); null when none is recorded.
 export type Owner = { session: string; since: string };
-export type ManualPoint = { id: string; action: string; expected: string; checked: boolean };
+export type ChecklistPoint = { id: string; action: string; expected: string; checked: boolean };
 export type State = {
 	run: string | null;
-	manual_checklist: ManualPoint[];
+	manual_checklist: ChecklistPoint[];
 	task: string;
 	type: string;
 	risk: string;
@@ -111,7 +111,7 @@ export function parseState(text: string): Parsed {
 		state: {
 			run: strOrNull(raw.run),
 			manual_checklist: Array.isArray(raw.manual_checklist)
-				? raw.manual_checklist.filter((p): p is ManualPoint => isObj(p) &&
+				? raw.manual_checklist.filter((p): p is ChecklistPoint => isObj(p) &&
 					["id", "action", "expected"].every((k) => typeof p[k] === "string" && p[k].trim()) && typeof p.checked === "boolean")
 					.map((p) => ({ id: p.id, action: p.action, expected: p.expected, checked: p.checked }))
 				: [],
@@ -222,9 +222,13 @@ export const KEYS: Record<string, string> = {
 	waiting: "p pause · esc editor",
 	paused: "r resume · x stop · esc editor",
 };
+// Panel keys while a checklist point is selected, in any status.
+export const CHECKLIST_KEYS = "↑↓ point · ←→ scroll · space tick/untick (personal) · c steps · esc editor";
 
-// The keys line for this state: KEYS, plus switching a light workflow to the full path.
-export function keysFor(state: State): string | undefined {
+// The keys line for this state: KEYS, plus switching a light workflow to the full path;
+// CHECKLIST_KEYS while `inChecklist`.
+export function keysFor(state: State, inChecklist = false): string | undefined {
+	if (inChecklist) return CHECKLIST_KEYS;
 	let keys = KEYS[state.status];
 	if (keys && state.status === "selecting" && state.path === "light") keys = keys.replace(" · e edit", " · f full path · e edit");
 	if (state.run && state.manual_checklist?.length) return ["c checklist", keys ?? "esc editor"].join(" · ");

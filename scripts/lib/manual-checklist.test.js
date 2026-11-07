@@ -28,13 +28,13 @@ const fixture = (t) => {
 const point = { action: 'Open export as a reader', expected: 'CSV contains only permitted rows' };
 const passed = (r) => assert.equal(r.status, 0, r.stdout + r.stderr);
 
-test('personal checklist persists tick and untick through the owner state command without changing evidence', (t) => {
+test('manual checklist persists tick and untick through the owner state command without changing evidence', (t) => {
   const f = fixture(t);
   const before = f.read();
   passed(f.set([point]));
   const item = f.read().manual_checklist[0];
   assert.deepEqual({ ...item, id: undefined }, { ...point, id: undefined, checked: false });
-  passed(f.state('reply', `checklist ${before.run} ${item.id} on`));
+  passed(f.state('reply', `CHECKLIST ${before.run} ${item.id} on`));
   assert.equal(f.read().manual_checklist[0].checked, true);
   passed(f.run('check-state', f.target));
   passed(f.state('workflow', 'paused'));
@@ -61,6 +61,7 @@ test('replacement preserves only identical content, and stale or non-owner inten
   for (const args of [
     ['checklist', 'check', run, first.id, 'on'],
     ['reply', `checklist other-run ${kept.id} off`],
+    ['reply', `checklist ${run.toLowerCase()} ${kept.id} off`],
     ['reply', `checklist ${run} ${kept.id} maybe`],
     ['checklist', 'check', run, kept.id, 'off', '--session', 'intruder'],
   ]) {
@@ -79,7 +80,7 @@ test('replacement preserves only identical content, and stale or non-owner inten
   assert.equal(fs.readFileSync(f.file, 'utf8'), before);
 });
 
-test('check-state rejects malformed personal reminders while legacy and empty lists remain usable', (t) => {
+test('check-state rejects a malformed manual checklist while missing and empty ones remain usable', (t) => {
   const f = fixture(t);
   const original = f.read();
   passed(f.run('check-state', f.target));
@@ -103,23 +104,26 @@ test('check-state rejects malformed personal reminders while legacy and empty li
   passed(f.run('check-state', f.target));
 });
 
-test('recomposition and resume retain reminders, new runs archive rather than inherit, and records ignore ticks', (t) => {
+test('recomposition and resume retain the manual checklist, new runs archive rather than inherit, and records ignore ticks', (t) => {
   const f = fixture(t);
   const recordBefore = f.run('record', f.target, '--checklist', '2,1,1,0');
   passed(recordBefore);
+  const composed = path.join(f.target, 'composed.json');
+  fs.writeFileSync(composed, JSON.stringify(f.read()));
+  passed(f.state('compose', composed));
+  assert.deepEqual(f.read().manual_checklist, []);
   passed(f.set([point]));
   const old = f.read();
   passed(f.state('reply', `checklist ${old.run} ${old.manual_checklist[0].id} on`));
   const recordAfter = f.run('record', f.target, '--checklist', '2,1,1,0');
   passed(recordAfter);
   assert.equal(recordAfter.stdout, recordBefore.stdout);
-  const composed = path.join(f.target, 'composed.json');
   fs.writeFileSync(composed, JSON.stringify(f.read()));
   passed(f.state('compose', composed));
   assert.equal(f.read().manual_checklist[0].checked, true);
   passed(f.state('workflow', 'done'));
   passed(f.state('compose', '--new', composed));
-  assert.equal(f.read().manual_checklist, undefined);
+  assert.deepEqual(f.read().manual_checklist, []);
   assert.notEqual(f.read().run, old.run);
   const archived = JSON.parse(fs.readFileSync(path.join(f.target, '.router/runs', old.run, 'state.json'), 'utf8'));
   assert.equal(archived.manual_checklist[0].checked, true);

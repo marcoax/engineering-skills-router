@@ -65,8 +65,8 @@ const describePlan = (plan: Plan) =>
 
 const state = atom({ plugin: 'engineering-router-panel', key: 'state' } as const, null)
 const selected = atom({ plugin: 'engineering-router-panel', key: 'selected' } as const, 0)
-const manualSelected = atom({ plugin: 'engineering-router-panel', key: 'manualSelected' } as const, null)
-const manualScroll = atom({ plugin: 'engineering-router-panel', key: 'manualScroll' } as const, 0)
+const checklistSelected = atom({ plugin: 'engineering-router-panel', key: 'checklistSelected' } as const, null)
+const checklistScroll = atom({ plugin: 'engineering-router-panel', key: 'checklistScroll' } as const, 0)
 const confirmStop = atom({ plugin: 'engineering-router-panel', key: 'confirmStop' } as const, false)
 const isHidden = atom({ plugin: 'engineering-router-panel', key: 'isHidden' } as const, false)
 const foreign = atom({ plugin: 'engineering-router-panel', key: 'foreign' } as const, null)
@@ -163,13 +163,13 @@ export const register: Register = on => {
 
       const before = await read($, state)
       await update($, state, () => fresh)
-      await update($, manualScroll, () => 0)
+      await update($, checklistScroll, () => 0)
       if (fresh && before && fresh.status !== before.status) {
         await update($, confirmStop, () => false)
       }
       if (fresh) {
         await update($, selected, i => Math.min(i, Math.max(0, fresh.steps.length - 1)))
-        await update($, manualSelected, i => i === null || !fresh.manual_checklist.length ? null : Math.min(i, fresh.manual_checklist.length - 1))
+        await update($, checklistSelected, i => i === null || !fresh.manual_checklist.length ? null : Math.min(i, fresh.manual_checklist.length - 1))
       }
     }
 
@@ -459,16 +459,17 @@ export const register: Register = on => {
 
     const picked = await read($, selected)
     const isStopArmed = await read($, confirmStop)
-    const manual = s.run && s.manual_checklist?.length ? (await read($, manualSelected)) ?? null : null
-    const isChoosing = s.status === 'selecting' && manual === null
-    const { lines, checklistStart } = detailLines(s, isChoosing ? picked : -1, undefined, e.props.bodyColumns || Infinity, manual ?? -1)
+    const selectedPoint = s.run && s.manual_checklist?.length ? (await read($, checklistSelected)) ?? null : null
+    const isChoosing = s.status === 'selecting' && selectedPoint === null
+    const { lines, checklistStart } = detailLines(s, isChoosing ? picked : -1, undefined, e.props.bodyColumns || Infinity, selectedPoint ?? -1)
     const room = Math.max(4, (e.viewport?.rows ?? 30) - 6)
     const anchor = Math.max(0, lines.findIndex(l => l.startsWith('▸')))
-    const manualStart = manual !== null ? checklistStart[manual] ?? 0 : 0
-    const manualEnd = manual !== null ? checklistStart[manual + 1] ?? lines.length : 0
-    const scroll = Math.min((await read($, manualScroll)) || 0, Math.max(0, manualEnd - manualStart - room))
-    const top = manual !== null
-      ? manualStart + scroll
+    const pointStart = selectedPoint !== null ? checklistStart[selectedPoint] ?? 0 : 0
+    const pointEnd = selectedPoint !== null ? checklistStart[selectedPoint + 1] ?? lines.length : 0
+    const maxScroll = Math.max(0, pointEnd - pointStart - room)
+    const scroll = Math.min((await read($, checklistScroll)) || 0, maxScroll)
+    const top = selectedPoint !== null
+      ? pointStart + scroll
       : isChoosing ? Math.max(0, anchor - 2) : Math.max(0, lines.length - room)
     const shown = lines.slice(top, top + room)
 
@@ -480,9 +481,9 @@ export const register: Register = on => {
       void update($, confirmStop, () => false)
       fn()
     }
-    const selectManual = async (index: number | null) => {
-      await update($, manualScroll, () => 0)
-      await update($, manualSelected, () => index)
+    const selectPoint = async (index: number | null) => {
+      await update($, checklistScroll, () => 0)
+      await update($, checklistSelected, () => index)
     }
     const step = isChoosing ? picked : currentStep(s)
     const hasAlt = (i: number) => Boolean(s.steps[step]?.alternatives[i])
@@ -495,27 +496,27 @@ export const register: Register = on => {
         <Text dimColor>{KEYS[s.status] ? `${symbol(s.status)} ${workflowLabel(s)}` : workflowLabel(s)}</Text>
         <Box>
           {s.run && Boolean(s.manual_checklist?.length) && (
-            <Button key="manual-checklist" hotkey="c" onPress={press(() => void selectManual(manual === null ? 0 : null))}>
-              {manual === null ? 'checklist' : 'steps'}
+            <Button key="checklist" hotkey="c" onPress={press(() => void selectPoint(selectedPoint === null ? 0 : null))}>
+              {selectedPoint === null ? 'checklist' : 'steps'}
             </Button>
           )}
-          {manual !== null && (
-            <Button key="manual-prev" hotkey="k" onPress={press(() => void selectManual(Math.max(0, manual - 1)))}>↑ point</Button>
+          {selectedPoint !== null && (
+            <Button key="prev-point" hotkey="k" onPress={press(() => void selectPoint(Math.max(0, selectedPoint - 1)))}>↑ point</Button>
           )}
-          {manual !== null && (
-            <Button key="manual-next" hotkey="j" onPress={press(() => void selectManual(Math.min(s.manual_checklist.length - 1, manual + 1)))}>↓ point</Button>
+          {selectedPoint !== null && (
+            <Button key="next-point" hotkey="j" onPress={press(() => void selectPoint(Math.min(s.manual_checklist.length - 1, selectedPoint + 1)))}>↓ point</Button>
           )}
-          {manual !== null && (
-            <Button key="manual-scroll-up" hotkey="h" onPress={press(() => void update($, manualScroll, () => Math.max(0, scroll - 1)))}>↑ line</Button>
+          {selectedPoint !== null && (
+            <Button key="point-scroll-up" hotkey="h" onPress={press(() => void update($, checklistScroll, () => Math.max(0, scroll - 1)))}>↑ line</Button>
           )}
-          {manual !== null && (
-            <Button key="manual-scroll-down" hotkey="l" onPress={press(() => void update($, manualScroll, () => Math.min(Math.max(0, manualEnd - manualStart - room), scroll + 1)))}>↓ line</Button>
+          {selectedPoint !== null && (
+            <Button key="point-scroll-down" hotkey="l" onPress={press(() => void update($, checklistScroll, () => Math.min(maxScroll, scroll + 1)))}>↓ line</Button>
           )}
-          {manual !== null && s.manual_checklist[manual] && (
-            <Button key="manual-toggle" hotkey="t" onPress={press(() => {
-              const point = s.manual_checklist[manual]
+          {selectedPoint !== null && s.manual_checklist[selectedPoint] && (
+            <Button key="point-toggle" hotkey="t" onPress={press(() => {
+              const point = s.manual_checklist[selectedPoint]
               send({ kind: 'checklist', id: point.id, checked: !point.checked })
-            })}>{s.manual_checklist[manual].checked ? 'untick' : 'tick'} (personal)</Button>
+            })}>{s.manual_checklist[selectedPoint].checked ? 'untick' : 'tick'} (personal)</Button>
           )}
           {isChoosing && (
             <Button key="go" hotkey="g" variant="primary" onPress={press(() => send({ kind: 'go' }))}>

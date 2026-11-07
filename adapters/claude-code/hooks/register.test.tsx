@@ -420,7 +420,7 @@ test('a workflow another session owns shows only the frozen line at session star
   await ui.unmount()
 })
 
-test('personal checklist buttons send tick/untick intent and keep persisted display until router accepts', async ($, on) => {
+test('manual checklist buttons send tick/untick intent and keep persisted display until router accepts', async ($, on) => {
   const saved = {
     ...selecting, status: 'done', run: 'run-one',
     manual_checklist: [{ id: 'export', action: 'Open export as a reader', expected: 'Only permitted rows', checked: false }],
@@ -434,24 +434,24 @@ test('personal checklist buttons send tick/untick intent and keep persisted disp
   // Drive the checklist view using the normal pane button.
   const ui = await $.ui.mount({ ...PANE, surface: 'terminal' })
   expect(await ui.find({ type: 'Text', text: /expected: Only permitted rows/ })).toBeTruthy()
-  await ui.press({ key: 'manual-checklist' })
-  await ui.press({ key: 'manual-toggle' })
+  await ui.press({ key: 'checklist' })
+  await ui.press({ key: 'point-toggle' })
   expect(sent).toEqual(['checklist run-one export on'])
   expect(await ui.find({ type: 'Text', text: /\[ \] 1\. Open export as a reader/ })).toBeTruthy()
   await write(JSON.stringify({ version: 1, ...saved, manual_checklist: [{ ...saved.manual_checklist[0], checked: true }] }))
   expect(await ui.find({ type: 'Text', text: /\[x\] 1\. Open export as a reader/ })).toBeTruthy()
-  await ui.press({ key: 'manual-toggle' })
+  await ui.press({ key: 'point-toggle' })
   expect(sent.at(-1)).toBe('checklist run-one export off')
   await ui.unmount()
 })
 
-test('a saved personal tick can be cleared without touching state from the pane', async ($, on) => {
+test('a saved checklist point tick can be cleared without touching state from the pane', async ($, on) => {
   const sent: string[] = []
   on('prompt.submit', (_, e) => { sent.push(e.text); return { text: e.text } })
   await startWith($, on, JSON.stringify({ version: 1, ...selecting, status: 'paused', run: 'run-two', manual_checklist: [{ id: 'layout', action: 'Resize page', expected: 'Controls visible', checked: true }] }))
   const ui = await $.ui.mount({ ...PANE, surface: 'terminal' })
-  await ui.press({ key: 'manual-checklist' })
-  await ui.press({ key: 'manual-toggle' })
+  await ui.press({ key: 'checklist' })
+  await ui.press({ key: 'point-toggle' })
   expect(sent).toEqual(['checklist run-two layout off'])
   expect(await ui.find({ type: 'Text', text: /\[x\] 1\. Resize page/ })).toBeTruthy()
   await ui.unmount()
@@ -463,20 +463,20 @@ test('checklist navigation reaches every point in a small pane, including after 
   const saved = { version: 1, ...selecting, run: 'many', status: 'done', manual_checklist: Array.from({ length: 15 }, (_, i) => ({ id: `point-${i}`, action: `Try action ${i}`, expected: `Result ${i}`, checked: false })) }
   const write = await startWith($, on, JSON.stringify(saved))
   const ui = await $.ui.mount({ ...PANE, viewport: { rows: 14, columns: 60 }, surface: 'terminal' } as any)
-  await ui.press({ key: 'manual-checklist' })
+  await ui.press({ key: 'checklist' })
   for (let i = 0; i < 15; i++) {
     expect(await ui.find({ type: 'Text', text: new RegExp(`expected: Result ${i}$`) })).toBeTruthy()
-    await ui.press({ key: 'manual-toggle' })
+    await ui.press({ key: 'point-toggle' })
     expect(sent.at(-1)).toBe(`checklist many point-${i} on`)
-    await ui.press({ key: 'manual-next' })
+    await ui.press({ key: 'next-point' })
   }
-  await ui.press({ key: 'manual-prev' })
-  await ui.press({ key: 'manual-toggle' })
+  await ui.press({ key: 'prev-point' })
+  await ui.press({ key: 'point-toggle' })
   expect(sent.at(-1)).toBe('checklist many point-13 on')
   await write(JSON.stringify({ ...saved, run: 'next-run', manual_checklist: [{ id: 'new', action: 'New action', expected: 'New result', checked: false }] }))
-  await ui.press({ key: 'manual-toggle' })
+  await ui.press({ key: 'point-toggle' })
   expect(sent.at(-1)).toBe('checklist next-run new on')
-  await ui.press({ key: 'manual-checklist' })
+  await ui.press({ key: 'checklist' })
   await ui.unmount()
 })
 
@@ -488,26 +488,26 @@ test('an oversized checklist point can be read in both directions without changi
     { id: 'short', action: 'Next point', expected: 'Short result', checked: true },
   ] }))
   const ui = await $.ui.mount({ ...PANE, props: { ...PANE.props, bodyColumns: 38 }, viewport: { rows: 14, columns: 40 }, surface: 'terminal' } as any)
-  await ui.press({ key: 'manual-checklist' })
+  await ui.press({ key: 'checklist' })
   expect(await ui.find({ type: 'Text', text: /\[ \] 1\. Try/ })).toBeTruthy()
   expect(await ui.find({ type: 'Text', text: /EXPECTED-END/ })).toBeFalsy()
   let sawActionEnd = false
   for (let i = 0; i < 100; i++) {
-    await ui.press({ key: 'manual-scroll-down' })
+    await ui.press({ key: 'point-scroll-down' })
     sawActionEnd ||= Boolean(await ui.find({ type: 'Text', text: /ACTION-END/ }))
   }
   expect(sawActionEnd).toBe(true)
   expect(await ui.find({ type: 'Text', text: /EXPECTED-END/ })).toBeTruthy()
-  await ui.press({ key: 'manual-toggle' })
+  await ui.press({ key: 'point-toggle' })
   expect(sent.at(-1)).toBe('checklist wrapped long on')
-  for (let i = 0; i < 100; i++) await ui.press({ key: 'manual-scroll-up' })
+  for (let i = 0; i < 100; i++) await ui.press({ key: 'point-scroll-up' })
   expect(await ui.find({ type: 'Text', text: /\[ \] 1\. Try/ })).toBeTruthy()
-  for (let i = 0; i < 100; i++) await ui.press({ key: 'manual-scroll-down' })
-  await ui.press({ key: 'manual-next' })
+  for (let i = 0; i < 100; i++) await ui.press({ key: 'point-scroll-down' })
+  await ui.press({ key: 'next-point' })
   expect(await ui.find({ type: 'Text', text: /\[x\] 2\. Next point/ })).toBeTruthy()
-  await ui.press({ key: 'manual-toggle' })
+  await ui.press({ key: 'point-toggle' })
   expect(sent.at(-1)).toBe('checklist wrapped short off')
-  await ui.press({ key: 'manual-prev' })
+  await ui.press({ key: 'prev-point' })
   expect(await ui.find({ type: 'Text', text: /\[ \] 1\. Try/ })).toBeTruthy()
   await ui.unmount()
 })
