@@ -146,7 +146,8 @@ The router writes this file in the **target repo** during a workflow so that ada
     "pr": null
   },
   "run": "20261017T093000Z-4f2a",
-  "owner": { "session": "session-example", "since": "2026-10-17T09:30:00Z", "previous": null }
+  "owner": { "session": "session-example", "since": "2026-10-17T09:30:00Z", "previous": null },
+  "manual_checklist": []
 }
 ```
 

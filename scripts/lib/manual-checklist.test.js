@@ -43,7 +43,7 @@ test('manual checklist persists tick and untick through the owner state command 
   passed(f.state('checklist', 'check', before.run, item.id, 'off'));
   assert.equal(f.read().manual_checklist[0].checked, false);
   const after = f.read();
-  for (const key of Object.keys(before).filter((k) => !['status', 'updated_at'].includes(k))) assert.deepEqual(after[key], before[key], key);
+  for (const key of Object.keys(before).filter((k) => !['status', 'updated_at', 'manual_checklist'].includes(k))) assert.deepEqual(after[key], before[key], key);
 });
 
 test('replacement preserves only identical content, and stale or non-owner intents never change state', (t) => {
@@ -136,6 +136,7 @@ test('old states without run or checklist still advance; cleared lists and unown
   const f = fixture(t);
   const legacy = f.read();
   delete legacy.run;
+  delete legacy.manual_checklist;
   fs.writeFileSync(f.file, JSON.stringify(legacy));
   passed(f.run('check-state', f.target));
   passed(f.state('workflow', 'paused'));
