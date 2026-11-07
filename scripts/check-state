@@ -4,6 +4,7 @@
 const fs = require('node:fs');
 const path = require('node:path');
 const { CLOSED } = require('./lib/state-ops');
+const { manualChecklistErrors } = require('./lib/manual-checklist');
 
 const ROOT = path.resolve(__dirname, '..');
 const STATE_FILE = '.router/state.json';
@@ -139,6 +140,7 @@ if (isObj(state.owner) && isStr(state.owner.since) && !isUtc(state.owner.since))
 const specFile = isObj(state.handoff) ? state.handoff.spec : null;
 if (isStr(specFile) && (path.isAbsolute(specFile) || path.normalize(specFile).split(path.sep)[0] === '..'))
   errors.push(`handoff.spec: must be a path relative to the target repo, got ${json(specFile)}`);
+if (Array.isArray(state.manual_checklist)) errors.push(...manualChecklistErrors(state.manual_checklist));
 const steps = Array.isArray(state.steps) ? state.steps : [];
 const hasId = (s) => isObj(s) && isStr(s.id);
 // First step with each id; a missing covered_by target is only reported when every step has

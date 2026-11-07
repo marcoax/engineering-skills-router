@@ -63,3 +63,7 @@ _Avoid_: agent line, attribution
 **Cross-family review**:
 A code review run by a model of the family opposite to the one that wrote the code under review (the implementation or its fixes). A review on the same family, where the other is unreachable, is a **same-family review** and is never called cross-family.
 _Avoid_: review 1, review 2, second review, covered review
+
+**Manual checklist**:
+The run's points to try after implementation, each a **checklist point**: an action and its expected result. A tick on a checklist point is the user's personal reminder, not verification evidence.
+_Avoid_: personal checklist, manual point, verification checklist

@@ -28,6 +28,8 @@ The repo is its own marketplace (`.claude-plugin/marketplace.json`), named `engi
 
 `/router-panel` toggles the pane. In the pane the buttons carry hotkeys: `g` go · `j`/`k` next/previous step · `a`/`b` swap skill · `o` on/off an optional step · `f` full path (light workflow) · `e` edit · `p` pause · `r` resume · `x` stop (press twice).
 
+When implementation produces a manual checklist, the pane shows action and expected result. Press `c` (checklist), `j`/`k` to select a point, `h`/`l` to scroll up/down within a long point, then `t` (tick/untick); `c` returns to steps. Ticks are optional personal reminders, not verification evidence. They persist with the run across reopening and resume. The owning router applies each intent; until it succeeds, the pane keeps the saved tick, so a refusal never appears as saved.
+
 ## Cross-family review
 
 Claude Code's subagents run only Claude models, so the code is always written by Claude and every review step runs on the other family. The mod adds a tool, `review_other_family`, that runs each review through a local CLI, read-only, and streams it into a **Cross-family review** pane: `openai-codex/<model>` runs `codex exec --sandbox read-only`, `opencode/<provider>/<model>` runs `opencode run --agent plan`. The router calls it when it is listed (SKILL.md §5). Called without a prompt, it only checks that the backend's CLI is installed and reports `available: …` or why not; that is the availability check, and it starts no review. Whether your account can use the chosen model shows only when a review runs. When the tool fails, the router asks once whether to run the remaining reviews as same-family reviews, on Claude and marked so, or stop.

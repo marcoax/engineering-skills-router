@@ -25,6 +25,8 @@ What the change really does, as points to check: built from `git diff <base comm
 - Tag each point `[agent]` when a command, a test, an HTTP request or a scripted browser can show the result, `[you]` when it needs a person's eye or judgment (layout, responsive, themes, copy, real data).
 - The checklist is a help, never a gate: the user may skip it.
 
+After implementation, and again after behavior-changing fixes, save the points for the panels with `scripts/state <target repo> checklist set <file>` ([state.md, Checklist point](state.md#checklist-point)); the `[agent]`/`[you]` tags and verification evidence stay in this checklist and the step notes. Report a refused `checklist set` to the user and continue the workflow.
+
 ## Implementation outcome
 
 When the implementation step ends, show a concise outcome with the files changed since the base commit and the manual checklist, then start the review. Leave `[you]` points for the PR; they do not block its creation or count as passed. If the user explicitly requested a check here, wait on the next unfinished step, fix and commit what they report, then resume under [autonomy.md](autonomy.md). The check is a pause, not an extra step.
