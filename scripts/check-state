@@ -198,7 +198,7 @@ steps.forEach((s, i) => {
 
 // A step that owes a delivery (step-result.md) closes as done only on an accepted done verdict
 // carrying every artifact it declared.
-const ARTIFACT_KINDS = require('./lib/step-result').KINDS;
+const { KINDS: ARTIFACT_KINDS, actionableOf } = require('./lib/step-result');
 steps.forEach((s, i) => {
   const r = isObj(s) ? s.result : null;
   if (!isObj(r)) return;
@@ -207,7 +207,7 @@ steps.forEach((s, i) => {
   // A review closes on its decisions once its fixes verdict left none actionable (step-result.md,
   // Fixes and decisions); the findings' shape is the Finding table's.
   const findings = Array.isArray(r.findings) ? r.findings : null;
-  const open = findings ? findings.filter((f) => !isObj(f) || f.decision === undefined).length : 0;
+  const open = actionableOf(findings).length;
   const decided = r.verdict === 'fixes' && findings?.length > 0;
   if (s.status === 'done' && r.verdict !== 'done' && !decided)
     errors.push(`${where}: step ${s.id} done needs an accepted delivery (deliver a done verdict first), got verdict ${json(r.verdict)}`);
