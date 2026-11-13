@@ -310,7 +310,9 @@ function deliverFixes(state, i, read, handoffValue) {
   if (problems.length) return { problems, kept };
   const fixed = d.verdict !== 'blocked' ? d.findings ?? [] : [];
   const merged = reported.map((f) => (fixed.some((x) => x.title === f.title) ? { ...f, decision: 'fixed' } : f));
-  return accept(state, i, d, merged, d.recheck, (d.findings ?? []).map((f) => `fixed: ${f.title}`));
+  // Only a review clears pending re-checks; later fixes can add another change to check.
+  const recheck = [...new Set([state.steps[i].result.recheck, d.recheck].filter(Boolean))].join('; ') || null;
+  return accept(state, i, d, merged, recheck, (d.findings ?? []).map((f) => `fixed: ${f.title}`));
 }
 
 const plural = (n) => `${n} actionable finding${n === 1 ? '' : 's'}`;

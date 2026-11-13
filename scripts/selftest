@@ -1724,6 +1724,30 @@ expectStateOk('unknown fields', variant((s) => { s.extra = 1; s.steps[0].extra =
   if (JSON.parse(fs.readFileSync(path.join(repo, '.router/steps/5-review.findings.json'), 'utf8'))[0]?.decision !== 'fixed')
     fail('the re-check should keep the decided findings in the review\'s findings file');
 
+  // Later partial fixes must not erase a re-check owed by an earlier fixes run.
+  for (const laterRecheck of [undefined, null, 'the export memory usage']) {
+    reviewing();
+    ok('a review with two findings', reviewPass({ verdict: 'fixes', summary: '2 findings', findings: [finding, slow] }));
+    for (const [index, fixedFinding] of [finding, slow].entries()) {
+      const at = attemptOf(ok('start partial fixes', st('start', 'review', '--fixes')));
+      fs.appendFileSync(path.join(repo, '.router/steps/5-fixes.md'), `Fixed ${fixedFinding.title}.\n`);
+      put('.router/steps/5-fixes.findings.json', [{ title: fixedFinding.title, decision: 'fixed' }]);
+      put('.router/steps/5-fixes.result.json', { step: 'review', attempt: at, verdict: 'done', summary: `Fixed ${fixedFinding.title}`,
+        artifacts: { note: '.router/steps/5-fixes.md', findings: '.router/steps/5-fixes.findings.json' },
+        recheck: index === 0 ? 'the date filter query' : laterRecheck });
+      const partial = ok('partial fixes delivered', st('deliver', 'review'));
+      const pending = ['the date filter query', ...(index === 1 && laterRecheck ? [laterRecheck] : [])].join('; ');
+      if (step('review').status !== 'running' || step('review').result.recheck !== pending
+        || (index === 1 && !partial.out.includes(`recheck: ${pending}: start 5 --purpose "re-check ${pending}"`)))
+        fail(`partial fixes must preserve every pending re-check\n${partial.out}\n${JSON.stringify(step('review'))}`);
+    }
+    const pending = step('review').result.recheck;
+    ok('re-check every pending change', reviewPass({ purpose: `re-check ${pending}`, verdict: 'done', summary: 'Re-checked both fixes', findings: [] }));
+    if (step('review').status !== 'done' || step('review').result.recheck !== null
+      || step('review').result.findings.some((f) => f.decision !== 'fixed'))
+      fail(`the review should clear pending re-checks and retain fixed decisions: ${JSON.stringify(step('review'))}`);
+  }
+
   // A re-check that reports a fixed finding as still broken makes it actionable again: the step
   // names it, and the fixes run can take it again.
   reviewing();
