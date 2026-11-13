@@ -284,7 +284,8 @@ test('a read-only review start prints where its answer goes, and delivering it p
     { title: 'Name the CSV helper', severity: 'low', found_by: ['review'] },
   ]));
   const fixes = f.ok('deliver', '5', file);
-  assert.match(fixes, /^fixes: 2 actionable findings: start 5 --fixes for those to fix; decide 5 <n> declined\|deferred --reason "\.\.\." for the others$/m);
+  assert.match(fixes, /^fixes: 2 actionable findings$/m);
+  assert.match(fixes, /^next: start 5 --fixes for those to fix; decide 5 <n> declined\|deferred --reason "\.\.\." for the others$/m);
   assert.match(fixes, /^finding: high: Export drops the header row\nfinding: low: Name the CSV helper$/m);
 
   const second = f.ok('start', '5', '--requires', 'findings', '--purpose', 'Re-check after the fixes');

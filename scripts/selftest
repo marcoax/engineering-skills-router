@@ -1724,6 +1724,24 @@ expectStateOk('unknown fields', variant((s) => { s.extra = 1; s.steps[0].extra =
   if (JSON.parse(fs.readFileSync(path.join(repo, '.router/steps/5-review.findings.json'), 'utf8'))[0]?.decision !== 'fixed')
     fail('the re-check should keep the decided findings in the review\'s findings file');
 
+  // A re-check that reports a fixed finding as still broken makes it actionable again: the step
+  // names it, and the fixes run can take it again.
+  reviewing();
+  ok('a review with one finding', reviewPass({ verdict: 'fixes', summary: '1 finding', findings: [finding] }));
+  const againAttempt = attemptOf(ok('start the fixes', st('start', 'review', '--fixes')));
+  fs.appendFileSync(path.join(repo, '.router/steps/5-fixes.md'), 'Fixed the date filter.\n');
+  put('.router/steps/5-fixes.findings.json', [{ title: finding.title, decision: 'fixed' }]);
+  put('.router/steps/5-fixes.result.json', { step: 'review', attempt: againAttempt, verdict: 'done', summary: 'Fixed the date filter',
+    artifacts: { note: '.router/steps/5-fixes.md', findings: '.router/steps/5-fixes.findings.json' }, remaining: null, recheck: 'the date filter query' });
+  ok('fixes that change behavior', st('deliver', 'review'));
+  const stillBroken = ok('a re-check reporting the fixed finding again',
+    reviewPass({ purpose: 're-check the date filter query', verdict: 'fixes', summary: 'Still broken', findings: [finding] }));
+  if (step('review').status !== 'running' || step('review').result.findings[0]?.decision !== undefined
+    || !stillBroken.out.includes(`actionable: 1. ${finding.title} (high)`))
+    fail(`a finding the re-check reports again should be actionable again, and named\n${stillBroken.out}\n${JSON.stringify(step('review').result.findings)}`);
+  ok('the fixes run takes the re-reported finding', st('start', 'review', '--fixes'));
+
+
   // Blocked: the blocker is named and the step waits for it; the step closes no other way.
   fs.writeFileSync(stateFile, JSON.stringify(variant(() => {})));
   const blocked = { step: 'implementation', attempt: attemptOf(ok('expect the implementation', st('start', 'implementation'))),

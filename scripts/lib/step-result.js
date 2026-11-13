@@ -253,26 +253,29 @@ function deliver(state, ref, read, handoffValue = setHandoff) {
   let merged = expected.findings ?? null;
   if (verdict !== 'blocked' && findings) {
     if (fixesRun) merged = merged.map((f) => (findings.some((d) => d.title === f.title) ? { ...f, decision: 'fixed' } : f));
-    else if (merged) merged = [...merged, ...findings.filter((f) => !merged.some((m) => m.title === f.title))];
+    // A finding reported again is actionable again, whatever was decided on it before.
+    else if (merged) merged = [...merged.map((m) => findings.find((f) => f.title === m.title) ?? m),
+      ...findings.filter((f) => !merged.some((m) => m.title === f.title))];
     else if (verdict === 'fixes') merged = findings;
   }
   if (merged) {
     accepted.findings = merged;
     if (verdict !== 'blocked') accepted.recheck = fixesRun ? recheck : null;
     // The review's findings file holds them with their decisions, as scripts/record reads them.
-    const own = paths(state, i).findings;
-    writes.splice(0, writes.length, ...writes.filter((w) => w.path !== own), { path: own, content: `${JSON.stringify(merged, null, 2)}\n` });
+    const decided = paths(state, i).findings;
+    writes.splice(0, writes.length, ...writes.filter((w) => w.path !== decided), { path: decided, content: `${JSON.stringify(merged, null, 2)}\n` });
   }
   s.steps[i].result = accepted;
   const lines = [];
   if (verdict === 'blocked') {
     s = setStep(s, i + 1, 'waiting');
     lines.push(`blocked: ${remaining}`);
-  } else if (verdict === 'fixes') lines.push(`fixes: ${plural(actionable)}: start ${i + 1} --fixes for those to fix; decide ${i + 1} <n> declined|deferred --reason "..." for the others`);
+  } else if (verdict === 'fixes') lines.push(`fixes: ${plural(actionableOf(merged).length)}`);
   // The delivered findings in a line each, so the next decision needs no other read.
   if (findings && !fixesRun) lines.push(...(findings.length ? findings.map((f) => `finding: ${f.severity}: ${f.title}`) : ['findings: none']));
   if (fixesRun && findings) lines.push(...findings.map((f) => `fixed: ${f.title}`));
-  if (verdict === 'done') s = settle(s, i, lines);
+  // Every finding still actionable on the step, then what comes next, or the close.
+  if (verdict !== 'blocked') s = settle(s, i, lines);
   return { state: s, verdict, actionable, lines, writes };
 }
 
