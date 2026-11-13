@@ -224,8 +224,9 @@ function toggle(state, i, on) {
 function applyReply(state, reply) {
   const r = String(reply).trim().toLowerCase();
   if (r === 'edit' || r === 'full') {
-    const keep = state.primary ? `, and keep "primary": "${state.primary}"` : '';
-    const e = new Error(`${r} reopens SKILL.md §3-§4: select and recompose the workflow, then write it with \`scripts/state <target repo> compose <file>\`, which keeps the handoff and completed steps${keep}`);
+    const keep = state.primary ? ` and the run's primary (${state.primary})` : '';
+    const path = r === 'full' ? ' with `path` full' : ' when it changes';
+    const e = new Error(`${r} reopens SKILL.md §3: select again, then recompose with \`scripts/state <target repo> compose --selection <file>\` (and \`--classification <file>\`${path}), which keeps the handoff, completed steps${keep}`);
     e.code = 'RECOMPOSE';
     throw e;
   }
@@ -259,4 +260,4 @@ function reply(state, text, invokes) {
   return { state: covered.state, notes: [...restored.notes, ...covered.notes] };
 }
 
-module.exports = { clone, fail, recalculateCoverage, reply, ran, setStep, setWorkflow, checkPrimaryOpen, setPrimary, setHandoff, applyReply, stepIndex, STEP_STATUSES, WORKFLOW_STATUSES, OPEN, CLOSED, UNFINISHED, REVIEW_PHASES, LETTERS };
+module.exports = { clone, fail, recalculateCoverage, reply, ran, setStep, setWorkflow, checkPrimaryOpen, setPrimary, setHandoff, applyReply, stepIndex, STEP_STATUSES, WORKFLOW_STATUSES, OPEN, CLOSED, UNFINISHED, REVIEW_PHASES, LETTERS, OFF };

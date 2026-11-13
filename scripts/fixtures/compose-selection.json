@@ -1,0 +1,29 @@
+{
+  "phases": [
+    { "phase": "specification", "reason": "Write the export spec and publish it as a GitHub issue",
+      "default": { "skill": "mattpocock/to-spec", "reason": "decisions already settled in the conversation" },
+      "alternatives": [{ "skill": "addyosmani/spec-driven-development", "reason": "spec as a repo document instead of an issue" }],
+      "prerequisites": ["gh logged in, to publish the issue"], "cost": null,
+      "tie": "to-spec and spec-driven-development fit equally; publishing an issue separates them" },
+    { "phase": "implementation", "reason": "Build the CSV export test-first, without the review implement runs inside",
+      "default": { "skill": "mattpocock/implement", "reason": "one spec, implemented in this session" },
+      "alternatives": [{ "skill": "addyosmani/incremental-implementation", "reason": "thin slices" }] },
+    { "phase": "testing", "reason": "Red-green-refactor for the export",
+      "default": { "skill": "addyosmani/test-driven-development", "reason": "test-first with a prove-it pattern for the export" },
+      "alternatives": [{ "skill": "mattpocock/tdd", "reason": "vertical red-green slices" }] },
+    { "phase": "review", "reason": "Cross-family review of the diff since the base commit",
+      "default": { "skill": "addyosmani/code-review-and-quality", "reason": "five review axes fit a user-facing export" },
+      "alternatives": [{ "skill": "mattpocock/code-review", "reason": "standards and spec axes" }] },
+    { "phase": "pull-request", "reason": "Write the PR body",
+      "default": { "skill": "mattpocock/pr", "reason": "a PR body with the run's checklist" } }
+  ],
+  "omitted": [
+    { "phase": "requirements", "reason": "settled in the conversation" },
+    { "phase": "planning", "reason": "a single ticket" },
+    { "phase": "framework-review", "reason": "no docs/agents/skills.yaml" },
+    { "phase": "security", "reason": "no input, auth or secrets touched" },
+    { "phase": "independent-review", "reason": "medium risk" }
+  ],
+  "missing": [],
+  "capabilities": ["subagents"]
+}

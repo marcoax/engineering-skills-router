@@ -172,6 +172,8 @@ The router writes this file in the **target repo** during a workflow so that ada
 | `owner` (optional) | Owner \| null | The session that may change the workflow; `null` or missing in a state written before it, which is claimed before any change. |
 | `reviewed` (optional) | `{source, revision}[]` | The reviewed vendor revisions (`catalog/reviewed.yaml`) when `compose --new` wrote the run; a recomposition keeps them. A later run reuses this run's skills as remembered selections only while they match ([ADR 0005](../../docs/adr/0005-decided-phases-skip-selection.md)). Missing in a state written before it, which yields no remembered selection. |
 | `discarded` (optional) | boolean | `true` only in the archive of a run removed with `discard`: none of its selections is remembered. |
+| `omitted` (optional) | `{phase, reason}[]` | The phases the selection left out, each with its reason, as `compose` took them from it; the workflow shows them as `Skipped:`. Missing in a state written before it. |
+| `missing` (optional) | `{phase, reason}[]` | The phases no available skill fills (a **missing capability**), each with its reason; the workflow shows them as `Missing:`. Missing in a state written before it. |
 | `manual_checklist` (optional) | Checklist point[] | The run's manual checklist, at most 15 points. Missing in a state written before it, which reads as empty instead of `null`. |
 
 Workflow `status`:
@@ -212,7 +214,7 @@ Set by `scripts/state`: `compose --new`, `claim` and `takeover`. Every other cha
 
 ## Classification
 
-Checked by `scripts/check-classification` and by `scripts/state … compose`. A recomposition keeps the run's classification, policy revision included, unless the composed file revises it; a revision is checked against the current policy.
+Checked by `scripts/check-classification` and by `scripts/state … compose`. A recomposition keeps the run's classification, policy revision included, unless its `--classification` revises it; a revision is checked against the current policy.
 
 | Field | Type | Meaning |
 |---|---|---|

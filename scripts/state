@@ -29,15 +29,21 @@
 //                            {preferences: <family>|null, options: [{family, label, current}]}
 //                            for a selector. With an answer (or the reply `primary <family>`),
 //                            sets the run's primary. Only while the workflow is selecting.
-//   compose [--new] <file>   writes a composed workflow (SKILL.md §4-§5) as the state, status
-//                            selecting. Every step skill and alternative must be a usable
-//                            candidate (scripts/list-skills) for one of the step's phases; coverage
-//                            is recalculated from what the skills invoke. --new starts a run and
-//                            refuses to replace an unfinished one; without it, the file recomposes
-//                            the current run: completed steps (done, failed, skipped after running)
-//                            stay as they ran, and the run keeps its primary and handoff.
-//   show                     the workflow, one line per step, with the step model when set,
-//                            then the run's Models line (primary from the state)
+//   compose [--new] --classification <file> --selection <file> --task "..."
+//           [--issue <n|url>] [--spec <path>] [--checkpoint <step>[,<step>]] [--reselect]
+//                            builds the workflow's steps (SKILL.md §2, §4) from the checked
+//                            classification and selection and writes them as the state, status
+//                            selecting; prints the workflow presentation (SKILL.md §5). Both files
+//                            are checked again (check-classification, check-selection); a failed
+//                            check writes nothing. Coverage is calculated from what the skills
+//                            invoke. --new starts a run and refuses to replace an unfinished one;
+//                            without it, --selection recomposes the current run: completed steps
+//                            (done, failed, skipped after running) stay as they ran, and the run
+//                            keeps its primary, handoff, checklist, reviewed revisions and, unless
+//                            --classification revises it, its classification. A file holding a
+//                            complete state is refused.
+//   show                     the workflow presentation of compose, with the step model when set
+//                            and the run's Models line (primary from the state)
 //   start <n|id> [--requires note,findings,pr-body] [--purpose "..."] [--env "..."]
 //                [--model <model ID>] [--effort low|medium|high] [--user-approved]
 //                            starts a pending delegated step with its resolved model/effort,
@@ -130,7 +136,7 @@ const session = flagSession || SESSION_ENV.map((k) => process.env[k]).find(Boole
 const noIdentity = `no session identity: pass --session <id> or set ROUTER_SESSION (${SESSION_ENV.join(', ')} are read)`;
 const now = () => new Date().toISOString().replace(/\.\d{3}Z$/, 'Z');
 // Flags take a value, except these switches.
-const SWITCHES = ['new', 'json', 'previous-closed', 'main-session', 'user-approved', 'fixes'];
+const SWITCHES = ['new', 'reselect', 'json', 'previous-closed', 'main-session', 'user-approved', 'fixes'];
 const flags = {};
 const args = [];
 for (let i = 0; i < rest.length; i++) {
@@ -168,105 +174,130 @@ function requireOwner(current) {
   if (owner !== session) die(`the workflow in ${target} is owned by session ${owner} since ${current.owner.since}; this session (${session}) may not change it. Once the user confirms that session is closed, take it over explicitly with \`scripts/state ${target} takeover --previous-closed\` (resume.md)`);
 }
 
-// The composed workflow in `file` becomes the state, or the reason it cannot is printed.
+// compose: the workflow built from the checked classification and selection (lib/compose.js)
+// becomes the state, or the reason it cannot is printed and nothing is written.
 function compose() {
-  const isNew = rest.includes('--new');
-  const source = rest.find((a) => a !== '--new');
-  if (!source || !fs.existsSync(source)) die(`usage: scripts/state <target-repo> compose [--new] <file>${source ? `\nnot found: ${source}` : ''}`);
-  let next;
-  try {
-    next = JSON.parse(fs.readFileSync(source, 'utf8'));
-  } catch (e) {
-    die(`invalid JSON in ${source}: ${e.message}`);
+  const isNew = flags.new === true;
+  const usage = 'usage: scripts/state <target-repo> compose [--new] --classification <file> --selection <file> --task "..." [--issue <n|url>] [--spec <path>] [--checkpoint <step>[,<step>]] [--reselect]';
+  if (args.length) die(`compose builds the steps itself: a file holding a complete state is refused. Pass the checked classification and selection instead (SKILL.md §5):\n${usage}`);
+  for (const key of ['classification', 'selection']) {
+    if (flags[key] !== undefined && !fs.existsSync(flags[key])) die(`${usage}\nnot found: ${flags[key]}`);
   }
-  if (!Array.isArray(next?.steps)) die(`${source}: needs a steps array (state-brief.md)`);
-  let previous = null;
-  try {
-    if (fs.existsSync(file)) previous = JSON.parse(fs.readFileSync(file, 'utf8'));
-  } catch (e) {
-    die(`invalid JSON in ${file}: ${e.message}`);
-  }
-  const errors = [];
+  if (!flags.selection || (isNew && (!flags.classification || !flags.task?.trim()))) die(usage);
+  const readJson = (f) => {
+    try {
+      return JSON.parse(fs.readFileSync(f, 'utf8'));
+    } catch (e) {
+      return die(`invalid JSON in ${f}: ${e.message}`);
+    }
+  };
+  const previous = fs.existsSync(file) ? readJson(file) : null;
   if (isNew && ops.UNFINISHED.includes(previous?.status))
     die(`an unfinished workflow (${previous.status}) is in ${target}: resume it or discard it first (resume.md)`);
-  if (isNew) {
+  if (!isNew) {
+    if (![...ops.UNFINISHED, 'selecting'].includes(previous?.status)) die(`no workflow to recompose in ${target}: start one with compose --new`);
+    requireOwner(previous);
+  } else {
     // A new run is owned by this session from its start; another session's selection stays.
     if (!session) die(noIdentity);
     if (previous?.status === 'selecting' && previous.owner?.session) requireOwner(previous);
+  }
+
+  // The inputs pass the same checks the router ran on them, with the same errors.
+  const checked = (script, ...argv) => {
+    const r = spawnSync(path.join(__dirname, script), argv, { encoding: 'utf8' });
+    if (r.status !== 0) {
+      process.stderr.write(`${r.stdout}${r.stderr}`);
+      die(`${script} refused ${argv.at(-1)}; nothing was written`);
+    }
+    return r.stdout;
+  };
+  const given = flags.classification ? readJson(flags.classification) : null;
+  const classified = classification(given, isNew ? null : previous, checked);
+  checked('check-selection', '--target', target, ...(flags.reselect ? ['--reselect'] : []), flags.selection);
+  const text = fs.readFileSync(flags.selection, 'utf8');
+  const blocks = [...text.matchAll(/```json\r?\n([\s\S]*?)```/g)].map((m) => m[1]);
+  const selection = JSON.parse(blocks.length ? blocks.at(-1) : text);
+
+  // The task being an issue or an existing spec file is the handoff from the start; a
+  // recomposition keeps the run's.
+  let handoff = { issue: null, spec: null, tickets: [], branch: null, base_commit: null, pr: null };
+  try {
+    if (flags.issue) {
+      const number = String(flags.issue).match(/(\d+)\/?$/)?.[1];
+      handoff = ops.setHandoff({ handoff }, 'issue', [number, /^https?:/.test(flags.issue) ? flags.issue : '']).handoff;
+    }
+    if (flags.spec) handoff = ops.setHandoff({ handoff }, 'spec', [flags.spec]).handoff;
+  } catch (e) {
+    die(e.message);
+  }
+  if (!isNew) handoff = previous.handoff;
+
+  const Catalog = require('./lib/catalog');
+  Catalog.requireConfig();
+  const Compose = require('./lib/compose');
+  const built = Compose.build({
+    classification: classified.fields, selection, skills: Catalog.skills(target),
+    trackerConfigured: fs.existsSync(path.join(target, Compose.TRACKER_FILE)),
+    issue: handoff.issue, checkpoints: (flags.checkpoint ?? '').split(',').map((c) => c.trim()).filter(Boolean),
+  });
+  const errors = [...built.errors];
+  const next = {
+    version: 1, task: flags.task?.trim() || previous?.task, ...classified.fields,
+    status: 'selecting', updated_at: now(), steps: built.steps, handoff,
+    omitted: Catalog.arr(selection.omitted).map((o) => ({ phase: o.phase, reason: o.reason })),
+    missing: [...Catalog.arr(selection.missing), ...built.missing].map((m) => ({ phase: m.phase, reason: m.reason })),
+  };
+  if (isNew) {
     next.run = `${now().replace(/[-:]/g, '')}-${files.token(2)}`;
     next.owner = { session, since: now(), previous: null };
     next.manual_checklist = [];
     // What a later run needs to tell whether this run's selections still hold (ADR 0005).
     next.reviewed = require('./lib/decided').reviewed();
-  }
-  if (!isNew) {
-    if (![...ops.UNFINISHED, 'selecting'].includes(previous?.status)) die(`no workflow to recompose in ${target}: start one with compose --new`);
-    requireOwner(previous);
+  } else {
     next.run = previous.run;
     next.owner = previous.owner;
     // Completed work stays as it ran; only the remaining work is reconsidered.
     for (const old of previous.steps.filter(ops.ran)) {
-      const i = next.steps.findIndex((x) => x?.id === old.id);
-      if (i === -1) errors.push(`${old.id}: a recomposition keeps completed steps (${old.status})`);
+      const i = next.steps.findIndex((x) => x.id === old.id);
+      if (i === -1) errors.push(`${old.id}: a recomposition keeps completed steps (${old.status}): select its phase again`);
       else next.steps[i] = old;
     }
-    next.primary = previous.primary ?? next.primary;
-    next.handoff = previous.handoff;
+    if (previous.primary != null) next.primary = previous.primary;
     next.manual_checklist = previous.manual_checklist ?? [];
     // The run keeps the revisions it was composed under; a state from before them stays without.
-    if (previous.reviewed === undefined) delete next.reviewed;
-    else next.reviewed = previous.reviewed;
+    if (previous.reviewed !== undefined) next.reviewed = previous.reviewed;
   }
-  const Catalog = require('./lib/catalog');
-  Catalog.requireConfig();
-  const skills = Catalog.skills(target);
-  const categories = Catalog.categories();
-  const done = new Set(isNew ? [] : previous.steps.filter((x) => next.steps.includes(x)).map((x) => x.id));
-  for (const step of next.steps) {
-    if (!step || done.has(step.id)) continue;
-    const phases = Catalog.arr(step.phases);
-    const unknown = phases.filter((p) => !Object.hasOwn(categories, p));
-    if (unknown.length) { errors.push(`${step.id}: unknown phase ${unknown.join(', ')}`); continue; }
-    const picks = [[null, step.skill, step.reason], ...Catalog.arr(step.alternatives).map((a) => ['alternative', a?.skill, a?.reason])];
-    for (const [role, id, reason] of picks) {
-      if (id == null) continue;
-      const where = `${step.id}: ${role ? `${role} ` : ''}${id}`;
-      const problem = Catalog.pickProblem(id, phases, skills);
-      if (!problem) {
-        // A high-cost pick keeps its cost up front, so a swap control never selects it unexplained.
-        const cost = Catalog.costProblem(id, reason, skills);
-        if (cost) errors.push(`${where}: ${cost}`);
-        continue;
-      }
-      // The selector's default for a phase that cannot run: another pick, or a missing capability.
-      const hint = role || !problem.replaceable ? '' : ` (choose another, or report ${phases.join(', ') || step.id} as missing)`;
-      errors.push(`${where}: ${problem.message}${hint}`);
-    }
-  }
-  const classified = classify(next, isNew ? null : previous);
-  errors.push(...classified.errors.map((e) => (e.startsWith('classification') ? e : `classification: ${e}`)));
   if (errors.length) die(errors.join('\nerror: '));
-  const covered = ops.recalculateCoverage({ ...next, status: 'selecting' }, invokesFor(target));
+  const covered = ops.recalculateCoverage(next, invokesFor(target));
   // A new run archives the previous one, its notes with it, once the new state is valid.
-  const archived = () => (isNew && previous ? [`archived: the previous run in ${files.archive(target, previous)}`] : []);
-  write(covered.state, `compose${isNew ? ' --new' : ''}`,
-    [classified.line, ...covered.notes.map((n) => `coverage: ${n}`)], archived);
+  const archived = () => [
+    ...(isNew && previous ? [`archived: the previous run in ${files.archive(target, previous)}`] : []),
+    '', ...Compose.present(covered.state, prefs()),
+  ];
+  write(covered.state, `compose${isNew ? ' --new' : ''}`, [classified.line, ...covered.notes.map((n) => `coverage: ${n}`)], archived);
 }
 
-// The classification (classification.md) a composed workflow carries. A recomposition that does not
-// revise it keeps the run's own, policy revision included; a new or revised one is checked against
-// the current policy. Fills `next` in place; returns { errors, line }.
-function classify(next, previous) {
-  // `path` full is always offered, so switching to it (light.md's `full`) revises nothing.
+// The classification (classification.md) the composed workflow carries, as { fields, line }. A new
+// run's passes check-classification. A recomposition keeps the run's own, policy revision included,
+// when none is given or the given one revises nothing (`path` full is always offered, so switching
+// to it, light.md's `full`, revises nothing); a revised one is checked against the current policy.
+function classification(given, previous, checked) {
   const KEYS = ['type', 'risk', 'complexity', 'properties', 'classification'];
-  const same = previous && KEYS.every((k) => next[k] === undefined || JSON.stringify(next[k]) === JSON.stringify(previous[k]))
-    && [undefined, previous.path, 'full'].includes(next.path);
+  const fieldsOf = (c, p = c.path) => Object.fromEntries([
+    ['type', c.type], ['risk', c.risk], ['complexity', c.complexity], ['path', p],
+    ['properties', c.properties ?? []], ['classification', c.classification],
+  ].filter(([, v]) => v !== undefined));
+  const same = previous && (!given || (KEYS.every((k) => given[k] === undefined || JSON.stringify(given[k]) === JSON.stringify(previous[k]))
+    && [undefined, null, previous.path, 'full'].includes(given.path)));
   if (same) {
-    for (const k of [...KEYS, 'path']) if (Object.hasOwn(previous, k) && next[k] === undefined) next[k] = previous[k];
-    return { errors: [], line: `classification: kept (policy ${previous.classification?.policy ?? 'none recorded'})` };
+    return { fields: fieldsOf(previous, given?.path ?? previous.path),
+      line: `classification: kept (policy ${previous.classification?.policy ?? 'none recorded'})` };
   }
-  const { errors, revision } = require('./lib/classification').evaluate(next);
-  return { errors, line: `classification: ${previous ? 'revised under' : 'checked against'} policy ${revision}` };
+  const out = checked('check-classification', flags.classification);
+  if (!['light', 'full'].includes(given.path)) die(`${flags.classification}: path must be light or full, the path §1 chose (classification.md); nothing was written`);
+  const revision = out.match(/^policy: (\d+)/m)?.[1];
+  return { fields: fieldsOf(given), line: `classification: ${previous ? 'revised under' : 'checked against'} policy ${revision}` };
 }
 
 // Validate the complete candidate before touching state, inline artifacts or notes.
@@ -285,21 +316,9 @@ function write(next, label, lines = [], after = () => []) {
 }
 
 if (command === 'show') {
-  const mark = { done: '✓', running: '▶', pending: '○', waiting: '⏸', skipped: '–', failed: '✗' };
-  console.log(`${state.task} · ${state.status}${state.path ? ` · ${state.path}` : ''}`);
-  state.steps.forEach((s, i) => {
-    const inside = s.covered_by ? ` inside ${s.covered_by}` : '';
-    const model = s.model ? `  on ${s.model}${s.effort ? ` · effort ${s.effort}` : ''}` : '';
-    console.log(`${mark[s.status] ?? '?'} ${i + 1}. ${s.id}  ${s.skill ?? '(router)'}${inside}${model}${s.outcome ? ` → ${s.outcome}` : ''}`);
-    // The step's reason and alternatives (a high-cost pick's cost comes first in its reason),
-    // then the selector's notes for the step, as SKILL.md §5 shows them.
-    if (s.reason) console.log(`   why: ${s.reason}`);
-    (s.alternatives ?? []).forEach((a, j) => console.log(`   ${ops.LETTERS[j]}) ${a.skill}: ${a.reason}`));
-    if (s.prerequisites?.length) console.log(`   needs: ${s.prerequisites.join('; ')}`);
-    if (s.cost) console.log(`   cost: ${s.cost}`);
-    if (s.tie) console.log(`   tie: ${s.tie}`);
-  });
-  console.log(models.modelsLine(state, prefs()));
+  // The workflow as SKILL.md §5 presents it, the same lines compose prints; a started one with each
+  // step's status and outcome.
+  for (const line of require('./lib/compose').present(state, prefs())) console.log(line);
   process.exit(0);
 }
 
