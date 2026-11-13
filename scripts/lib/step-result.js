@@ -4,7 +4,7 @@
 // parsed state; the caller reads files through `read(rel)` (its text, or null when absent).
 const path = require('node:path');
 const { clone, fail, setStep, setHandoff, stepIndex, REVIEW_PHASES } = require('./state-ops');
-const { findingsProblems } = require('./runs');
+const { findingsProblems, DECISIONS } = require('./runs');
 const { STEPS_DIR, notePath, noteRun, noteBody } = require('./run-files');
 
 const VERDICTS = ['done', 'fixes', 'blocked'];
@@ -19,16 +19,18 @@ function paths(state, i) {
   return { result: `${base}.result.json`, note: notePath(state, i), findings: `${base}.findings.json`, 'pr-body': `${base}.pr-body.md` };
 }
 
-// A fixes run delivers on its review step (the coordinating step), beside the review's files.
+// A fixes run delivers on its review step (the coordinating step), beside the review's files:
+// its result, its note and the findings it fixed.
 function fixesPaths(i) {
   const base = `${STEPS_DIR}/${i + 1}-fixes`;
-  return { result: `${base}.result.json`, note: `${base}.md`, findings: `${base}.findings.json`, 'pr-body': `${base}.pr-body.md` };
+  return { result: `${base}.result.json`, note: `${base}.md`, findings: `${base}.findings.json` };
 }
 // The paths of the step's current attempt: a fixes attempt's, else the step's own.
 const attemptPaths = (state, i) => (state.steps[i].result?.kind === 'fixes' ? fixesPaths(i) : paths(state, i));
 
 const isReview = (step) => REVIEW_PHASES.includes(step.id);
-const actionableOf = (findings) => (findings ?? []).map((f, j) => ({ f, n: j + 1 })).filter(({ f }) => f.decision === undefined);
+// A step's actionable findings, numbered as reported: those without a decision.
+const actionableOf = (findings) => (findings ?? []).map((f, j) => ({ f, n: j + 1 })).filter(({ f }) => f?.decision === undefined);
 
 // Whether a step is delegated, so it owes a delivery: a skill step of a run (a state written
 // before runs is legacy), neither run inside another step nor conversational.
@@ -121,17 +123,15 @@ function parseResult(text) {
 
 const inside = (rel) => typeof rel === 'string' && rel.trim() && !path.isAbsolute(rel) && path.normalize(rel).split(path.sep)[0] !== '..';
 
-// Checks a delivery against the step's open expectation. Returns { problems, kept } when it is
-// refused (the state is unchanged, the attempt stays open), else { state, verdict, actionable,
-// lines, writes }: done closes the step with its summary, fixes keeps it running, blocked
-// leaves it waiting; `writes` are inline artifacts for the caller to save ({path, content}).
-function deliver(state, ref, read, handoffValue = setHandoff) {
-  const i = stepIndex(state, ref);
+// The checks every delivery shares: the result names this step and its current attempt, and
+// carries a verdict, a summary and the declared artifacts in their formats; `findingsOf(list)`
+// returns the problems of a parsed findings artifact. Returns { problems, kept } for a refusal
+// that ends the check early, else the checked delivery, whose `problems` the caller adds to.
+function check(state, i, read, handoffValue, findingsOf) {
   const step = state.steps[i];
   const p = attemptPaths(state, i);
   const expected = step.result;
-  const fixesRun = expected?.kind === 'fixes';
-  const refuse = (problems, kept = []) => ({ problems, kept });
+  const refuse = (problems) => ({ problems, kept: [] });
   if (!expected || expected.verdict !== null) return refuse([`step ${step.id}: no delivery expected (start ${i + 1} first)`]);
   if (step.status !== 'running') return refuse([`step ${step.id} is ${step.status}, not running`]);
   const text = read(p.result);
@@ -159,10 +159,8 @@ function deliver(state, ref, read, handoffValue = setHandoff) {
   }
   const verdict = result.verdict;
   if (!VERDICTS.includes(verdict)) problems.push(`result.verdict: no recognizable verdict (${VERDICTS.join(' | ')}), got ${JSON.stringify(verdict)}`);
-  else if (fixesRun && verdict === 'fixes') problems.push('result.verdict: a fixes run delivers done (its fixes are in) or blocked, never fixes');
   const recheck = typeof result.recheck === 'string' && result.recheck.trim() ? result.recheck.trim() : null;
   if (result.recheck !== undefined && result.recheck !== null && !recheck) problems.push('result.recheck: the behavior-changing fix to re-check, in one line, or null');
-  if (recheck && !fixesRun) problems.push('result.recheck: only a fixes run declares a re-check');
   if (typeof result.summary !== 'string' || !result.summary.trim()) problems.push('result.summary: one line, required');
   const remaining = typeof result.remaining === 'string' && result.remaining.trim() ? result.remaining : null;
   if (verdict === 'blocked' && !remaining) problems.push('result.remaining: required when the verdict is blocked (what blocks the step, what is left)');
@@ -171,7 +169,6 @@ function deliver(state, ref, read, handoffValue = setHandoff) {
 
   // Each declared artifact must be there and valid; a blocked step reports what it has.
   const issue = (verdict === 'done' ? s : state).handoff?.issue;
-  const ids = new Set(state.steps.map((s) => s.id));
   const kept = [];
   const artifacts = [];
   let findings = null;
@@ -210,23 +207,8 @@ function deliver(state, ref, read, handoffValue = setHandoff) {
       } catch (e) {
         own.push(`findings: ${rel}: ${e.message}`);
       }
-      if (list !== undefined && fixesRun) {
-        // The fixes run decides the findings it fixed, each one the review reported.
-        if (!Array.isArray(list)) own.push('findings: expected a JSON array of the findings this run fixed');
-        else list.forEach((f, j) => {
-          const reported = (expected.findings ?? []).find((r) => r.title === f?.title);
-          if (!reported) own.push(`findings[${j}]: ${JSON.stringify(f?.title)} is not a finding the review reported`);
-          else if (f.decision !== 'fixed') own.push(`findings[${j}].decision: the fixes run records "fixed" on each finding it fixed; declined and deferred are recorded with decide ${i + 1}`);
-          else if (reported.decision !== undefined) own.push(`findings[${j}]: ${JSON.stringify(f.title)} is already ${reported.decision}`);
-        });
-        if (!own.length) findings = list;
-      } else if (list !== undefined) {
-        own.push(...findingsProblems(list, ids, { decided: false }));
-        // A review reports; its findings are decided by the fixes run and the main session.
-        if (isReview(step) && Array.isArray(list))
-          list.forEach((f, j) => {
-            if (f?.decision !== undefined) own.push(`findings[${j}].decision: a review never decides its own findings: deliver fixes, then the fixes run and decide ${i + 1} record the decisions`);
-          });
+      if (list !== undefined) {
+        own.push(...findingsOf(list));
         if (!own.length) findings = list;
       }
     } else if (kind === 'pr-body' && issue?.number != null) {
@@ -239,33 +221,24 @@ function deliver(state, ref, read, handoffValue = setHandoff) {
       artifacts.push({ kind, path: rel });
     }
   }
+  return { problems, kept, checked: { s, verdict, recheck, remaining, summary: result.summary, artifacts, findings, writes } };
+}
 
-  // Findings without a decision are actionable: they go to fixes, never straight on.
-  const actionable = fixesRun ? 0 : (findings ?? []).filter((f) => f.decision === undefined).length;
-  if (verdict === 'done' && actionable) problems.push(`verdict done with ${plural(actionable)}: deliver fixes, or record each decision`);
-  if (verdict === 'fixes' && !actionable) problems.push('verdict fixes needs at least one actionable finding (a finding without a decision)');
-  if (problems.length) return refuse(problems, kept);
-
-  if (verdict !== 'done') s = clone(state);
-  const accepted = { ...expected, verdict, artifacts, remaining, summary: result.summary };
-  // The step's findings after this delivery: the fixes run's decisions applied, or a review's
-  // new findings added to those reported before. A blocked delivery leaves them as they were.
-  let merged = expected.findings ?? null;
-  if (verdict !== 'blocked' && findings) {
-    if (fixesRun) merged = merged.map((f) => (findings.some((d) => d.title === f.title) ? { ...f, decision: 'fixed' } : f));
-    // A finding reported again is actionable again, whatever was decided on it before.
-    else if (merged) merged = [...merged.map((m) => findings.find((f) => f.title === m.title) ?? m),
-      ...findings.filter((f) => !merged.some((m) => m.title === f.title))];
-    else if (verdict === 'fixes') merged = findings;
-  }
+// Accepts a checked delivery, given the step's findings after it (`merged`), its re-check and
+// the lines naming what it delivered. Returns { state, verdict, lines, writes }.
+function accept(state, i, d, merged, recheck, delivered) {
+  const { verdict, remaining } = d;
+  let s = verdict === 'done' ? d.s : clone(state);
+  const accepted = { ...state.steps[i].result, verdict, artifacts: d.artifacts, remaining, summary: d.summary };
+  const writes = [...d.writes];
   if (merged) {
     accepted.findings = merged;
-    if (verdict !== 'blocked') accepted.recheck = fixesRun ? recheck : null;
+    if (verdict !== 'blocked') accepted.recheck = recheck;
     // The review's findings file holds them with their decisions, as scripts/record reads them,
     // and the step's recorded findings artifact is that file, wherever this delivery put its own.
     const decided = paths(state, i).findings;
     writes.splice(0, writes.length, ...writes.filter((w) => w.path !== decided), { path: decided, content: `${JSON.stringify(merged, null, 2)}\n` });
-    accepted.artifacts = [...artifacts.filter((a) => a.kind !== 'findings'), { kind: 'findings', path: decided }];
+    accepted.artifacts = [...d.artifacts.filter((a) => a.kind !== 'findings'), { kind: 'findings', path: decided }];
   }
   s.steps[i].result = accepted;
   const lines = [];
@@ -273,12 +246,71 @@ function deliver(state, ref, read, handoffValue = setHandoff) {
     s = setStep(s, i + 1, 'waiting');
     lines.push(`blocked: ${remaining}`);
   } else if (verdict === 'fixes') lines.push(`fixes: ${plural(actionableOf(merged).length)}`);
-  // The delivered findings in a line each, so the next decision needs no other read.
-  if (findings && !fixesRun) lines.push(...(findings.length ? findings.map((f) => `finding: ${f.severity}: ${f.title}`) : ['findings: none']));
-  if (fixesRun && findings) lines.push(...findings.map((f) => `fixed: ${f.title}`));
+  lines.push(...delivered);
   // Every finding still actionable on the step, then what comes next, or the close.
   if (verdict !== 'blocked') s = settle(s, i, lines);
-  return { state: s, verdict, actionable, lines, writes };
+  return { state: s, verdict, lines, writes };
+}
+
+// Checks a delivery against the step's open expectation. Returns { problems, kept } when it is
+// refused (the state is unchanged, the attempt stays open), else { state, verdict, lines,
+// writes }: done closes the step with its summary, fixes keeps it running, blocked leaves it
+// waiting; `writes` are inline artifacts for the caller to save ({path, content}). The fixes
+// run's attempt is checked by deliverFixes.
+function deliver(state, ref, read, handoffValue = setHandoff) {
+  const i = stepIndex(state, ref);
+  const step = state.steps[i];
+  if (step.result?.kind === 'fixes') return deliverFixes(state, i, read, handoffValue);
+  const ids = new Set(state.steps.map((x) => x.id));
+  const { problems, kept, checked: d } = check(state, i, read, handoffValue, (list) => [
+    ...findingsProblems(list, ids, { decided: false }),
+    // A review reports; its findings are decided by the fixes run and the main session.
+    ...(isReview(step) && Array.isArray(list) ? list.flatMap((f, j) => (f?.decision === undefined ? []
+      : [`findings[${j}].decision: a review never decides its own findings: deliver fixes, then the fixes run and decide ${i + 1} record the decisions`])) : []),
+  ]);
+  if (!d) return { problems, kept };
+  if (d.recheck) problems.push('result.recheck: only a fixes run declares a re-check');
+  // Findings without a decision are actionable: they go to fixes, never straight on.
+  const actionable = actionableOf(d.findings).length;
+  if (d.verdict === 'done' && actionable) problems.push(`verdict done with ${plural(actionable)}: deliver fixes, or record each decision`);
+  if (d.verdict === 'fixes' && !actionable) problems.push('verdict fixes needs at least one actionable finding (a finding without a decision)');
+  if (problems.length) return { problems, kept };
+
+  // A later pass's findings join those reported before; one reported again is actionable again,
+  // whatever was decided on it. A blocked delivery leaves them as they were.
+  const before = step.result.findings ?? null;
+  const found = d.findings;
+  let merged = before;
+  if (d.verdict !== 'blocked' && found) {
+    if (before) merged = [...before.map((m) => found.find((f) => f.title === m.title) ?? m),
+      ...found.filter((f) => !before.some((m) => m.title === f.title))];
+    else if (d.verdict === 'fixes') merged = found;
+  }
+  // The delivered findings in a line each, so the next decision needs no other read.
+  const delivered = found ? (found.length ? found.map((f) => `finding: ${f.severity}: ${f.title}`) : ['findings: none']) : [];
+  return accept(state, i, d, merged, null, delivered);
+}
+
+// The fixes run's delivery on its review step: done (its fixes are in) or blocked, its note,
+// and as findings each finding the review reported that it fixed, with "decision": "fixed".
+function deliverFixes(state, i, read, handoffValue) {
+  const reported = state.steps[i].result.findings ?? [];
+  const { problems, kept, checked: d } = check(state, i, read, handoffValue, (list) => {
+    if (!Array.isArray(list)) return ['findings: expected a JSON array of the findings this run fixed'];
+    return list.flatMap((f, j) => {
+      const r = reported.find((x) => x.title === f?.title);
+      if (!r) return [`findings[${j}]: ${JSON.stringify(f?.title)} is not a finding the review reported`];
+      if (f.decision !== 'fixed') return [`findings[${j}].decision: the fixes run records "fixed" on each finding it fixed; declined and deferred are recorded with decide ${i + 1}`];
+      if (r.decision !== undefined) return [`findings[${j}]: ${JSON.stringify(f.title)} is already ${r.decision}`];
+      return [];
+    });
+  });
+  if (!d) return { problems, kept };
+  if (d.verdict === 'fixes') problems.push('result.verdict: a fixes run delivers done (its fixes are in) or blocked, never fixes');
+  if (problems.length) return { problems, kept };
+  const fixed = d.verdict !== 'blocked' ? d.findings ?? [] : [];
+  const merged = reported.map((f) => (fixed.some((x) => x.title === f.title) ? { ...f, decision: 'fixed' } : f));
+  return accept(state, i, d, merged, d.recheck, (d.findings ?? []).map((f) => `fixed: ${f.title}`));
 }
 
 const plural = (n) => `${n} actionable finding${n === 1 ? '' : 's'}`;
@@ -307,7 +339,7 @@ function settle(s, i, lines) {
   let outcome = r.summary;
   if (r.findings?.length) {
     const summaries = [...(r.earlier ?? []), r].filter((e) => ['done', 'fixes'].includes(e.verdict) && e.summary).map((e) => e.summary);
-    const tally = ['fixed', 'declined', 'deferred'].map((d) => [d, r.findings.filter((f) => f.decision === d).length]).filter(([, n]) => n);
+    const tally = DECISIONS.map((d) => [d, r.findings.filter((f) => f.decision === d).length]).filter(([, n]) => n);
     outcome = [...new Set(summaries), `findings: ${tally.map(([d, n]) => `${n} ${d}`).join(', ')}`].join('; ');
   }
   // First, right under the state line: the adapters read it as the step boundary.
@@ -325,8 +357,10 @@ function decide(state, ref, which, decision, reason) {
   const r = step.result;
   if (!isReview(step) || !r?.findings) fail(`step ${step.id}: no reported finding to decide: decisions come after a review's accepted fixes verdict (deliver fixes first)`);
   if (step.status !== 'running') fail(`step ${step.id} is ${step.status}, not running`);
-  if (!['declined', 'deferred'].includes(decision))
-    fail(`decision: declined | deferred, got ${JSON.stringify(decision)} (a fixed finding comes with the fixes run's delivery: start ${i + 1} --fixes)`);
+  // The main session's decisions: every one but fixed, which comes with the fixes run.
+  const ours = DECISIONS.filter((d) => d !== 'fixed');
+  if (!ours.includes(decision))
+    fail(`decision: ${ours.join(' | ')}, got ${JSON.stringify(decision)} (a fixed finding comes with the fixes run's delivery: start ${i + 1} --fixes)`);
   if (typeof reason !== 'string' || !reason.trim()) fail(`--reason "...": ${decision === 'declined' ? 'the evidence it is not a problem' : 'why it is left for later (an issue, a TODO)'}`);
   const n = Number(which);
   const k = Number.isInteger(n) && String(n) === String(which) ? n - 1 : r.findings.findIndex((f) => f.title === which);
@@ -348,4 +382,4 @@ function artifact(state, ref, kind) {
   return found.path;
 }
 
-module.exports = { openAttempt, delegated, deliver, decide, artifact, paths, attemptPaths, defaultRequires, stepProblem, VERDICTS, KINDS };
+module.exports = { openAttempt, delegated, deliver, decide, artifact, paths, attemptPaths, actionableOf, defaultRequires, stepProblem, VERDICTS, KINDS };
