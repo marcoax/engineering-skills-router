@@ -16,8 +16,8 @@ scripts/state <target repo> compose --new \
 
 From those files `compose` writes `.router/state.json` with status `selecting`, so §2 and §4 hold without any step written by hand:
 
-- The steps follow §2's default flow, with the changes by type and, on a light path, [light.md](light.md)'s steps. The router steps (`branch`, `verification`, opening the PR) are in place.
-- A skill selected for two phases is one step. `issue-tracking` gets no step of its own; when nothing fills it and the task is not an issue, the workflow is issue-free.
+- The steps follow §2's default flow, with the changes by type and, on a light path, [light.md](light.md)'s steps. The router steps (`branch`, `verification`, opening the PR) are in place; a selected `pull-request` skill's step is the PR step, which writes the body before the router opens the PR. A multi-session workflow is its multi-session step alone (and `setup` when needed): the later sessions implement from its output, so a selection that also picks their phases is refused.
+- A skill selected for two phases is one step, keeping each phase's selection: every phase's alternatives (one offered for both appears once), and the reasons, cost and tie as they are when the phases agree, otherwise each labelled with its phase. `issue-tracking` gets no step of its own; when nothing fills it and the task is not an issue, the workflow is issue-free.
 - `setup` is prepended when a selected skill `requires: tracker-config` and the target has no `docs/agents/issue-tracker.md`.
 - Optional steps (independent-review, verification) are present and off.
 - Each step carries the selection's default, alternatives, reasons, prerequisites, cost and tie unchanged; a decided phase's reason is its origin. Coverage is calculated from the catalog's `invokes`; a covered step keeps the selector's pick aside.

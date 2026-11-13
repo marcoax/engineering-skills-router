@@ -41,6 +41,29 @@ const routerStep = (id, reason, summary, extra = {}) => ({
 });
 const off = (step) => Object.assign(step, { optional: true, status: 'skipped', outcome: OFF });
 
+// One note for a step from its phases' `[phase, value]` pairs: the value itself when every phase
+// gives the same one, otherwise each phase's own, labelled, so none is lost; null when none gives one.
+function perPhase(pairs) {
+  const given = pairs.map(([phase, v]) => [phase, note(v)]);
+  const values = new Set(given.map(([, v]) => v));
+  if (values.size === 1) return [...values][0];
+  return given.filter(([, v]) => v).map(([phase, v]) => `${phase}: ${v}`).join('; ');
+}
+
+// Every phase's alternatives for a step, in the phases' order; one offered for two phases appears
+// once, with each phase's reason.
+function alternativesOf(entries) {
+  const bySkill = new Map();
+  for (const e of entries) {
+    for (const a of Catalog.arr(e.alternatives)) {
+      if (a.skill === e.default.skill) continue;
+      if (!bySkill.has(a.skill)) bySkill.set(a.skill, []);
+      bySkill.get(a.skill).push([e.phase, a.reason]);
+    }
+  }
+  return [...bySkill].map(([skill, reasons]) => ({ skill, reason: perPhase(reasons) }));
+}
+
 // The router's steps (§2): the work branch, verification on the full path, and the pull request
 // when no selected skill writes its body (that skill's step is the pull-request step then).
 function routerSteps(path, issue, issueFree, steps) {
@@ -91,16 +114,11 @@ function build({ classification, selection, skills, trackerConfigured, issue = n
     const phases = entries.map((e) => e.phase);
     // A skill tagged issue-tracking fills it in its step (to-spec, to-tickets).
     if (Catalog.arr(skills[skill]?.categories).includes('issue-tracking') && !phases.includes('issue-tracking')) phases.push('issue-tracking');
-    const seen = new Set([skill]);
-    const alternatives = entries.flatMap((e) => Catalog.arr(e.alternatives))
-      .filter((a) => !seen.has(a.skill) && seen.add(a.skill))
-      .slice(0, 2)
-      .map((a) => ({ skill: a.skill, reason: a.reason }));
-    const joined = (key) => entries.map((e) => note(e[key])).filter(Boolean).join('; ') || null;
     const step = {
-      id: first.phase, phases, skill, reason: first.default.reason, summary: first.reason, alternatives,
-      prerequisites: [...new Set(entries.flatMap((e) => strings(e.prerequisites)))], cost: joined('cost'), tie: joined('tie'),
-      confirm: false, optional: false, covered_by: null, model: null, effort: null, status: 'pending', outcome: null,
+      ...routerStep(first.phase, perPhase(entries.map((e) => [e.phase, e.default.reason])), perPhase(entries.map((e) => [e.phase, e.reason]))),
+      phases, skill, alternatives: alternativesOf(entries),
+      prerequisites: [...new Set(entries.flatMap((e) => strings(e.prerequisites)))],
+      cost: perPhase(entries.map((e) => [e.phase, e.cost])), tie: perPhase(entries.map((e) => [e.phase, e.tie])),
     };
     return OPTIONAL.includes(step.id) ? off(step) : step;
   });

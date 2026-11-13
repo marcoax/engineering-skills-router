@@ -156,6 +156,39 @@ test('refactor: code-understanding before the specification; refactoring or arch
   assert.deepEqual(f.ids(), ['code-understanding', 'specification', 'branch', 'architecture', 'review', 'verification', 'pull-request']);
 });
 
+test('a skill selected for two phases is one step that keeps each phase\'s selection', (t) => {
+  const f = fixture(t);
+  const ARCH = 'mattpocock/improve-codebase-architecture';
+  const both = (arch, refactor) => ({ ...FEATURE, phases: [
+    phase('architecture', ARCH, { reason: 'shape the export module', default: pick(ARCH, arch),
+      alternatives: [pick('pstack/principle-model-the-domain', 'deep modules'), pick('addyosmani/api-and-interface-design', 'contract first')],
+      cost: 'a long interview', tie: 'improve-codebase-architecture and codebase-design; the refactor separates them' }),
+    phase('refactoring', ARCH, { reason: 'untangle the report queries', default: pick(ARCH, refactor),
+      alternatives: [pick('addyosmani/code-simplification', 'smaller diff'), pick('pstack/principle-model-the-domain', 'deep modules, for the refactor')],
+      prerequisites: ['the report tests pass'], tie: 'improve-codebase-architecture and code-simplification; the scope separates them' }),
+    ...FEATURE.phases] });
+  const out = f.ok(f.compose({ selection: both('finds the deepening opportunities', 'refactors toward them') }));
+  const step = f.step('architecture');
+  assert.equal(f.ids().includes('refactoring'), false);
+  assert.deepEqual(step.phases, ['architecture', 'refactoring']);
+  assert.equal(step.reason, 'architecture: finds the deepening opportunities; refactoring: refactors toward them');
+  assert.equal(step.summary, 'architecture: shape the export module; refactoring: untangle the report queries');
+  assert.deepEqual(step.alternatives, [
+    { skill: 'pstack/principle-model-the-domain', reason: 'architecture: deep modules; refactoring: deep modules, for the refactor' },
+    { skill: 'addyosmani/api-and-interface-design', reason: 'contract first' },
+    { skill: 'addyosmani/code-simplification', reason: 'smaller diff' }]);
+  assert.deepEqual(step.prerequisites, ['the report tests pass']);
+  assert.equal(step.cost, 'architecture: a long interview');
+  assert.equal(step.tie, 'architecture: improve-codebase-architecture and codebase-design; the refactor separates them; '
+    + 'refactoring: improve-codebase-architecture and code-simplification; the scope separates them');
+  assert.match(out, /^ {3}c\) addyosmani\/code-simplification: smaller diff$/m);
+  f.ok(f.st('reply', '1c'));
+  assert.equal(f.step('architecture').skill, 'addyosmani/code-simplification');
+  // One reason for both phases (a decided skill's origin) stays as it is.
+  f.ok(f.compose({ selection: both('preference', 'preference') }));
+  assert.equal(f.step('architecture').reason, 'preference');
+});
+
 test('the light path: branch, implementation, review, security, framework-review, pull request', (t) => {
   const f = fixture(t);
   const selection = {
