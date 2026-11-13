@@ -269,15 +269,17 @@ test('an invalid handoff refuses a delivery whatever its verdict', (t) => {
   assert.equal(fs.readFileSync(f.file, 'utf8'), saved);
 });
 
-test('delivering a review answer prints its verdict and each finding by severity and title', (t) => {
+test('a read-only review start prints where its answer goes, and delivering it prints the verdict and each finding', (t) => {
   const f = fixture(t);
-  const at = f.attempt(f.ok('start', '5'));
-  f.put('.router/steps/5-review.md', `run: ${f.state.run}\nReviewed the diff.\n`);
-  const answer = (attempt, findings) => `Prose the main session never reads.\n\n\`\`\`json\n${JSON.stringify({
+  const answerPathOf = (out) => out.match(/^answer: (\S+)$/m)[1];
+  const first = f.ok('start', '5', '--requires', 'findings');
+  const at = f.attempt(first);
+  assert.equal(answerPathOf(first), `.router/steps/5-review.${at}.answer.md`);
+  const answerText = (attempt, findings) => `Prose the main session never reads.\n\n\`\`\`json\n${JSON.stringify({
     step: 'review', attempt, verdict: findings.length ? 'fixes' : 'done', summary: 'Reviewed',
-    artifacts: { note: '.router/steps/5-review.md', findings } })}\n\`\`\`\n`;
-  const file = path.join(f.target, '.router/steps/5-review.answer.md');
-  fs.writeFileSync(file, answer(at, [
+    artifacts: { findings } })}\n\`\`\`\n`;
+  const file = path.join(f.target, answerPathOf(first));
+  fs.writeFileSync(file, answerText(at, [
     { title: 'Export drops the header row', severity: 'high', found_by: ['review'] },
     { title: 'Name the CSV helper', severity: 'low', found_by: ['review'] },
   ]));
@@ -285,10 +287,19 @@ test('delivering a review answer prints its verdict and each finding by severity
   assert.match(fixes, /^fixes: 2 actionable findings: run the fixes, then start 5 again$/m);
   assert.match(fixes, /^finding: high: Export drops the header row\nfinding: low: Name the CSV helper$/m);
 
-  const again = f.attempt(f.ok('start', '5', '--purpose', 'Re-check after the fixes'));
-  fs.writeFileSync(file, answer(again, []));
-  const done = f.ok('deliver', '5', file);
+  const second = f.ok('start', '5', '--requires', 'findings', '--purpose', 'Re-check after the fixes');
+  const again = f.attempt(second);
+  const file2 = path.join(f.target, answerPathOf(second));
+  assert.notEqual(file2, file);
+  fs.writeFileSync(file2, answerText(again, []));
+  const done = f.ok('deliver', '5', file2);
   assert.match(done, /^done: Reviewed$/m);
   assert.match(done, /^findings: none$/m);
   assert.doesNotMatch(done, /^finding: /m);
+});
+
+test('a start whose step writes its own note prints no answer path', (t) => {
+  const f = fixture(t);
+  assert.doesNotMatch(f.ok('start', '5'), /^answer: /m);
+  assert.doesNotMatch(f.ok('start', '3', '--requires', 'findings'), /^answer: /m);
 });

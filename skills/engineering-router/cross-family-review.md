@@ -29,7 +29,7 @@ Done when the effective configuration names the selected agent/model and permits
 
 Start a subagent on the reviewers' family that runs the step's skill on `git diff <base commit>...HEAD` against the issue (issue-free: against the spec file). Tell it to only report findings, never edit.
 
-Where the review runs through `review_other_family`, call that tool instead. Pass `model`, `effort` (when set in the preferences), `cwd` the target repo, `answer` the path `.router/steps/<n>-<step id>.<attempt>.answer.md` (under the target's `.router/steps/`, with the attempt `start` printed), and a `prompt` that holds what a subagent would get:
+Where the review runs through `review_other_family`, call that tool instead. Pass `model`, `effort` (when set in the preferences), `cwd` the target repo, `answer_path` the `answer:` path `start` printed, and a `prompt` that holds what a subagent would get:
 
 - the step skill's `SKILL.md` path (absolute), to read and follow;
 - the base commit and the command `git diff <base commit>...HEAD`;
@@ -37,9 +37,9 @@ Where the review runs through `review_other_family`, call that tool instead. Pas
 - the instruction to only report findings, never edit;
 - the lines `scripts/state <target repo> start <n> --requires findings` printed, and the instruction to end the answer with its step result as a json block, findings inline ([step-result.md](step-result.md)).
 
-Record the actual backend model and effort from preflight at `start` with `--model` / `--effort` when they differ from the resolved defaults; dispatch those settings. The tool writes the reviewer's answer to the `answer` path itself and returns only the backend, model and effort that ran and that path: verify they match, resolving a mismatch before retrying rather than changing attribution on delivery. Never read, save or rewrite the answer yourself: pass the path straight to `scripts/state <target repo> deliver <n> <answer path>`, which prints the verdict and one line per finding with its severity and title; decide the next move from those lines. The delivered findings, not the prose, are the step's findings. A failed or interrupted review returns the error and its output's tail and writes no answer file.
+Record the actual backend model and effort from preflight at `start` with `--model` / `--effort` when they differ from the resolved defaults; dispatch those settings. The tool writes the reviewer's answer to `answer_path` itself and returns only the backend, model and effort that ran and that path: verify they match, resolving a mismatch before retrying rather than changing attribution on delivery. Pass that path straight to `scripts/state <target repo> deliver <n> <answer path>` and work from the lines it prints ([step-result.md](step-result.md)); never read, save or rewrite the answer yourself. The delivered findings, not the prose, are the step's findings.
 
-When the tool or subagent fails (an error, a wrong `unverified` provider ID, a quota), say why and ask once for the rest of the run: retry, run the remaining reviews as same-family reviews, or stop. Never fall back without asking.
+A failed or interrupted `review_other_family` run returns the error and its output's tail and writes no answer file. When the tool or subagent fails (an error, a wrong `unverified` provider ID, a quota), say why and ask once for the rest of the run: retry, run the remaining reviews as same-family reviews, or stop. Never fall back without asking.
 
 ## Same-family review
 

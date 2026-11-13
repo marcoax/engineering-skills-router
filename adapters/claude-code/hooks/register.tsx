@@ -68,12 +68,41 @@ const resolvePath = (base: string, path: string) => {
   return `/${parts.join('/')}`
 }
 
-// Where a review's answer goes: a file under the target's `.router/steps/`, else why not.
+// Where the absolute `path` lands on disk, every symbolic link followed: the real path of its
+// nearest existing ancestor, the missing rest appended. Undefined when a link leads nowhere.
+async function realPathOf($: EngineInterface, path: string): Promise<string | undefined> {
+  const rest: string[] = []
+  for (let at = path; ; ) {
+    const stat = await $.fs.stat(at, { resolve: true }).catch(() => undefined)
+    if (stat) return stat.realPath === undefined ? undefined : resolvePath(stat.realPath, rest.join('/'))
+    if (at === '/') return undefined
+    const cut = at.lastIndexOf('/')
+    rest.unshift(at.slice(cut + 1))
+    at = at.slice(0, cut) || '/'
+  }
+}
+
+// Where a review's answer goes: a file under the target's `.router/steps/`, spelled so and landing
+// there once links are followed; `path` as given, `real` where it lands. Else why not.
 const ANSWER_DIR = '.router/steps/'
-function answerPath(target: string, answer: string): { path: string } | { refused: string } {
-  const dir = `${resolvePath(target, '.')}/${ANSWER_DIR}`.replace(/^\/\//, '/')
-  const path = resolvePath(target, answer)
-  return path.startsWith(dir) && path.length > dir.length ? { path } : { refused: `answer: ${answer} is not under ${dir}` }
+async function placeAnswer(
+  $: EngineInterface,
+  target: string,
+  answerPath: unknown,
+): Promise<{ path: string; real: string } | { refused: string }> {
+  const dir = `${target}/${ANSWER_DIR}`.replace(/^\/\//, '/')
+  if (typeof answerPath !== 'string' || !answerPath) {
+    return { refused: `answer_path: expected a file path under ${dir}, got ${JSON.stringify(answerPath)}` }
+  }
+  const path = resolvePath(target, answerPath)
+  if (!path.startsWith(dir) || path.length <= dir.length) return { refused: `answer_path: ${answerPath} is not under ${dir}` }
+  const realTarget = await realPathOf($, target)
+  const real = await realPathOf($, path)
+  const realDir = `${realTarget}/${ANSWER_DIR}`.replace(/^\/\//, '/')
+  if (realTarget === undefined || real === undefined || !real.startsWith(realDir) || real.length <= realDir.length) {
+    return { refused: `answer_path: ${answerPath} leads outside ${dir} (to ${real ?? 'nowhere'}) through a symbolic link` }
+  }
+  return { path, real }
 }
 
 const describePlan = (plan: Plan) =>
@@ -201,7 +230,7 @@ export const register: Register = on => {
       isDeferred: false,
       description:
         'Runs a prompt on a model outside the Claude family through a local CLI, read-only, ' +
-        'and returns its answer, or with `answer` writes it to that file and returns only the backend, model, effort and path; ' +
+        'and returns its answer, or with `answer_path` writes it to that file and returns only the backend, model, effort and path; ' +
         'the output streams into a "Cross-family review" pane. For the engineering ' +
         "router's cross-family reviews. `model` is as the user's preferences.yaml (scripts/config) names it: `openai-codex/<model>` " +
         'runs Codex, `opencode/<provider>/<model>` runs opencode; `effort` is low, medium or high. ' +
@@ -214,10 +243,11 @@ export const register: Register = on => {
           effort: { type: 'string', enum: ['low', 'medium', 'high'] },
           prompt: { type: 'string', description: 'The whole review instruction; omit to check availability' },
           cwd: { type: 'string', description: 'Target repo; the session directory by default' },
-          answer: {
+          answer_path: {
             type: 'string',
             description:
-              "File under the target's .router/steps/ that receives the answer; the tool then returns only who ran and that path",
+              "File under the target's .router/steps/ that receives the answer (the `answer:` path `scripts/state start` printed); " +
+              'the tool then returns only who ran and that path',
           },
         },
       },
@@ -239,7 +269,7 @@ export const register: Register = on => {
 
   // A cross-family review: one CLI run, streamed into the review pane.
   on('tool.call', { tool: REVIEW_TOOL }, async ($, e, next) => {
-    const input = e as unknown as { model?: unknown; effort?: unknown; prompt?: unknown; cwd?: unknown; answer?: unknown }
+    const input = e as unknown as { model?: unknown; effort?: unknown; prompt?: unknown; cwd?: unknown; answer_path?: unknown }
     const asked = {
       model: typeof input.model === 'string' ? input.model : undefined,
       effort: typeof input.effort === 'string' ? input.effort : undefined,
@@ -266,11 +296,11 @@ export const register: Register = on => {
     }
 
     // With an answer path the answer goes to that file, never through the chat.
-    let answer: string | undefined
-    if (typeof input.answer === 'string' && input.answer) {
-      const where = answerPath(resolvePath(await $.session.cwd(), cwd ?? '.'), input.answer)
+    let answerFile: { path: string; real: string } | undefined
+    if (input.answer_path !== undefined) {
+      const where = await placeAnswer($, resolvePath(await $.session.cwd(), cwd ?? '.'), input.answer_path)
       if ('refused' in where) return fail(where.refused)
-      answer = where.path
+      answerFile = where
     }
 
     await update($, review, () => ({ model: label, backend: backend.name, status: 'running', text: '' }))
@@ -312,16 +342,21 @@ export const register: Register = on => {
     const isOk = code === 0 && !next.signal.aborted
     await setStatus(isOk ? 'done' : 'failed')
     if (!isOk) return fail(`${backend.cli} ended with ${next.signal.aborted ? 'an interrupt' : `exit ${code}`}:\n${all.slice(-4000)}`)
-    // Codex and opencode write the answer to stdout and their progress to stderr.
-    if (answer) {
+    // Codex and opencode write the answer to stdout and their progress to stderr, never the answer.
+    const answerText = out.trim()
+    if (!answerText) return fail(`${backend.cli} printed no answer on stdout:\n${all.slice(-4000)}`)
+    if (answerFile) {
       try {
-        await $.fs.write(answer, out || all)
+        await $.fs.write(answerFile.real, `${answerText}\n`)
       } catch (err) {
-        return fail(`Reviewed by ${label}, but the answer could not be written to ${answer}: ${String(err)}`)
+        // The answer is paid for: it comes back here rather than being lost.
+        return fail(
+          `Reviewed by ${label}, but the answer could not be written to ${answerFile.path}: ${String(err)}\n\n${answerText.slice(-KEEP)}`,
+        )
       }
-      return ok(`Reviewed by ${label}.\nanswer: ${answer}`)
+      return ok(`Reviewed by ${label}.\nanswer: ${answerFile.path}`)
     }
-    return ok(`Reviewed by ${label}.\n\n${(out.trim() || all).slice(-KEEP)}`)
+    return ok(`Reviewed by ${label}.\n\n${answerText.slice(-KEEP)}`)
   }).catch(($, e, next) =>
     next.called ? next(e) : fail('review_other_family failed inside the mod; see claude --debug'),
   )
