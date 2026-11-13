@@ -442,10 +442,8 @@ try {
     }
     // A restart, or a start after a recorded attempt, resumes: it gets the recovery plan.
     const resumes = step.status === 'running' || step.progress != null;
-    const writer = fixes ? models.writerOf(state, step) : null;
-    const dispatch = fixes
-      ? { model: flags.model ?? models.fixesModel(state, step, prefs()), effort: flags.effort ?? writer?.effort ?? prefs().effort }
-      : running.steps[i];
+    const fixesRun = fixes ? models.fixesDispatch(state, step, prefs()) : null;
+    const dispatch = fixes ? { model: flags.model ?? fixesRun.model, effort: flags.effort ?? fixesRun.effort } : running.steps[i];
     lines.push(`model: ${dispatch.model}`, `effort: ${dispatch.effort ?? 'harness default'}`,
       ...(resumes ? progress.recovery : progress.reusableChecks)(expected.state, progress.checkout(target), flags.env));
     next = expected.state;

@@ -46,9 +46,7 @@ const writerFamily = (writer, state, prefs) =>
 // run's primary.
 function stepFamily(state, step, prefs) {
   if (!has(step, REVIEW_PHASES) || has(step, WRITING_PHASES)) return phaseFamily(step.phases, state, prefs);
-  const at = state.steps.indexOf(step);
-  const writer = state.steps.slice(0, at < 0 ? state.steps.length : at).reverse().find((s) => has(s, WRITING_PHASES));
-  return other(writerFamily(writer, state, prefs));
+  return other(writerFamily(writerOf(state, step), state, prefs));
 }
 
 // The step that wrote the code a review step reviews: the last earlier writing step, or null.
@@ -57,18 +55,18 @@ function writerOf(state, step) {
   return state.steps.slice(0, at < 0 ? state.steps.length : at).reverse().find((s) => has(s, WRITING_PHASES)) ?? null;
 }
 
-// The model a review's fixes run on: the model the code's writer ran on, else its family's.
-const fixesModel = (state, step, prefs) => {
+// What a review's fixes run on: the model and effort the code's writer ran on, else its
+// family's model and the preferences' effort (null: the harness default).
+function fixesDispatch(state, step, prefs) {
   const writer = writerOf(state, step);
-  return writer?.model ?? familyModel(writerFamily(writer, state, prefs), prefs);
-};
+  return { model: writer?.model ?? familyModel(writerFamily(writer, state, prefs), prefs), effort: writer?.effort ?? prefs.effort ?? null };
+}
 
 // For a review step that ran: true when it ran on a family other than the step that wrote the
 // code, false for a same-family review, null when either family is unknown. Not a review: null.
 function crossFamily(state, step, prefs) {
   if (!has(step, REVIEW_PHASES) || has(step, WRITING_PHASES) || !step.model) return null;
-  const at = state.steps.indexOf(step);
-  const writer = state.steps.slice(0, at).reverse().find((s) => has(s, WRITING_PHASES));
+  const writer = writerOf(state, step);
   const reviewer = modelFamily(step.model, prefs);
   const wrote = modelFamily(writer?.model, prefs);
   return reviewer && wrote ? reviewer !== wrote : null;
@@ -102,4 +100,4 @@ function primaryAnswer(state, prefs, answer) {
   return (options.find((o) => o.family === answer) ?? options[Number(answer) - 1])?.family ?? null;
 }
 
-module.exports = { FAMILIES, REVIEW_PHASES, modelFamily, crossFamily, writerOf, fixesModel, presetPrimary, preferredPrimary, primaryPreset, runPrimary, stepFamily, stepModel, modelsLine, primaryOptions, primaryQuestion, primaryAnswer };
+module.exports = { FAMILIES, REVIEW_PHASES, modelFamily, crossFamily, fixesDispatch, presetPrimary, preferredPrimary, primaryPreset, runPrimary, stepFamily, stepModel, modelsLine, primaryOptions, primaryQuestion, primaryAnswer };
