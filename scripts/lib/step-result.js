@@ -70,8 +70,7 @@ function openAttempt(state, ref, { requires, attempt, purpose }) {
   const p = paths(s, i);
   const lines = [`result: ${p.result}`, `attempt: ${attempt}`, `requires: ${kinds.map((k) => `${k} ${p[k]}`).join(', ')}`];
   if (pass) lines.push(`purpose: ${pass}`);
-  // The note is started headed by its run (run-files.js startNote): the step appends below it.
-  if (s.run && kinds.includes('note')) lines.push(`note: keep its first line \`run: ${s.run}\` and append below it`);
+  // The note's line comes from run-files.js startNote, which heads the note with its run.
   return { state: s, lines };
 }
 

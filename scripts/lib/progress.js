@@ -156,11 +156,24 @@ const checkLines = (p, checkout, env) => p.checks.map((c) => {
 
 // The recovery plan, one line each: completed steps kept with their checks, each open step's record checked against
 // the checkout, which checks hold and which rerun, and where to continue. Changes nothing.
-function recovery(state, checkout, env) {
-  const lines = [`recover: ${state.task} · workflow ${state.status}`];
+// Where the checkout stands against the run: the branch to check out, uncommitted paths.
+function checkoutLines(state, checkout) {
+  const lines = [];
   const branch = state.handoff?.branch;
   if (branch && checkout.branch !== branch) lines.push(`branch: on ${checkout.branch ?? 'no branch'}, the run works on ${branch}: check it out first`);
   if (checkout.changes.length) lines.push(`uncommitted: ${checkout.changes.join(', ')}`);
+  return lines;
+}
+
+// What a fresh step's brief needs from the run: the checkout and the closed steps' checks,
+// reused or rerun. No resume plan: the step has nothing to recover.
+function reusableChecks(state, checkout, env) {
+  return [...checkoutLines(state, checkout),
+    ...state.steps.flatMap((step) => (CLOSED.includes(step.status) && step.progress ? checkLines(step.progress, checkout, env) : []))];
+}
+
+function recovery(state, checkout, env) {
+  const lines = [`recover: ${state.task} · workflow ${state.status}`, ...checkoutLines(state, checkout)];
   let next = null;
   state.steps.forEach((step, i) => {
     const n = `${i + 1}. ${step.id}`;
@@ -203,4 +216,4 @@ function recovery(state, checkout, env) {
   return lines;
 }
 
-module.exports = { checkout, recordProgress, recordCheck, recordInterruption, retryProblem, recovery, RESULTS, RETRIES };
+module.exports = { checkout, recordProgress, recordCheck, recordInterruption, retryProblem, recovery, reusableChecks, RESULTS, RETRIES };

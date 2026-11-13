@@ -432,8 +432,10 @@ try {
       p.interrupted = null;
       if (flags['user-approved']) p.approved = p.interruptions;
     }
+    // A restart, or a start after a recorded attempt, resumes: it gets the recovery plan.
+    const resumes = step.status === 'running' || step.progress != null;
     lines.push(`model: ${running.steps[i].model}`, `effort: ${running.steps[i].effort ?? 'harness default'}`,
-      ...progress.recovery(expected.state, progress.checkout(target), flags.env));
+      ...(resumes ? progress.recovery : progress.reusableChecks)(expected.state, progress.checkout(target), flags.env));
     next = expected.state;
     lines.push(...expected.lines);
   } else if (command === 'deliver') {

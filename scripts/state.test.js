@@ -247,3 +247,24 @@ test('fixes and blocked keep handoff unchanged and do not close the step', (t) =
     assert.deepEqual(f.read().handoff, handoff);
   }
 });
+
+test('a first start briefs a fresh step without resume instructions and names its note once', (t) => {
+  const f = fixture(t);
+  const out = f.ok('start', '3');
+  assert.doesNotMatch(out, /^recover:|no progress record|^continue:/m);
+  assert.doesNotMatch(out, /^\d+\. /m); // no per-step recovery listing
+  assert.equal(out.match(/^note: /gm).length, 1, out);
+  assert.match(out, new RegExp(`^note: \\.router/steps/3-implementation\\.md, first line \`run: ${f.state.run}\`; append below it$`, 'm'));
+  // A restart of running work is a resume: it reports the step against its record.
+  assert.match(f.ok('start', '3'), /^3\. implementation: running/m);
+});
+
+test('an invalid handoff refuses a delivery whatever its verdict', (t) => {
+  const f = fixture(t);
+  const at = f.attempt(f.ok('start', '3', '--requires', 'findings'));
+  const saved = fs.readFileSync(f.file, 'utf8');
+  const r = f.deliver(f.result(at, { verdict: 'blocked', remaining: 'Needs a decision', handoff: { unknown: 'x' } }));
+  assert.equal(r.status, 1);
+  assert.match(r.stderr, /result\.handoff\.unknown/);
+  assert.equal(fs.readFileSync(f.file, 'utf8'), saved);
+});

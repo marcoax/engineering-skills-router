@@ -1449,8 +1449,8 @@ expectStateOk('unknown fields', variant((s) => { s.extra = 1; s.steps[0].extra =
 
   // A step without a declared delivery closes as before; one with it, only after a validated one.
   const expected = ok('start the review', st('start', 'review'));
-  if (step('review').status !== 'running' || step('review').model !== 'openai-codex/gpt-6-sol' || !expected.out.includes('purpose:') || !expected.out.includes('recover:'))
-    fail(`start should resolve the model and print the purpose and reusable checks\n${expected.out}`);
+  if (step('review').status !== 'running' || step('review').model !== 'openai-codex/gpt-6-sol' || !expected.out.includes('purpose:') || expected.out.includes('recover:'))
+    fail(`start should resolve the model and print the purpose, without a resume plan for a fresh step\n${expected.out}`);
   const attempt = attemptOf(expected);
   if (!attempt || !expected.out.includes('result: .router/steps/5-review.result.json')
     || !expected.out.includes('requires: note .router/steps/5-review.md, findings .router/steps/5-review.findings.json'))

@@ -106,7 +106,7 @@ function archive(target, state) {
 function startNote(target, state, i) {
   const rel = notePath(state, i);
   const note = path.join(target, rel);
-  const line = `note: ${rel}, first line \`run: ${state.run}\``;
+  const line = `note: ${rel}, first line \`run: ${state.run}\`; append below it`;
   const header = `run: ${state.run}\n`;
   if (!fs.existsSync(note)) {
     fs.mkdirSync(path.dirname(note), { recursive: true });
