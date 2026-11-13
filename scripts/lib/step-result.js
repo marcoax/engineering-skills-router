@@ -261,9 +261,11 @@ function deliver(state, ref, read, handoffValue = setHandoff) {
   if (merged) {
     accepted.findings = merged;
     if (verdict !== 'blocked') accepted.recheck = fixesRun ? recheck : null;
-    // The review's findings file holds them with their decisions, as scripts/record reads them.
+    // The review's findings file holds them with their decisions, as scripts/record reads them,
+    // and the step's recorded findings artifact is that file, wherever this delivery put its own.
     const decided = paths(state, i).findings;
     writes.splice(0, writes.length, ...writes.filter((w) => w.path !== decided), { path: decided, content: `${JSON.stringify(merged, null, 2)}\n` });
+    accepted.artifacts = [...artifacts.filter((a) => a.kind !== 'findings'), { kind: 'findings', path: decided }];
   }
   s.steps[i].result = accepted;
   const lines = [];

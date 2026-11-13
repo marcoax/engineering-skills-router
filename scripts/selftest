@@ -1741,6 +1741,20 @@ expectStateOk('unknown fields', variant((s) => { s.extra = 1; s.steps[0].extra =
     fail(`a finding the re-check reports again should be actionable again, and named\n${stillBroken.out}\n${JSON.stringify(step('review').result.findings)}`);
   ok('the fixes run takes the re-reported finding', st('start', 'review', '--fixes'));
 
+  // Findings delivered at a path of the review's choosing: the step's recorded findings file
+  // holds the decided list.
+  reviewing();
+  const ownAttempt = attemptOf(ok('start a review pass', st('start', 'review')));
+  fs.appendFileSync(path.join(repo, '.router/steps/5-review.md'), 'Reviewed.\n');
+  put('.router/steps/review-findings.json', [finding]);
+  put('.router/steps/5-review.result.json', result({ attempt: ownAttempt, verdict: 'fixes', summary: '1 finding',
+    artifacts: { note: '.router/steps/5-review.md', findings: '.router/steps/review-findings.json' } }));
+  ok('a review with findings at its own path', st('deliver', 'review'));
+  ok('declining the only finding', st('decide', 'review', '1', 'declined', '--reason', 'the filter applies upstream: src/query.js:12'));
+  const recordedFindings = step('review').result.artifacts.find((a) => a.kind === 'findings')?.path;
+  const atRecorded = recordedFindings && JSON.parse(fs.readFileSync(path.join(repo, recordedFindings), 'utf8'));
+  if (atRecorded?.[0]?.decision !== 'declined')
+    fail(`the step's recorded findings file should hold the decided findings: ${recordedFindings}: ${JSON.stringify(atRecorded)}`);
 
   // Blocked: the blocker is named and the step waits for it; the step closes no other way.
   fs.writeFileSync(stateFile, JSON.stringify(variant(() => {})));
