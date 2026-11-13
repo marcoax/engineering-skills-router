@@ -70,6 +70,8 @@ function openAttempt(state, ref, { requires, attempt, purpose }) {
   const p = paths(s, i);
   const lines = [`result: ${p.result}`, `attempt: ${attempt}`, `requires: ${kinds.map((k) => `${k} ${p[k]}`).join(', ')}`];
   if (pass) lines.push(`purpose: ${pass}`);
+  // A review whose executor writes no note is read-only: its answer goes to this attempt's file.
+  if (isReview(step) && !kinds.includes('note')) lines.push(`answer: ${STEPS_DIR}/${i + 1}-${step.id}.${attempt}.answer.md`);
   // The note's line comes from run-files.js startNote, which heads the note with its run.
   return { state: s, lines };
 }
@@ -214,6 +216,8 @@ function deliver(state, ref, read, handoffValue = setHandoff) {
     s = setStep(s, i + 1, 'done', { outcome: result.summary });
     lines.push(`done: ${result.summary}`);
   }
+  // The delivered findings in a line each, so the next decision needs no other read.
+  if (findings) lines.push(...(findings.length ? findings.map((f) => `finding: ${f.severity}: ${f.title}`) : ['findings: none']));
   return { state: s, verdict, actionable, lines, writes };
 }
 

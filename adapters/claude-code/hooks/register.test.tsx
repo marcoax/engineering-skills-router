@@ -172,6 +172,194 @@ test('a cross-family review runs codex read-only and returns its stdout', async 
   expect(opened.find(p => p.id === 'review')?.columns).toBeGreaterThanOrEqual(60)
 })
 
+// The answer file `start` names for a read-only review: `<n>-<step id>.<attempt>.answer.md`.
+const ANSWER_PATH = '.router/steps/5-review.7f3a9c2e.answer.md'
+
+// A file system of directories `dirs` and symbolic links `links` (path -> where it points), as
+// `$.fs.stat(path, { resolve: true })` answers it: the real path, or ENOENT for a missing one.
+const fakeFs = (on: any, { dirs = ['/repo/.router/steps', '/session/.router/steps'], links = {} as Record<string, string> } = {}) => {
+  const exists = (p: string) => dirs.some(d => d === p || d.startsWith(`${p}/`)) || p === '/'
+  const real = (p: string): string => {
+    let at = ''
+    for (const part of p.split('/').filter(Boolean)) {
+      at = `${at}/${part}`
+      if (links[at]) at = real(links[at])
+    }
+    return at || '/'
+  }
+  on('fs.stat', (_: unknown, e: any) => {
+    const lands = real(e.path)
+    if (exists(lands)) return { value: { kind: 'dir', size: 0, mtimeMs: 0, isLink: e.path in links, realPath: lands } }
+    // A link that leads nowhere stats as `other`, without a real path.
+    if (e.path in links) return { value: { kind: 'other', size: 0, mtimeMs: 0, isLink: true } }
+    throw Object.assign(new Error(`ENOENT: ${e.path}`), { code: 'ENOENT' })
+  })
+}
+
+// A review run whose CLI prints `answerText` on stdout and ends with `code`; records what it ran
+// and wrote. `writeFails` makes `$.fs.write` reject; `pauseMs` holds the CLI that long before its
+// answer, `run.answered` then telling that it went on.
+const reviewRun = (on: any, { answerText = 'The answer.', code = 0, writeFails = false, fs = {}, pauseMs = 0 } = {}) => {
+  const runs: string[][] = []
+  const writes: { path: string; text: string }[] = []
+  const run = { runs, writes, answered: false }
+  fakeFs(on, fs)
+  on('ui.open', () => ({ value: { isPlaced: true } }))
+  on('session.cwd', () => ({ value: '/session' }))
+  // Unanswered, `$.fs.write` rejects (the kit's bottom hook throws, naming the event).
+  if (!writeFails) {
+    on('fs.write', (_: unknown, e: any) => {
+      writes.push({ path: e.path, text: e.text })
+      return { value: undefined }
+    })
+  }
+  on('process.spawn', async function* (_: unknown, e: any) {
+    runs.push([...e.argv])
+    yield { stream: 'stderr', text: 'thinking…\n' }
+    if (pauseMs) await new Promise(r => setTimeout(r, pauseMs))
+    run.answered = true
+    if (answerText) yield { stream: 'stdout', text: answerText }
+    return { value: { code, signal: null } }
+  } as any)
+  return run
+}
+
+const reviewCall = ($: any, extra: Record<string, unknown> = {}) =>
+  $.tool.call({ tool: TOOL, model: 'openai-codex/gpt-6-sol', prompt: 'Review the diff', cwd: '/repo', answer_path: ANSWER_PATH, ...extra } as any)
+
+for (const [model, label] of [
+  ['openai-codex/gpt-6-sol', 'codex · gpt-6-sol · high (router)'],
+  ['opencode/openai/gpt-6', 'opencode · openai/gpt-6 · effort from its config (router)'],
+] as const) {
+  test(`a review through ${model.split('/')[0]} writes its answer to the answer path and returns only who ran and where`, async ($, on) => {
+    seed(null, on)
+    const { runs, writes } = reviewRun(on, { answerText: 'Long prose.\n```json\n{"verdict":"done"}\n```\n' })
+
+    const ran: any = await reviewCall($, { model, effort: 'high' })
+
+    expect(runs.length).toBe(1)
+    expect(writes).toEqual([
+      { path: `/repo/${ANSWER_PATH}`, text: 'Long prose.\n```json\n{"verdict":"done"}\n```\n' },
+    ])
+    expect(ran.result).toBe(`Reviewed by ${label}.\nanswer: /repo/${ANSWER_PATH}`)
+    expect(ran.isError).toBe(undefined)
+  })
+}
+
+test('an answer path outside the target .router/steps/ is refused before the reviewer runs', async ($, on) => {
+  seed(null, on)
+  const { runs, writes } = reviewRun(on)
+  for (const answer_path of ['notes/review.md', '.router/steps/../state.json', '/elsewhere/.router/steps/a.md', '.router/steps/']) {
+    const ran: any = await reviewCall($, { answer_path })
+    expect(ran.isError).toBe(true)
+    expect(ran.result).toMatch(/answer_path: .* is not under \/repo\/\.router\/steps\//)
+  }
+  expect(runs).toEqual([])
+  expect(writes).toEqual([])
+})
+
+for (const [where, links] of [
+  ['.router', { '/repo/.router': '/elsewhere/router' }],
+  ['.router/steps', { '/repo/.router/steps': '/elsewhere/steps' }],
+  ['the answer file', { [`/repo/${ANSWER_PATH}`]: '/elsewhere/steps/answer.md' }],
+  ['the answer file, leading nowhere', { [`/repo/${ANSWER_PATH}`]: '/nowhere/answer.md' }],
+] as const) {
+  test(`an answer path that a symbolic link at ${where} leads out of the target .router/steps/ is refused before the reviewer runs`, async ($, on) => {
+    seed(null, on)
+    const dirs = ['/repo/.router/steps', '/elsewhere/router/steps', '/elsewhere/steps']
+    const { runs, writes } = reviewRun(on, { fs: { dirs, links } })
+    const ran: any = await reviewCall($)
+    expect(ran.isError).toBe(true)
+    expect(ran.result).toMatch(/^answer_path: .* leads outside \/repo\/\.router\/steps\//)
+    expect(runs).toEqual([])
+    expect(writes).toEqual([])
+  })
+}
+
+test('a target reached through a symbolic link takes answers under its real .router/steps/', async ($, on) => {
+  seed(null, on)
+  const { writes } = reviewRun(on, { fs: { dirs: ['/real/repo/.router/steps'], links: { '/repo': '/real/repo' } } })
+  const ran: any = await reviewCall($)
+  expect(ran.isError).toBe(undefined)
+  expect(ran.result).toMatch(new RegExp(`answer: /repo/${ANSWER_PATH.replace(/\./g, '\\.')}$`))
+  expect(writes.map(w => w.path)).toEqual([`/real/repo/${ANSWER_PATH}`])
+})
+
+test('a non-string answer path is refused before the reviewer runs', async ($, on) => {
+  seed(null, on)
+  const { runs, writes } = reviewRun(on)
+  for (const answer_path of [5, true, { path: ANSWER_PATH }, [ANSWER_PATH], '']) {
+    const ran: any = await reviewCall($, { answer_path })
+    expect(ran.isError).toBe(true)
+    expect(ran.result).toMatch(/^answer_path: expected a file path under \/repo\/\.router\/steps\//)
+  }
+  expect(runs).toEqual([])
+  expect(writes).toEqual([])
+})
+
+test('without a cwd the answer path is under the session directory', async ($, on) => {
+  seed(null, on)
+  const { writes } = reviewRun(on)
+  const ran: any = await reviewCall($, { cwd: undefined, answer_path: `/session/${ANSWER_PATH}` })
+  expect(ran.isError).toBe(undefined)
+  expect(writes.map(w => w.path)).toEqual([`/session/${ANSWER_PATH}`])
+})
+
+test('a failed review returns the error with its output tail and writes no answer file', async ($, on) => {
+  seed(null, on)
+  const { writes } = reviewRun(on, { answerText: 'quota reached', code: 1 })
+  const ran: any = await reviewCall($)
+  expect(ran.isError).toBe(true)
+  expect(ran.result).toBe('codex ended with exit 1:\nthinking…\nquota reached')
+  expect(writes).toEqual([])
+})
+
+// Its stderr is progress, not the answer: it is never saved or returned as one.
+for (const [answerText, answer_path] of [['', ANSWER_PATH], [' \n\n', ANSWER_PATH], [' \n\n', undefined]] as const) {
+  const printed = answerText ? 'only whitespace' : 'nothing'
+  test(`a review that prints ${printed} on stdout ${answer_path ? 'writes no answer file and' : 'in the chat'} fails with its output tail`, async ($, on) => {
+    seed(null, on)
+    const { writes } = reviewRun(on, { answerText })
+    const ran: any = await reviewCall($, { answer_path })
+    expect(ran.isError).toBe(true)
+    expect(ran.result).toBe(`codex printed no answer on stdout:\nthinking…\n${answerText}`)
+    expect(writes).toEqual([])
+  })
+}
+
+// An interrupt: a plugin above settles the call while the reviewer is at work, which aborts the
+// review's dispatch; the reviewer's next piece of output then finds the signal aborted.
+const INTERRUPTER = {
+  name: 'interrupter',
+  tier: 'prepend',
+  register(on: any) {
+    on('tool.call', async ($: any, e: any, next: any) => {
+      void next(e).catch(() => undefined)
+      await new Promise(r => setTimeout(r, 50))
+      return { result: 'interrupted', isError: true }
+    })
+  },
+} as const
+
+test('an interrupted review writes no answer file', { plugins: [INTERRUPTER as any] }, async ($, on) => {
+  seed(null, on)
+  const run = reviewRun(on, { pauseMs: 200 })
+  const ran: any = await reviewCall($)
+  expect(ran.result).toBe('interrupted')
+  await new Promise(r => setTimeout(r, 600))
+  expect(run.runs.length).toBe(1)
+  expect(run.answered).toBe(true)
+  expect(run.writes).toEqual([])
+})
+
+test('an answer that cannot be written comes back in the error, so it is not lost', async ($, on) => {
+  seed(null, on)
+  reviewRun(on, { answerText: 'The paid-for answer.\n', writeFails: true })
+  const ran: any = await reviewCall($)
+  expect(ran.isError).toBe(true)
+  expect(ran.result).toMatch(new RegExp(`^Reviewed by codex · gpt-6-sol · default effort \\(router\\), but the answer could not be written to /repo/${ANSWER_PATH.replace(/\./g, '\\.')}: .*fs\\.write\n\nThe paid-for answer\\.$`))
+})
+
 test('a cross-family review without a prompt checks the CLI and answers "available" as text', async ($, on) => {
   seed(null, on)
   const runs: string[][] = []

@@ -268,3 +268,38 @@ test('an invalid handoff refuses a delivery whatever its verdict', (t) => {
   assert.match(r.stderr, /result\.handoff\.unknown/);
   assert.equal(fs.readFileSync(f.file, 'utf8'), saved);
 });
+
+test('a read-only review start prints where its answer goes, and delivering it prints the verdict and each finding', (t) => {
+  const f = fixture(t);
+  const answerPathOf = (out) => out.match(/^answer: (\S+)$/m)[1];
+  const first = f.ok('start', '5', '--requires', 'findings');
+  const at = f.attempt(first);
+  assert.equal(answerPathOf(first), `.router/steps/5-review.${at}.answer.md`);
+  const answerText = (attempt, findings) => `Prose the main session never reads.\n\n\`\`\`json\n${JSON.stringify({
+    step: 'review', attempt, verdict: findings.length ? 'fixes' : 'done', summary: 'Reviewed',
+    artifacts: { findings } })}\n\`\`\`\n`;
+  const file = path.join(f.target, answerPathOf(first));
+  fs.writeFileSync(file, answerText(at, [
+    { title: 'Export drops the header row', severity: 'high', found_by: ['review'] },
+    { title: 'Name the CSV helper', severity: 'low', found_by: ['review'] },
+  ]));
+  const fixes = f.ok('deliver', '5', file);
+  assert.match(fixes, /^fixes: 2 actionable findings: run the fixes, then start 5 again$/m);
+  assert.match(fixes, /^finding: high: Export drops the header row\nfinding: low: Name the CSV helper$/m);
+
+  const second = f.ok('start', '5', '--requires', 'findings', '--purpose', 'Re-check after the fixes');
+  const again = f.attempt(second);
+  const file2 = path.join(f.target, answerPathOf(second));
+  assert.notEqual(file2, file);
+  fs.writeFileSync(file2, answerText(again, []));
+  const done = f.ok('deliver', '5', file2);
+  assert.match(done, /^done: Reviewed$/m);
+  assert.match(done, /^findings: none$/m);
+  assert.doesNotMatch(done, /^finding: /m);
+});
+
+test('a start whose step writes its own note prints no answer path', (t) => {
+  const f = fixture(t);
+  assert.doesNotMatch(f.ok('start', '5'), /^answer: /m);
+  assert.doesNotMatch(f.ok('start', '3', '--requires', 'findings'), /^answer: /m);
+});
