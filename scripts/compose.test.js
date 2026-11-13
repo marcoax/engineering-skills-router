@@ -189,6 +189,18 @@ test('a skill selected for two phases is one step that keeps each phase\'s selec
   assert.equal(f.step('architecture').reason, 'preference');
 });
 
+test('the pull-request step is in its place: the selected PR skill writes the body, else the router alone', (t) => {
+  const f = fixture(t);
+  f.ok(f.compose());
+  assert.equal(f.ids().at(-1), 'pull-request');
+  assert.deepEqual([f.step('pull-request').skill, f.step('pull-request').phases], ['mattpocock/pr', ['pull-request']]);
+  const none = { ...FEATURE, phases: FEATURE.phases.filter((p) => p.phase !== 'pull-request'),
+    omitted: [...FEATURE.omitted, { phase: 'pull-request', reason: 'the router writes the body' }] };
+  f.ok(f.compose({ selection: none }));
+  assert.equal(f.ids().at(-1), 'pull-request');
+  assert.deepEqual([f.step('pull-request').skill, f.step('pull-request').summary], [null, 'Open the pull request']);
+});
+
 test('the light path: branch, implementation, review, security, framework-review, pull request', (t) => {
   const f = fixture(t);
   const selection = {
@@ -208,12 +220,11 @@ test('the light path: branch, implementation, review, security, framework-review
 
 test('issue-tracking gets no step of its own; a workflow nothing publishes from is issue-free', (t) => {
   const f = fixture(t);
-  const own = { ...FEATURE, phases: [...FEATURE.phases, phase('issue-tracking', 'mattpocock/triage')] };
-  const r = f.compose({ selection: own });
-  assert.equal(r.status, 1);
-  assert.match(r.stderr, /issue-tracking: mattpocock\/triage: gets no step of its own/);
-  assert.equal(fs.existsSync(f.file), false);
   const free = { ...FEATURE, phases: [phase('specification', 'addyosmani/spec-driven-development'), ...FEATURE.phases.slice(1)] };
+  // A skill selected for issue-tracking alone is dropped, and says so.
+  const own = f.ok(f.compose({ selection: { ...free, phases: [...free.phases, phase('issue-tracking', 'mattpocock/triage')] } }));
+  assert.match(own, /^dropped: issue-tracking: mattpocock\/triage fills no other phase, so it gets no step \(SKILL\.md §4\)$/m);
+  assert.equal(f.read().steps.some((s) => s.skill === 'mattpocock/triage' || s.phases.includes('issue-tracking')), false);
   const out = f.ok(f.compose({ selection: free }));
   assert.deepEqual(f.step('specification').phases, ['specification']);
   assert.equal(f.step('branch').summary, 'Create <slug> (issue-free.md)');

@@ -77,9 +77,11 @@ function routerSteps(path, issue, issueFree, steps) {
 // The steps for a checked `selection` under the checked `classification` (type, path), for a target
 // with or without tracker configuration. `issue` ({number, url} | null) when the task is an issue;
 // `checkpoints` the step ids or phases the user asked to stop before. Returns
-// { steps, errors, missing, issueFree }: `missing` adds the phases compose could not fill.
+// { steps, errors, notes, missing }: `notes` says what compose dropped, `missing` adds the phases
+// it could not fill.
 function build({ classification, selection, skills, trackerConfigured, issue = null, checkpoints = [] }) {
   const errors = [];
+  const notes = [];
   const missing = [];
   const path = classification.path === 'light' ? 'light' : 'full';
   const selected = Catalog.arr(selection.phases);
@@ -100,7 +102,7 @@ function build({ classification, selection, skills, trackerConfigured, issue = n
   for (const p of selected.filter((x) => x.phase === 'issue-tracking')) {
     const group = groups.find((g) => g.skill === p.default.skill);
     if (group) group.entries.push(p);
-    else errors.push(`issue-tracking: ${p.default.skill}: gets no step of its own; only a skill selected for another phase fills it (SKILL.md §4)`);
+    else notes.push(`dropped: issue-tracking: ${p.default.skill} fills no other phase, so it gets no step (SKILL.md §4)`);
   }
   // Multi-session replaces the whole flow: its output routes the later sessions, which implement (§2).
   const multi = groups.find((g) => g.entries.some((e) => e.phase === 'multi-session'));
@@ -149,7 +151,7 @@ function build({ classification, selection, skills, trackerConfigured, issue = n
     if (step) step.confirm = true;
     else errors.push(`checkpoint ${c}: no step or phase ${JSON.stringify(c)} in the workflow (${steps.map((s) => s.id).join(', ')})`);
   }
-  return { steps, errors, missing, issueFree };
+  return { steps, errors, notes, missing };
 }
 
 // The workflow as SKILL.md §5 shows it before `go`, and as `show` prints it later on: one entry per

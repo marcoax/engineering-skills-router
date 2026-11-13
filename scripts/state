@@ -285,7 +285,7 @@ function compose() {
     ...(isNew && previous ? [`archived: the previous run in ${files.archive(target, previous)}`] : []),
     '', ...Compose.present(covered.state, prefs()),
   ];
-  write(covered.state, `compose${isNew ? ' --new' : ''}`, [classified.line, ...covered.notes.map((n) => `coverage: ${n}`)], archived);
+  write(covered.state, `compose${isNew ? ' --new' : ''}`, [classified.line, ...built.notes, ...covered.notes.map((n) => `coverage: ${n}`)], archived);
 }
 
 // The classification (classification.md) the composed workflow carries, as { fields, line }. A new
