@@ -2723,6 +2723,15 @@ ${primary ? `  primary: ${primary}\n` : ''}  effort: medium
   const after = fs.readFileSync(path.join(ROOT, 'skills/engineering-router/after-implementation.md'), 'utf8');
   if (!/\*\*Per-item cost\.\*\*/.test(after) || !/representative load/.test(after)) fail('after-implementation.md should require a per-item cost check under a representative load');
   if (!/--purpose/.test(after) || /have a fresh reviewer check it/.test(after)) fail('after-implementation.md should run another review pass only with a declared --purpose');
+  // The fixes and the decisions on findings are described once, in step-result.md (#99); no
+  // pass records the decisions.
+  const routerDocs = fs.readdirSync(path.join(ROOT, 'skills/engineering-router')).filter((f) => f.endsWith('.md'))
+    .map((f) => [f, fs.readFileSync(path.join(ROOT, 'skills/engineering-router', f), 'utf8')]);
+  const describing = routerDocs.filter(([, text]) => /`decide <n>|start <n> --fixes/.test(text)).map(([f]) => f);
+  if (JSON.stringify(describing) !== '["step-result.md"]') fail(`the fixes and decisions should be described in step-result.md only, found in: ${describing.join(', ')}`);
+  if (!/^## Fixes and decisions$/m.test(routerDocs.find(([f]) => f === 'step-result.md')[1])) fail('step-result.md should have a Fixes and decisions section');
+  const stale = routerDocs.filter(([, text]) => /record the decisions/i.test(text)).map(([f]) => f);
+  if (stale.length) fail(`recording the decisions is no longer a review pass: ${stale.join(', ')}`);
 }
 
 const adapterDir = path.join(ROOT, 'adapters/pi');
