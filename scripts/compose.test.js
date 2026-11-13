@@ -343,6 +343,16 @@ test('a recomposition keeps completed steps, primary, handoff, checklist and rev
   assert.equal(s.task, before.task);
   for (const k of ['run', 'owner', 'primary', 'handoff', 'manual_checklist', 'reviewed']) assert.deepEqual(s[k], before[k], k);
   assert.equal(f.step('implementation').skill, 'addyosmani/incremental-implementation');
+  // The kept handoff is never replaced silently: the same --issue passes, another is refused.
+  f.ok(f.compose({ isNew: false, selection: swapped, task: null, extra: ['--issue', '42'] }));
+  fs.mkdirSync(path.join(f.target, 'docs'), { recursive: true });
+  fs.writeFileSync(path.join(f.target, 'docs/spec.md'), '# spec\n');
+  for (const extra of [['--issue', '43'], ['--spec', 'docs/spec.md']]) {
+    const r = f.compose({ isNew: false, selection: swapped, task: null, extra });
+    assert.equal(r.status, 1, extra.join(' '));
+    assert.match(r.stderr, new RegExp(`${extra[0]} ${extra[1]}: a recomposition keeps the run's handoff`));
+  }
+  assert.deepEqual(f.read().handoff, before.handoff);
   // Dropping a completed step is refused.
   const dropped = { ...FEATURE, phases: FEATURE.phases.slice(1), omitted: [...FEATURE.omitted, { phase: 'specification', reason: 'done' }] };
   const r = f.compose({ isNew: false, selection: dropped });
