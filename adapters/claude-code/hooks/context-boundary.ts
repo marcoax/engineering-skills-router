@@ -31,8 +31,10 @@ export function completedStep(command: string, output: string): string | undefin
     else args.push(arg)
   }
   if (action === 'step' && (args.length !== 2 || args[1] !== 'done')) return
-  if (action === 'deliver' && (args.length < 1 || args.length > 2 || !/^done: /m.test(output))) return
-  if (!output.split('\n').some(line => line.startsWith(`state: ${action} ${args.join(' ')} → workflow `))) return
+  if (action === 'deliver' && (args.length < 1 || args.length > 2)) return
+  const lines = output.split('\n')
+  const header = lines.findIndex(line => line.startsWith(`state: ${action} ${args.join(' ')} → workflow `))
+  if (header < 0 || (action === 'deliver' && !lines[header + 1]?.startsWith('done: '))) return
   return script.replace(/state$/, 'context-threshold')
 }
 

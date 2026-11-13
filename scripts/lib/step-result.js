@@ -137,6 +137,7 @@ function deliver(state, ref, read, handoffValue = setHandoff) {
   for (const kind of Object.keys(given)) if (!KINDS.includes(kind)) problems.push(`artifacts.${kind}: unknown artifact (${KINDS.join(', ')})`);
 
   // Each declared artifact must be there and valid; a blocked step reports what it has.
+  const issue = (verdict === 'done' ? s : state).handoff?.issue;
   const ids = new Set(state.steps.map((s) => s.id));
   const kept = [];
   const artifacts = [];
@@ -185,8 +186,8 @@ function deliver(state, ref, read, handoffValue = setHandoff) {
           });
         if (!own.length) findings = list;
       }
-    } else if (kind === 'pr-body' && state.handoff?.issue?.number != null) {
-      const n = state.handoff.issue.number;
+    } else if (kind === 'pr-body' && issue?.number != null) {
+      const n = issue.number;
       if (!new RegExp(`\\bCloses #${n}\\b`, 'i').test(content)) own.push(`pr-body: must link the issue with "Closes #${n}"`);
     }
     if (own.length) problems.push(...own);

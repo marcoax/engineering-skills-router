@@ -67,6 +67,60 @@ test('done delivery records handoff values from its result', (t) => {
     branch: handoff.branch, base_commit: handoff.base, pr: handoff.pr });
 });
 
+test('done delivery validates its PR body against the issue handoff it records', (t) => {
+  const f = fixture(t);
+  const at = f.attempt(f.ok('start', '3', '--requires', 'findings,pr-body'));
+  const body = '.router/steps/3-implementation.pr-body.md';
+  f.put(body, 'Closes #95\n');
+  const issue = { number: 95, url: 'https://example.test/issues/95' };
+  const r = f.deliver(f.result(at, { artifacts: { findings: [], 'pr-body': body }, handoff: { issue } }));
+  assert.equal(r.status, 0, r.stderr);
+  assert.deepEqual(f.read().handoff.issue, issue);
+  assert.equal(f.read().steps[2].status, 'done');
+});
+
+test('done delivery refuses a PR body linking the stale issue without state or inline artifact writes', (t) => {
+  const f = fixture(t);
+  const at = f.attempt(f.ok('start', '3', '--requires', 'findings,pr-body'));
+  const body = '.router/steps/3-implementation.pr-body.md';
+  const findings = '.router/steps/3-implementation.findings.json';
+  f.put(body, 'Closes #42\n');
+  f.put(findings, 'existing findings\n');
+  const saved = fs.readFileSync(f.file, 'utf8');
+  const r = f.deliver(f.result(at, { artifacts: { findings: [], 'pr-body': body },
+    handoff: { issue: { number: 95, url: 'https://example.test/issues/95' } } }));
+  assert.equal(r.status, 1, r.stdout + r.stderr);
+  assert.match(r.stderr, /pr-body: must link the issue with "Closes #95"/);
+  assert.equal(fs.readFileSync(f.file, 'utf8'), saved);
+  assert.equal(f.read().steps[2].result.verdict, null);
+  assert.equal(fs.readFileSync(path.join(f.target, findings), 'utf8'), 'existing findings\n');
+  assert.equal(fs.readFileSync(path.join(f.target, body), 'utf8'), 'Closes #42\n');
+});
+
+for (const verdict of ['fixes', 'blocked']) {
+  test(`${verdict} delivery validates its PR body against the persisted issue, not the unapplied handoff`, (t) => {
+    const f = fixture(t);
+    const at = f.attempt(f.ok('start', '3', '--requires', 'findings,pr-body'));
+    const body = '.router/steps/3-implementation.pr-body.md';
+    const handoff = f.read().handoff;
+    const findings = verdict === 'fixes' ? [{ title: 'Needs a fix', severity: 'high', found_by: ['implementation'] }] : [];
+    const result = f.result(at, { verdict, remaining: 'Needs a decision', artifacts: { findings, 'pr-body': body },
+      handoff: { issue: { number: 95, url: 'https://example.test/issues/95' } } });
+    f.put(body, 'Closes #95\n');
+    const saved = fs.readFileSync(f.file, 'utf8');
+    const refused = f.deliver(result);
+    assert.equal(refused.status, 1, refused.stdout + refused.stderr);
+    assert.match(refused.stderr, /pr-body: must link the issue with "Closes #42"/);
+    assert.equal(fs.readFileSync(f.file, 'utf8'), saved);
+    assert.equal(fs.existsSync(path.join(f.target, '.router/steps/3-implementation.findings.json')), false);
+    f.put(body, 'Closes #42\n');
+    const accepted = f.deliver(result);
+    assert.equal(accepted.status, 0, accepted.stderr);
+    assert.deepEqual(f.read().handoff, handoff);
+    assert.equal(f.read().steps[2].status, verdict === 'fixes' ? 'running' : 'waiting');
+  });
+}
+
 test('invalid handoff refuses delivery without state or inline artifact writes, leaving the attempt open', (t) => {
   const f = fixture(t);
   const at = f.attempt(f.ok('start', '3', '--requires', 'findings'));

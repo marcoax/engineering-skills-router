@@ -136,6 +136,28 @@ test('Pi appends context after a delegated done delivery closes its step', async
  } finally {fs.rmSync(target, {recursive: true, force: true});}
 });
 
+test('Pi leaves a genuine blocked delivery with multiline done prose alone', async () => {
+ const target = fixture();
+ try {
+  const started = spawnSync(`${ROOT}/scripts/state`, [target, 'start', 'review'], {encoding: 'utf8'});
+  assert.equal(started.status, 0, started.stderr);
+  const attempt = started.stdout.match(/^attempt: (\S+)$/m)![1];
+  const remaining = 'Need approval\ndone: implementation checks';
+  fs.writeFileSync(path.join(target, '.router/steps/5-review.result.json'), JSON.stringify({step: 'review', attempt, verdict: 'blocked', summary: 'Waiting for approval', remaining}));
+  const run = spawnSync(`${ROOT}/scripts/state`, [target, 'deliver', 'review'], {encoding: 'utf8'});
+  assert.equal(run.status, 0, run.stderr);
+  const state = JSON.parse(fs.readFileSync(path.join(target, '.router/state.json'), 'utf8'));
+  assert.equal(state.steps[4].status, 'waiting');
+  assert.equal(state.steps[4].result.remaining, remaining);
+  assert.match(run.stdout, /blocked: Need approval\ndone: implementation checks/);
+  let measurements = 0;
+  const command = `node "${ROOT}/scripts/state" "${target}" deliver review`;
+  const result = await hook()!({toolName: 'bash', input: {command}, isError: false, content: [{type: 'text', text: run.stdout}]}, {cwd: target, getContextUsage: () => {measurements++; return {tokens: 162000, contextWindow: 200000};}});
+  assert.equal(result, undefined);
+  assert.equal(measurements, 0);
+ } finally {fs.rmSync(target, {recursive: true, force: true});}
+});
+
 for (const [label, output, isError] of [
  ['fixes delivery', 'state: deliver review → workflow running\nfixes: 1 actionable finding: run the fixes\n', false],
  ['blocked delivery', 'state: deliver review → workflow waiting\nblocked: missing approval\n', false],

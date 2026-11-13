@@ -15,6 +15,19 @@ test('Claude reports context after a successful router step closes', async ($, o
   expect(result.result.extra).toBe('kept')
 })
 
+for (const [label, delivery, expected] of [
+  ['done', 'state: deliver review → workflow running\ndone: No findings\n', 'context: 162000 of 200000 window, threshold 150000\n'],
+  ['blocked with multiline done prose', 'state: deliver review → workflow waiting\nblocked: Need approval\ndone: implementation checks\n', ''],
+] as const) {
+  test(`Claude boundary: ${label} delivery`, async ($, on) => {
+    on('tool.call', {tool: 'Bash'}, () => ({result: {stdout: delivery, stderr: '', interrupted: false}}) as any)
+    on('process.run', () => ({value: {exitCode: 0, stdout: '150000\n', stderr: ''}}))
+    on('session.usage', () => ({value: {context: {tokens: 162000, window: 200000}}}) as any)
+    const result: any = await $.tool.call({tool: 'Bash', command: '"/router checkout/scripts/state" "/target repo" deliver review'} as any)
+    expect(result.result.stdout).toBe(delivery + expected)
+  })
+}
+
 for (const [label, threshold, tokens, expected] of [
   ['inclusive custom threshold', 162000, 162000, 'context: 162000 of 200000 window, threshold 162000\n'],
   ['below threshold', 170000, 162000, ''],
