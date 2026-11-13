@@ -22,7 +22,7 @@ export function completedStep(command: string, output: string): string | undefin
   if (!script || !/(?:^|\/)scripts\/state$/.test(script)) return
   if (!words.shift()) return
   const action = words.shift()
-  if (action !== 'step' && action !== 'deliver') return
+  if (action !== 'step' && action !== 'deliver' && action !== 'decide') return
   const args: string[] = []
   while (words.length) {
     const arg = words.shift()!
@@ -32,9 +32,11 @@ export function completedStep(command: string, output: string): string | undefin
   }
   if (action === 'step' && (args.length !== 2 || args[1] !== 'done')) return
   if (action === 'deliver' && (args.length < 1 || args.length > 2)) return
+  if (action === 'decide' && args.length !== 3) return
   const lines = output.split('\n')
   const header = lines.findIndex(line => line.startsWith(`state: ${action} ${args.join(' ')} → workflow `))
-  if (header < 0 || (action === 'deliver' && !lines[header + 1]?.startsWith('done: '))) return
+  // A delivery or a decision is a boundary only when it closed the step.
+  if (header < 0 || (action !== 'step' && !lines[header + 1]?.startsWith('done: '))) return
   return script.replace(/state$/, 'context-threshold')
 }
 
