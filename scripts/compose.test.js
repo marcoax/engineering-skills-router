@@ -120,16 +120,40 @@ test('the default flow changes by type: debugging and code-understanding before 
     'review', 'verification', 'pull-request']);
 });
 
-test('multi-session: a skill selected for two phases appears once', (t) => {
+test('multi-session: only the multi-session step; implementation happens in later sessions', (t) => {
   const f = fixture(t);
+  const later = ['specification', 'implementation', 'review', 'pull-request'].map((p) => ({ phase: p, reason: 'a later session, from its output' }));
   const selection = {
     ...FEATURE,
-    phases: [phase('multi-session', 'mattpocock/wayfinder'), phase('planning', 'mattpocock/wayfinder'), ...FEATURE.phases.filter((p) => p.phase !== 'specification')],
-    omitted: [...FEATURE.omitted.filter((o) => o.phase !== 'planning'), { phase: 'specification', reason: 'wayfinder maps the route' }],
+    phases: [phase('multi-session', 'mattpocock/wayfinder'), phase('planning', 'mattpocock/wayfinder')],
+    omitted: [...FEATURE.omitted.filter((o) => o.phase !== 'planning'), ...later],
   };
   f.ok(f.compose({ selection }));
-  assert.deepEqual(f.ids(), ['multi-session', 'branch', 'implementation', 'testing', 'review', 'verification', 'pull-request']);
+  assert.deepEqual(f.ids(), ['multi-session']);
   assert.deepEqual(f.step('multi-session').phases, ['multi-session', 'planning', 'issue-tracking']);
+  // Work for the later sessions selected alongside it is refused, naming the phases.
+  const both = { ...selection, phases: [...selection.phases, ...FEATURE.phases.filter((p) => p.phase !== 'specification')],
+    omitted: [...FEATURE.omitted.filter((o) => o.phase !== 'planning'), { phase: 'specification', reason: 'wayfinder maps the route' }] };
+  const r = f.compose({ selection: both, isNew: false });
+  assert.equal(r.status, 1);
+  assert.match(r.stderr, /multi-session: implementation happens in later sessions from its output \(SKILL\.md §2\): omit implementation, testing, review, pull-request/);
+  assert.deepEqual(f.ids(), ['multi-session']);
+});
+
+test('refactor: code-understanding before the specification; refactoring or architecture implements it', (t) => {
+  const f = fixture(t);
+  const REFACTOR = { ...CLASSIFICATION, type: 'refactor' };
+  const without = (...names) => FEATURE.phases.filter((p) => !names.includes(p.phase));
+  const front = [phase('code-understanding', 'pstack/how'), phase('architecture', 'mattpocock/codebase-design')];
+  const implemented = { phase: 'implementation', reason: 'the refactoring skill implements it' };
+  // Refactoring selected: it implements after the branch; architecture stays a design step in front.
+  f.ok(f.compose({ classification: REFACTOR, selection: { ...FEATURE, phases: [...front, phase('refactoring', 'addyosmani/code-simplification'),
+    ...without('implementation', 'testing')], omitted: [...FEATURE.omitted, implemented] } }));
+  assert.deepEqual(f.ids(), ['code-understanding', 'architecture', 'specification', 'branch', 'refactoring', 'review', 'verification', 'pull-request']);
+  // Architecture alone: it implements, after the branch.
+  f.ok(f.compose({ classification: REFACTOR, selection: { ...FEATURE, phases: [...front, ...without('implementation', 'testing')],
+    omitted: [...FEATURE.omitted, implemented] } }));
+  assert.deepEqual(f.ids(), ['code-understanding', 'specification', 'branch', 'architecture', 'review', 'verification', 'pull-request']);
 });
 
 test('the light path: branch, implementation, review, security, framework-review, pull request', (t) => {
@@ -167,6 +191,12 @@ test('an existing spec file is the handoff at composition', (t) => {
   const f = fixture(t);
   const selection = { ...FEATURE, phases: FEATURE.phases.slice(1),
     omitted: [...FEATURE.omitted, { phase: 'specification', reason: 'the task is a spec file' }] };
+  const missing = f.compose({ selection, extra: ['--spec', 'docs/specs/csv-export.md'] });
+  assert.equal(missing.status, 1);
+  assert.match(missing.stderr, /--spec docs\/specs\/csv-export\.md: no such file in the target repo/);
+  assert.equal(fs.existsSync(f.file), false);
+  fs.mkdirSync(path.join(f.target, 'docs/specs'), { recursive: true });
+  fs.writeFileSync(path.join(f.target, 'docs/specs/csv-export.md'), '# CSV export\n');
   const out = f.ok(f.compose({ selection, extra: ['--spec', 'docs/specs/csv-export.md'] }));
   assert.equal(f.read().handoff.spec, 'docs/specs/csv-export.md');
   assert.match(out, /^Issue-free: the spec file docs\/specs\/csv-export.md is the handoff/m);
@@ -283,5 +313,12 @@ test('a file holding a complete state is refused with a pointer to the new input
   assert.equal(r.status, 1);
   assert.match(r.stderr, /a file holding a complete state is refused/);
   assert.match(r.stderr, /--classification <file> --selection <file>/);
+  assert.equal(fs.existsSync(f.file), false);
+  // The same pointer when the state comes as the selection.
+  const asSelection = f.compose({ selection: { version: 1, task: 'x', steps: [] } });
+  assert.equal(asSelection.status, 1);
+  assert.match(asSelection.stderr, /a file holding a complete state is refused/);
+  assert.match(asSelection.stderr, /--classification <file> --selection <file>/);
+  assert.doesNotMatch(asSelection.stdout + asSelection.stderr, /check-selection/);
   assert.equal(fs.existsSync(f.file), false);
 });

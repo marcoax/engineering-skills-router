@@ -98,6 +98,7 @@ const { spawnSync } = require('node:child_process');
 const ops = require('./lib/state-ops');
 const models = require('./lib/models');
 const files = require('./lib/run-files');
+const { lastJsonBlock } = require('./lib/json-block');
 // The user configuration in effect (scripts/config), never the target repo's, read when a command
 // needs it; an unreadable one stops the command with its errors instead of passing for the defaults.
 let loaded;
@@ -179,11 +180,14 @@ function requireOwner(current) {
 function compose() {
   const isNew = flags.new === true;
   const usage = 'usage: scripts/state <target-repo> compose [--new] --classification <file> --selection <file> --task "..." [--issue <n|url>] [--spec <path>] [--checkpoint <step>[,<step>]] [--reselect]';
-  if (args.length) die(`compose builds the steps itself: a file holding a complete state is refused. Pass the checked classification and selection instead (SKILL.md §5):\n${usage}`);
+  const refused = `compose builds the steps itself: a file holding a complete state is refused. Pass the checked classification and selection instead (SKILL.md §5):\n${usage}`;
+  if (args.length) die(refused);
   for (const key of ['classification', 'selection']) {
     if (flags[key] !== undefined && !fs.existsSync(flags[key])) die(`${usage}\nnot found: ${flags[key]}`);
   }
   if (!flags.selection || (isNew && (!flags.classification || !flags.task?.trim()))) die(usage);
+  if (flags.spec && !fs.existsSync(path.resolve(target, String(flags.spec))))
+    die(`--spec ${flags.spec}: no such file in the target repo; --spec names the existing spec file the task is (SKILL.md §2)`);
   const readJson = (f) => {
     try {
       return JSON.parse(fs.readFileSync(f, 'utf8'));
@@ -212,12 +216,18 @@ function compose() {
     }
     return r.stdout;
   };
+  const selection = (() => {
+    const text = fs.readFileSync(flags.selection, 'utf8');
+    try {
+      return JSON.parse(lastJsonBlock(text) ?? text);
+    } catch {
+      return null; // check-selection names what is wrong with it
+    }
+  })();
+  if (selection && (Array.isArray(selection.steps) || selection.version !== undefined)) die(refused);
   const given = flags.classification ? readJson(flags.classification) : null;
   const classified = classification(given, isNew ? null : previous, checked);
   checked('check-selection', '--target', target, ...(flags.reselect ? ['--reselect'] : []), flags.selection);
-  const text = fs.readFileSync(flags.selection, 'utf8');
-  const blocks = [...text.matchAll(/```json\r?\n([\s\S]*?)```/g)].map((m) => m[1]);
-  const selection = JSON.parse(blocks.length ? blocks.at(-1) : text);
 
   // The task being an issue or an existing spec file is the handoff from the start; a
   // recomposition keeps the run's.

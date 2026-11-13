@@ -7,7 +7,7 @@ const models = require('./models');
 const { LETTERS, OFF } = require('./state-ops');
 
 // The default flow's order (SKILL.md §2), with the changes by type: debugging and code-understanding
-// come before requirements and the specification, multi-session replaces the front. Phases the flow
+// come before requirements and the specification, multi-session replaces the whole flow. Phases the flow
 // does not name run with the build, before the reviews.
 const FRONT = ['setup', 'debugging', 'code-understanding', 'discovery', 'research', 'multi-session', 'requirements',
   'clarification', 'prototype', 'architecture', 'specification', 'planning'];
@@ -26,8 +26,9 @@ const TRACKER_FILE = 'docs/agents/issue-tracker.md';
 function order(path, type, phases) {
   const front = [...FRONT];
   const build = [...BUILD];
-  // A refactor without an implementation phase is implemented by its architecture skill (§2).
-  if (type === 'refactor' && !phases.includes('implementation')) build.unshift(...front.splice(front.indexOf('architecture'), 1));
+  // A refactor is implemented via refactoring or architecture (§2): refactoring has its place in the
+  // build, and architecture moves there only when neither implementation nor refactoring is selected.
+  if (type === 'refactor' && !phases.some((p) => ['implementation', 'refactoring'].includes(p))) build.unshift(...front.splice(front.indexOf('architecture'), 1));
   const checks = CHECKS[path] ?? CHECKS.full;
   return [...front, 'branch', ...build, '*', ...checks, ...(path === 'light' ? [] : ['verification']), ...END];
 }
@@ -39,6 +40,16 @@ const routerStep = (id, reason, summary, extra = {}) => ({
   covered_by: null, model: null, effort: null, status: 'pending', outcome: null, ...extra,
 });
 const off = (step) => Object.assign(step, { optional: true, status: 'skipped', outcome: OFF });
+
+// The router's steps (§2): the work branch, verification on the full path, and the pull request
+// when no selected skill writes its body (that skill's step is the pull-request step then).
+function routerSteps(path, issue, issueFree, steps) {
+  const out = [routerStep('branch', 'the work branch, from the default branch',
+    issue ? `Create ${issue.number}-<slug>` : issueFree ? 'Create <slug> (issue-free.md)' : 'Create <issue-number>-<slug> once the issue is published')];
+  if (path !== 'light') out.push(off(routerStep('verification', 'agent-checkable points in the manual checklist', 'Work through the [agent] checklist points')));
+  if (!steps.some((s) => s.id === 'pull-request')) out.push(routerStep('pull-request', 'the router opens the pull request', 'Open the pull request'));
+  return out;
+}
 
 // The steps for a checked `selection` under the checked `classification` (type, path), for a target
 // with or without tracker configuration. `issue` ({number, url} | null) when the task is an issue;
@@ -68,6 +79,13 @@ function build({ classification, selection, skills, trackerConfigured, issue = n
     if (group) group.entries.push(p);
     else errors.push(`issue-tracking: ${p.default.skill}: gets no step of its own; only a skill selected for another phase fills it (SKILL.md §4)`);
   }
+  // Multi-session replaces the whole flow: its output routes the later sessions, which implement (§2).
+  const multi = groups.find((g) => g.entries.some((e) => e.phase === 'multi-session'));
+  const later = multi ? groups.filter((g) => g !== multi && g.entries.some((e) => e.phase !== 'setup')) : [];
+  if (later.length) {
+    errors.push(`multi-session: implementation happens in later sessions from its output (SKILL.md §2): omit ${
+      later.flatMap((g) => g.entries.map((e) => e.phase)).join(', ')} from this selection`);
+  }
   const steps = groups.map(({ skill, entries }) => {
     const [first] = entries;
     const phases = entries.map((e) => e.phase);
@@ -89,11 +107,7 @@ function build({ classification, selection, skills, trackerConfigured, issue = n
 
   const fillsIssue = steps.some((s) => s.phases.includes('issue-tracking'));
   const issueFree = !issue && !fillsIssue;
-  steps.push(routerStep('branch', 'the work branch, from the default branch',
-    issue ? `Create ${issue.number}-<slug>` : issueFree ? 'Create <slug> (issue-free.md)' : 'Create <issue-number>-<slug> once the issue is published'));
-  if (path !== 'light') steps.push(off(routerStep('verification', 'agent-checkable points in the manual checklist', 'Work through the [agent] checklist points')));
-  if (!steps.some((s) => s.id === 'pull-request'))
-    steps.push(routerStep('pull-request', 'the router opens the pull request', 'Open the pull request'));
+  if (!multi) steps.push(...routerSteps(path, issue, issueFree, steps));
 
   // A selected skill that publishes to the tracker needs its configuration first (§4).
   const needing = steps.find((s) => s.skill && Catalog.arr(skills[s.skill]?.requires).includes('tracker-config'));
