@@ -10,11 +10,13 @@ const fixture = (t) => {
   const target = fs.mkdtempSync(path.join(os.tmpdir(), 'router-checklist-'));
   t.after(() => fs.rmSync(target, { recursive: true, force: true }));
   fs.mkdirSync(path.join(target, '.router'));
+  // An empty explicit config directory: defaults, whatever config/ this checkout holds.
+  fs.mkdirSync(path.join(target, 'config'));
   const example = fs.readFileSync(path.join(ROOT, 'skills/engineering-router/state.md'), 'utf8').match(/```json\n([\s\S]*?)```/)[1];
   const file = path.join(target, '.router/state.json');
   fs.writeFileSync(file, example);
   const run = (script, ...args) => spawnSync(path.join(ROOT, 'scripts', script), args, {
-    encoding: 'utf8', env: { ...process.env, ENGINEERING_ROUTER_CONFIG: '', XDG_CONFIG_HOME: path.join(target, 'config'), ROUTER_SESSION: 'session-example' },
+    encoding: 'utf8', env: { ...process.env, ENGINEERING_ROUTER_CONFIG: path.join(target, 'config'), ROUTER_SESSION: 'session-example' },
   });
   const state = (...args) => run('state', target, ...args);
   const read = () => JSON.parse(fs.readFileSync(file, 'utf8'));
