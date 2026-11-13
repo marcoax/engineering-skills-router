@@ -67,3 +67,15 @@ _Avoid_: review 1, review 2, second review, covered review
 **Manual checklist**:
 The run's points to try after implementation, each a **checklist point**: an action and its expected result. A tick on a checklist point is the user's personal reminder, not verification evidence.
 _Avoid_: personal checklist, manual point, verification checklist
+
+**Explicit choice**:
+A skill that fills a phase because the user named it in the request, prefers it in `preferences.yaml`, or the project declares it. It needs no selection.
+_Avoid_: default, override
+
+**Remembered selection**:
+The skill that filled a phase in the project's last run whose step for that phase was done, reused until it expires ([ADR 0005](docs/adr/0005-decided-phases-skip-selection.md)).
+_Avoid_: cache, memory, last choice
+
+**Decided phase**:
+A phase filled by an explicit choice or a remembered selection, so no candidate is read for it. Every other phase goes through selection.
+_Avoid_: settled phase (settled already describes a low-risk ticket), locked phase
