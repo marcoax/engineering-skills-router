@@ -168,14 +168,23 @@ function scenario(root, label) {
     m.reviewPasses = null;
     const noPurpose = pass();
     const samePurpose = pass('--purpose', state.steps[r - 1].summary);
-    m.reviewPasses = 'record the decisions after the fixes';
-    const second = deliverReview('done', [{ ...finding, decision: 'fixed' }]);
+    // The fixes run delivers its decision and declares the behavior change to re-check (#99);
+    // the re-check is the second pass, with its own purpose.
+    const fixesAt = pass('--fixes').out.match(/^attempt: (\S+)/m)?.[1];
+    fs.appendFileSync(path.join(repo, `.router/steps/${r}-fixes.md`), 'Fixed the date filter.\n');
+    put(`.router/steps/${r}-fixes.findings.json`, JSON.stringify([{ ...finding, decision: 'fixed' }]));
+    put(`.router/steps/${r}-fixes.result.json`, JSON.stringify({ step: 'review', attempt: fixesAt, verdict: 'done', summary: 'fixed',
+      artifacts: { note: `.router/steps/${r}-fixes.md`, findings: `.router/steps/${r}-fixes.findings.json` }, remaining: null, recheck: 'the date filter fix' }));
+    const fixed = Boolean(fixesAt) && st('deliver', String(r)).ok;
+    m.reviewPasses = 're-check the date filter fix';
+    const second = fixed && deliverReview('done', []);
+    const result = read().steps[r - 1].result;
     m.reviews = {
       first_pass_accepted: first,
       another_pass_without_purpose_refused: !noPurpose.ok,
       same_purpose_refused: !samePurpose.ok,
       declared_second_pass_accepted: second,
-      purposes: (read().steps[r - 1].result?.earlier ?? []).map((e) => e.purpose).concat(read().steps[r - 1].result?.purpose ?? []),
+      purposes: [...(result?.earlier ?? []), result ?? {}].filter((e) => e.kind !== 'fixes' && e.purpose).map((e) => e.purpose),
     };
     delete m.reviewPasses;
   }

@@ -28,14 +28,14 @@ Command: `node evals/workflow-overhead/run.js --before <master tree>`.
 | a third retry needs the user's yes | no | yes |
 | delegated step closed without a delivery refused | no | yes |
 | another review pass without a declared purpose refused | not run | yes |
-| review purposes | not run | Cross-family review of the diff since the base commit; record the decisions after the fixes |
+| review purposes | not run | Cross-family review of the diff since the base commit; re-check the date filter fix |
 | scripts/state calls, total / median ms | 16, 1268 / 73 | 26, 5282 / 206 |
 
 ## Reading
 
 - **Context.** Both SKILL.md versions already hand the step agent paths, not copies. The brief grows by about 450 bytes: the evidence and expected-output fields and the lines `expect` prints. What the change prevents is the recopied form, about 27 times larger here (32745 bytes, mostly SKILL.md). That form is now forbidden in writing; the eval measures the two forms, not what an agent actually received.
 - **Checks.** After the timeout, three of the four required checks are reused: their files and environment are unchanged. Before, nothing was recorded, so all four had to rerun. The partial fix in `src/` invalidates the three checks that cover `src/`; the docs check stays reused. Without `--env`, nothing is reused.
-- **Passes.** After the first review delivers `fixes`, another pass is refused unless it declares a new purpose. The two accepted passes are the cross-family review and the decisions after the fixes. Before, nothing counted passes.
+- **Passes.** After the first review delivers `fixes`, another pass is refused unless it declares a new purpose. The two accepted passes are the cross-family review and the re-check the fixes declared; the fixes deliver their decisions without a pass of their own (#99). Before, nothing counted passes.
 - **Recovery** (the #81 recovery check):
   - the partial file and both commits are kept and listed;
   - `recover` resumes at the recorded `next` and changes nothing;

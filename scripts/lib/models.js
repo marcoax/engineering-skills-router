@@ -51,6 +51,18 @@ function stepFamily(state, step, prefs) {
   return other(writerFamily(writer, state, prefs));
 }
 
+// The step that wrote the code a review step reviews: the last earlier writing step, or null.
+function writerOf(state, step) {
+  const at = state.steps.indexOf(step);
+  return state.steps.slice(0, at < 0 ? state.steps.length : at).reverse().find((s) => has(s, WRITING_PHASES)) ?? null;
+}
+
+// The model a review's fixes run on: the model the code's writer ran on, else its family's.
+const fixesModel = (state, step, prefs) => {
+  const writer = writerOf(state, step);
+  return writer?.model ?? familyModel(writerFamily(writer, state, prefs), prefs);
+};
+
 // For a review step that ran: true when it ran on a family other than the step that wrote the
 // code, false for a same-family review, null when either family is unknown. Not a review: null.
 function crossFamily(state, step, prefs) {
@@ -90,4 +102,4 @@ function primaryAnswer(state, prefs, answer) {
   return (options.find((o) => o.family === answer) ?? options[Number(answer) - 1])?.family ?? null;
 }
 
-module.exports = { FAMILIES, REVIEW_PHASES, modelFamily, crossFamily, presetPrimary, preferredPrimary, primaryPreset, runPrimary, stepFamily, stepModel, modelsLine, primaryOptions, primaryQuestion, primaryAnswer };
+module.exports = { FAMILIES, REVIEW_PHASES, modelFamily, crossFamily, writerOf, fixesModel, presetPrimary, preferredPrimary, primaryPreset, runPrimary, stepFamily, stepModel, modelsLine, primaryOptions, primaryQuestion, primaryAnswer };

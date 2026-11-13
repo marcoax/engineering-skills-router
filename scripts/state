@@ -44,9 +44,15 @@
 //                            or opens a new attempt on a running one. Starts the run-headed note
 //                            and prints the brief and reusable checks. A further accepted review
 //                            pass needs a purpose none of its earlier passes served.
+//                            --fixes opens the fixes run's attempt on a review with actionable
+//                            findings, printing the code writer's model; the step keeps its own.
 //   deliver <n|id> [<file>]  checks the result and artifacts; a refused delivery writes nothing,
 //                            leaving the attempt open. done closes with the summary as outcome
 //                            and records optional result handoff; fixes stays running, blocked waits.
+//                            A review closes once no finding is actionable and no re-check is due.
+//   decide <n|id> <finding> declined|deferred --reason "..."
+//                            the main session's decision on a finding (number or title) after the
+//                            review's accepted fixes verdict; the last one closes the step.
 //   artifact <n|id> <kind>   the path of an artifact an accepted done delivery carries
 //   progress <n|id> --done "..." [--next "..."] [--limits "..."] [--user-approved]
 //                            a running step's progress record (state.md "Progress"), with the
@@ -108,7 +114,7 @@ const invokesFor = (target) => {
 
 const [target, command, ...rest] = process.argv.slice(2);
 if (!target || !command) {
-  console.error('usage: scripts/state <target-repo> compose|step|checklist|workflow|handoff|reply|primary|show|start|deliver|artifact|progress|check|interrupt|recover|claim|takeover|owner|discard|reconcile ...');
+  console.error('usage: scripts/state <target-repo> compose|step|checklist|workflow|handoff|reply|primary|show|start|deliver|decide|artifact|progress|check|interrupt|recover|claim|takeover|owner|discard|reconcile ...');
   process.exit(1);
 }
 const file = path.join(target, '.router', 'state.json');
@@ -124,7 +130,7 @@ const session = flagSession || SESSION_ENV.map((k) => process.env[k]).find(Boole
 const noIdentity = `no session identity: pass --session <id> or set ROUTER_SESSION (${SESSION_ENV.join(', ')} are read)`;
 const now = () => new Date().toISOString().replace(/\.\d{3}Z$/, 'Z');
 // Flags take a value, except these switches.
-const SWITCHES = ['new', 'json', 'previous-closed', 'main-session', 'user-approved'];
+const SWITCHES = ['new', 'json', 'previous-closed', 'main-session', 'user-approved', 'fixes'];
 const flags = {};
 const args = [];
 for (let i = 0; i < rest.length; i++) {
@@ -422,11 +428,13 @@ try {
     const step = state.steps[i];
     if (!results.delegated(state, step)) die(`step ${step.id}: no delegated delivery; use step ${i + 1} running`);
     if (!['pending', 'running'].includes(step.status)) die(`step ${step.id} is ${step.status}: start needs a pending or running step`);
-    const running = ops.setStep(state, args[0], 'running', {
+    const fixes = flags.fixes === true;
+    // The fixes run on the code writer's model; the step keeps the review's attribution.
+    const running = fixes ? state : ops.setStep(state, args[0], 'running', {
       model: flags.model ?? (step.status === 'running' ? step.model : null) ?? models.stepModel(state, step, prefs()),
       effort: flags.effort ?? (step.status === 'running' ? step.effort : prefs().effort) ?? null,
     });
-    const expected = results.openAttempt(running, args[0], { requires, attempt, purpose: flags.purpose });
+    const expected = results.openAttempt(running, args[0], { requires, attempt, purpose: flags.purpose, fixes });
     const p = expected.state.steps[i].progress;
     if (p) {
       p.interrupted = null;
@@ -434,12 +442,16 @@ try {
     }
     // A restart, or a start after a recorded attempt, resumes: it gets the recovery plan.
     const resumes = step.status === 'running' || step.progress != null;
-    lines.push(`model: ${running.steps[i].model}`, `effort: ${running.steps[i].effort ?? 'harness default'}`,
+    const writer = fixes ? models.writerOf(state, step) : null;
+    const dispatch = fixes
+      ? { model: flags.model ?? models.fixesModel(state, step, prefs()), effort: flags.effort ?? writer?.effort ?? prefs().effort }
+      : running.steps[i];
+    lines.push(`model: ${dispatch.model}`, `effort: ${dispatch.effort ?? 'harness default'}`,
       ...(resumes ? progress.recovery : progress.reusableChecks)(expected.state, progress.checkout(target), flags.env));
     next = expected.state;
     lines.push(...expected.lines);
   } else if (command === 'deliver') {
-    const resultPath = results.paths(state, ops.stepIndex(state, args[0])).result;
+    const resultPath = results.attemptPaths(state, ops.stepIndex(state, args[0])).result;
     const read = (rel) => {
       const f = rel === resultPath && args[1] ? path.resolve(args[1]) : path.join(target, rel);
       return fs.existsSync(f) && fs.statSync(f).isFile() ? fs.readFileSync(f, 'utf8') : null;
@@ -454,6 +466,11 @@ try {
     artifactWrites.push(...delivered.writes);
     next = delivered.state;
     lines.push(...delivered.lines);
+  } else if (command === 'decide') {
+    const decided = results.decide(state, args[0], args[1], args[2], flags.reason);
+    artifactWrites.push(...decided.writes);
+    next = decided.state;
+    lines.push(...decided.lines);
   }
   else if (['progress', 'check', 'interrupt'].includes(command)) {
     const checkout = progress.checkout(target);
@@ -471,5 +488,10 @@ try {
 
 // A state written without a primary family takes the preferences'; a stored one stays for the run.
 // A started step gets its note, headed by the run (ADR 0002).
-const started = () => ((command === 'start' || (command === 'step' && args[1] === 'running')) && next.run ? [files.startNote(target, next, ops.stepIndex(next, args[0]))] : []);
+// A fixes attempt's note is its own, beside the review's (step-result.md).
+const started = () => {
+  if (!(command === 'start' || (command === 'step' && args[1] === 'running')) || !next.run) return [];
+  const i = ops.stepIndex(next, args[0]);
+  return [files.startNote(target, next, i, command === 'start' ? results.attemptPaths(next, i).note : undefined)];
+};
 write(next, `${command} ${logged.join(' ')}`, [...notes.map((n) => `coverage: ${n}`), ...lines], started);

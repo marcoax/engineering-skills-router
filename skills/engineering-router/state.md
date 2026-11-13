@@ -322,9 +322,13 @@ A check's result holds only for the content it ran on: `recover` reuses a passin
 | `artifacts` | {kind, path}[] | The accepted artifacts, each path relative to the target repo; empty while expected. |
 | `remaining` | string \| null | What blocks the step or is left, from a `blocked` (or any) delivery. |
 | `purpose` (optional) | string \| null | What this attempt is for: the step's summary on its first pass; another pass of a review after an accepted verdict declares its own, distinct one (a review counts once per purpose). |
-| `earlier` (optional) | Attempt[] | The step's earlier attempts, oldest first; a review's findings carry decisions only after one of them delivered `fixes`. |
+| `earlier` (optional) | Attempt[] | The step's earlier attempts, oldest first. |
+| `kind` (optional) | "fixes" | The fixes run's attempt on its review step (step-result.md, Fixes and decisions); absent for the step's own attempts. |
+| `summary` (optional) | string | The accepted delivery's one-line summary. |
+| `findings` (optional) | Finding[] | On a review step from its accepted `fixes` verdict on: every finding it reported, with the decisions recorded so far (step-result.md, Fixes and decisions). A `done` step has none without a decision. |
+| `recheck` (optional) | string \| null | The behavior-changing fix a fixes run declared for one re-check; the step does not close while it is set. |
 
-The delivered result's optional `handoff` is validated and applied to the workflow's Handoff on `done`; it is not stored again in Result. Existing Result records, including accepted deliveries whose steps were not yet closed, remain valid without rewriting.
+A review step closes as `done` on an accepted `done` verdict, or on its `fixes` verdict once its `findings` all carry a decision. The delivered result's optional `handoff` is validated and applied to the workflow's Handoff on `done`; it is not stored again in Result. Existing Result records, including accepted deliveries whose steps were not yet closed, remain valid without rewriting.
 
 ## Attempt
 
@@ -333,6 +337,20 @@ The delivered result's optional `handoff` is validated and applied to the workfl
 | `attempt` | string | The earlier attempt's token. |
 | `purpose` | string \| null | Its purpose. |
 | `verdict` | null \| "done" \| "fixes" \| "blocked" | Its accepted verdict; `null` when it delivered nothing. |
+| `kind` (optional) | "fixes" | Set for a fixes run's attempt, which is no review pass. |
+| `summary` (optional) | string | Its accepted summary. |
+
+## Finding
+
+A finding a review reported, on its step's Result from the accepted `fixes` verdict on; the same shape `scripts/record` reads.
+
+| Field | Type | Meaning |
+|---|---|---|
+| `title` | string | One line, as the review reported it; the fixes run and `decide` name it by this title. |
+| `severity` | "critical" \| "high" \| "medium" \| "low" | As the review gave it. |
+| `found_by` | string[] | The step ids that reported it. |
+| `decision` (optional) | "fixed" \| "declined" \| "deferred" | Absent while the finding is actionable; `fixed` from the fixes run's delivery, `declined` or `deferred` from `decide`. |
+| `reason` (optional) | string | The evidence for `declined` or the reason for `deferred`. |
 
 ## Handoff
 

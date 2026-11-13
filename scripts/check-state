@@ -204,8 +204,15 @@ steps.forEach((s, i) => {
   if (!isObj(r)) return;
   const where = `steps[${i}].result`;
   if (Array.isArray(r.requires)) for (const k of r.requires) if (!ARTIFACT_KINDS.includes(k)) errors.push(`${where}.requires: unknown artifact ${json(k)}`);
-  if (s.status === 'done' && r.verdict !== 'done')
+  // A review closes on its decisions once its fixes verdict left none actionable (step-result.md,
+  // Fixes and decisions); the findings' shape is the Finding table's.
+  const findings = Array.isArray(r.findings) ? r.findings : null;
+  const open = findings ? findings.filter((f) => !isObj(f) || f.decision === undefined).length : 0;
+  const decided = r.verdict === 'fixes' && findings?.length > 0;
+  if (s.status === 'done' && r.verdict !== 'done' && !decided)
     errors.push(`${where}: step ${s.id} done needs an accepted delivery (deliver a done verdict first), got verdict ${json(r.verdict)}`);
+  if (s.status === 'done' && open) errors.push(`${where}: step ${s.id} done with ${open} actionable finding${open === 1 ? '' : 's'}`);
+  if (s.status === 'done' && isStr(r.recheck) && r.recheck) errors.push(`${where}: step ${s.id} done with a re-check pending`);
   if (r.verdict === 'done' && Array.isArray(r.requires) && Array.isArray(r.artifacts)) {
     const have = new Set(r.artifacts.filter(isObj).map((a) => a.kind));
     for (const k of r.requires) if (!have.has(k)) errors.push(`${where}.artifacts: verdict done without the required ${k}`);
