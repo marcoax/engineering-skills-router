@@ -58,6 +58,24 @@ const DEFAULT_OPTION = { value: DEFAULT, label: DEFAULT }
 const shownAs = (saved: string) => saved || DEFAULT
 const savedAs = (value: string) => (value === DEFAULT ? '' : value)
 
+// `path` resolved against the absolute directory `base`, `.` and `..` folded, POSIX separators.
+const resolvePath = (base: string, path: string) => {
+  const parts: string[] = []
+  for (const part of (path.startsWith('/') ? path : `${base}/${path}`).split('/')) {
+    if (part === '..') parts.pop()
+    else if (part && part !== '.') parts.push(part)
+  }
+  return `/${parts.join('/')}`
+}
+
+// Where a review's answer goes: a file under the target's `.router/steps/`, else why not.
+const ANSWER_DIR = '.router/steps/'
+function answerPath(target: string, answer: string): { path: string } | { refused: string } {
+  const dir = `${resolvePath(target, '.')}/${ANSWER_DIR}`.replace(/^\/\//, '/')
+  const path = resolvePath(target, answer)
+  return path.startsWith(dir) && path.length > dir.length ? { path } : { refused: `answer: ${answer} is not under ${dir}` }
+}
+
 const describePlan = (plan: Plan) =>
   `${plan.backend.name} · ${plan.model ?? 'default model'} · ${
     plan.backend.hasEffort ? (plan.effort ?? 'default effort') : 'effort from its config'
@@ -183,7 +201,8 @@ export const register: Register = on => {
       isDeferred: false,
       description:
         'Runs a prompt on a model outside the Claude family through a local CLI, read-only, ' +
-        'and returns its answer; the output streams into a "Cross-family review" pane. For the engineering ' +
+        'and returns its answer, or with `answer` writes it to that file and returns only the backend, model, effort and path; ' +
+        'the output streams into a "Cross-family review" pane. For the engineering ' +
         "router's cross-family reviews. `model` is as the user's preferences.yaml (scripts/config) names it: `openai-codex/<model>` " +
         'runs Codex, `opencode/<provider>/<model>` runs opencode; `effort` is low, medium or high. ' +
         'What the person picked with /router-models overrides both. Without `prompt` it only ' +
@@ -195,6 +214,11 @@ export const register: Register = on => {
           effort: { type: 'string', enum: ['low', 'medium', 'high'] },
           prompt: { type: 'string', description: 'The whole review instruction; omit to check availability' },
           cwd: { type: 'string', description: 'Target repo; the session directory by default' },
+          answer: {
+            type: 'string',
+            description:
+              "File under the target's .router/steps/ that receives the answer; the tool then returns only who ran and that path",
+          },
         },
       },
     })
@@ -215,7 +239,7 @@ export const register: Register = on => {
 
   // A cross-family review: one CLI run, streamed into the review pane.
   on('tool.call', { tool: REVIEW_TOOL }, async ($, e, next) => {
-    const input = e as unknown as { model?: unknown; effort?: unknown; prompt?: unknown; cwd?: unknown }
+    const input = e as unknown as { model?: unknown; effort?: unknown; prompt?: unknown; cwd?: unknown; answer?: unknown }
     const asked = {
       model: typeof input.model === 'string' ? input.model : undefined,
       effort: typeof input.effort === 'string' ? input.effort : undefined,
@@ -239,6 +263,14 @@ export const register: Register = on => {
       } catch (err) {
         return fail(`${backend.cli} not found or not runnable: ${String(err)}`)
       }
+    }
+
+    // With an answer path the answer goes to that file, never through the chat.
+    let answer: string | undefined
+    if (typeof input.answer === 'string' && input.answer) {
+      const where = answerPath(resolvePath(await $.session.cwd(), cwd ?? '.'), input.answer)
+      if ('refused' in where) return fail(where.refused)
+      answer = where.path
     }
 
     await update($, review, () => ({ model: label, backend: backend.name, status: 'running', text: '' }))
@@ -281,6 +313,14 @@ export const register: Register = on => {
     await setStatus(isOk ? 'done' : 'failed')
     if (!isOk) return fail(`${backend.cli} ended with ${next.signal.aborted ? 'an interrupt' : `exit ${code}`}:\n${all.slice(-4000)}`)
     // Codex and opencode write the answer to stdout and their progress to stderr.
+    if (answer) {
+      try {
+        await $.fs.write(answer, out || all)
+      } catch (err) {
+        return fail(`Reviewed by ${label}, but the answer could not be written to ${answer}: ${String(err)}`)
+      }
+      return ok(`Reviewed by ${label}.\nanswer: ${answer}`)
+    }
     return ok(`Reviewed by ${label}.\n\n${(out.trim() || all).slice(-KEEP)}`)
   }).catch(($, e, next) =>
     next.called ? next(e) : fail('review_other_family failed inside the mod; see claude --debug'),

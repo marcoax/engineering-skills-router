@@ -172,6 +172,87 @@ test('a cross-family review runs codex read-only and returns its stdout', async 
   expect(opened.find(p => p.id === 'review')?.columns).toBeGreaterThanOrEqual(60)
 })
 
+// A review run whose CLI prints `answer` on stdout and ends with `code`; records what it ran and wrote.
+const reviewRun = (on: any, { answer = 'The answer.', code = 0 } = {}) => {
+  const runs: string[][] = []
+  const writes: { path: string; text: string }[] = []
+  on('ui.open', () => ({ value: { isPlaced: true } }))
+  on('session.cwd', () => ({ value: '/session' }))
+  on('fs.write', (_: unknown, e: any) => {
+    writes.push({ path: e.path, text: e.text })
+    return { value: undefined }
+  })
+  on('process.spawn', async function* (_: unknown, e: any) {
+    runs.push([...e.argv])
+    yield { stream: 'stderr', text: 'thinking…\n' }
+    yield { stream: 'stdout', text: answer }
+    return { value: { code, signal: null } }
+  } as any)
+  return { runs, writes }
+}
+
+for (const [model, label] of [
+  ['openai-codex/gpt-6-sol', 'codex · gpt-6-sol · high (router)'],
+  ['opencode/openai/gpt-6', 'opencode · openai/gpt-6 · effort from its config (router)'],
+] as const) {
+  test(`a review through ${model.split('/')[0]} writes its answer to the answer path and returns only who ran and where`, async ($, on) => {
+    seed(null, on)
+    const { runs, writes } = reviewRun(on, { answer: 'Long prose.\n```json\n{"verdict":"done"}\n```\n' })
+
+    const ran: any = await $.tool.call({
+      tool: TOOL,
+      model,
+      effort: 'high',
+      prompt: 'Review the diff',
+      cwd: '/repo',
+      answer: '.router/steps/5-review.answer.md',
+    } as any)
+
+    expect(runs.length).toBe(1)
+    expect(writes).toEqual([
+      { path: '/repo/.router/steps/5-review.answer.md', text: 'Long prose.\n```json\n{"verdict":"done"}\n```\n' },
+    ])
+    expect(ran.result).toBe(`Reviewed by ${label}.\nanswer: /repo/.router/steps/5-review.answer.md`)
+    expect(ran.isError).toBe(undefined)
+  })
+}
+
+test('an answer path outside the target .router/steps/ is refused before the reviewer runs', async ($, on) => {
+  seed(null, on)
+  const { runs, writes } = reviewRun(on)
+  for (const answer of ['notes/review.md', '.router/steps/../state.json', '/elsewhere/.router/steps/a.md', '.router/steps/']) {
+    const ran: any = await $.tool.call({
+      tool: TOOL, model: 'openai-codex/gpt-6-sol', prompt: 'Review the diff', cwd: '/repo', answer,
+    } as any)
+    expect(ran.isError).toBe(true)
+    expect(ran.result).toMatch(/answer: .* is not under \/repo\/\.router\/steps\//)
+  }
+  expect(runs).toEqual([])
+  expect(writes).toEqual([])
+})
+
+test('without a cwd the answer path is under the session directory', async ($, on) => {
+  seed(null, on)
+  const { writes } = reviewRun(on)
+  const ran: any = await $.tool.call({
+    tool: TOOL, model: 'openai-codex/gpt-6-sol', prompt: 'Review the diff', answer: '/session/.router/steps/5-review.answer.md',
+  } as any)
+  expect(ran.isError).toBe(undefined)
+  expect(writes.map(w => w.path)).toEqual(['/session/.router/steps/5-review.answer.md'])
+})
+
+test('a failed review returns the error with its output tail and writes no answer file', async ($, on) => {
+  seed(null, on)
+  const { writes } = reviewRun(on, { answer: 'quota reached', code: 1 })
+  const ran: any = await $.tool.call({
+    tool: TOOL, model: 'openai-codex/gpt-6-sol', prompt: 'Review the diff', cwd: '/repo',
+    answer: '.router/steps/5-review.answer.md',
+  } as any)
+  expect(ran.isError).toBe(true)
+  expect(ran.result).toBe('codex ended with exit 1:\nthinking…\nquota reached')
+  expect(writes).toEqual([])
+})
+
 test('a cross-family review without a prompt checks the CLI and answers "available" as text', async ($, on) => {
   seed(null, on)
   const runs: string[][] = []

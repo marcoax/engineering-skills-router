@@ -268,3 +268,27 @@ test('an invalid handoff refuses a delivery whatever its verdict', (t) => {
   assert.match(r.stderr, /result\.handoff\.unknown/);
   assert.equal(fs.readFileSync(f.file, 'utf8'), saved);
 });
+
+test('delivering a review answer prints its verdict and each finding by severity and title', (t) => {
+  const f = fixture(t);
+  const at = f.attempt(f.ok('start', '5'));
+  f.put('.router/steps/5-review.md', `run: ${f.state.run}\nReviewed the diff.\n`);
+  const answer = (attempt, findings) => `Prose the main session never reads.\n\n\`\`\`json\n${JSON.stringify({
+    step: 'review', attempt, verdict: findings.length ? 'fixes' : 'done', summary: 'Reviewed',
+    artifacts: { note: '.router/steps/5-review.md', findings } })}\n\`\`\`\n`;
+  const file = path.join(f.target, '.router/steps/5-review.answer.md');
+  fs.writeFileSync(file, answer(at, [
+    { title: 'Export drops the header row', severity: 'high', found_by: ['review'] },
+    { title: 'Name the CSV helper', severity: 'low', found_by: ['review'] },
+  ]));
+  const fixes = f.ok('deliver', '5', file);
+  assert.match(fixes, /^fixes: 2 actionable findings: run the fixes, then start 5 again$/m);
+  assert.match(fixes, /^finding: high: Export drops the header row\nfinding: low: Name the CSV helper$/m);
+
+  const again = f.attempt(f.ok('start', '5', '--purpose', 'Re-check after the fixes'));
+  fs.writeFileSync(file, answer(again, []));
+  const done = f.ok('deliver', '5', file);
+  assert.match(done, /^done: Reviewed$/m);
+  assert.match(done, /^findings: none$/m);
+  assert.doesNotMatch(done, /^finding: /m);
+});

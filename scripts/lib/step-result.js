@@ -214,6 +214,8 @@ function deliver(state, ref, read, handoffValue = setHandoff) {
     s = setStep(s, i + 1, 'done', { outcome: result.summary });
     lines.push(`done: ${result.summary}`);
   }
+  // The delivered findings in a line each, so the next decision needs no other read.
+  if (findings) lines.push(...(findings.length ? findings.map((f) => `finding: ${f.severity}: ${f.title}`) : ['findings: none']));
   return { state: s, verdict, actionable, lines, writes };
 }
 
