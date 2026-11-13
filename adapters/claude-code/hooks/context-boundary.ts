@@ -20,15 +20,19 @@ export function completedStep(command: string, output: string): string | undefin
   if (words[0] === 'node') words.shift()
   const script = words.shift()
   if (!script || !/(?:^|\/)scripts\/state$/.test(script)) return
-  if (!words.shift() || words.shift() !== 'step') return
+  if (!words.shift()) return
+  const action = words.shift()
+  if (action !== 'step' && action !== 'deliver') return
   const args: string[] = []
   while (words.length) {
     const arg = words.shift()!
+    if (arg === '--main-session' || arg === '--user-approved') continue
     if (arg.startsWith('--')) { if (!words.length) return; words.shift() }
     else args.push(arg)
   }
-  if (args.length !== 2 || args[1] !== 'done') return
-  if (!output.split('\n').some(line => line.startsWith(`state: step ${args[0]} done → workflow `))) return
+  if (action === 'step' && (args.length !== 2 || args[1] !== 'done')) return
+  if (action === 'deliver' && (args.length < 1 || args.length > 2 || !/^done: /m.test(output))) return
+  if (!output.split('\n').some(line => line.startsWith(`state: ${action} ${args.join(' ')} → workflow `))) return
   return script.replace(/state$/, 'context-threshold')
 }
 

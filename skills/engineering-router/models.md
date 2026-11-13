@@ -19,7 +19,7 @@ On a new run, once the state is written with status `selecting` and before the w
 
 The answer, or the preset family, becomes the run's `primary`; the workflow shown next, step models and the reviews' family included, follows it. A `primary <family>` reply before `go` goes through `scripts/state <target repo> reply primary <family>`.
 
-A step subagent runs on the family set as `model` for its first phase in the user's `preferences.yaml`, else on the run's `primary`; `scripts/state <target repo> model <n|id>` prints that model for a step (for a review step, the family opposite to the step that wrote the code, whatever its phase's `model` says). Pass the model explicitly every time, since subagent defaults may point elsewhere: as `provider/model-id` where the subagent tool takes one, else as the tool's name for that model (Claude Code's Agent tool takes only an alias, such as `opus` for a `claude-opus-*` ID). `effort` (`low` | `medium` | `high`, unset = the harness default) is the thinking level of every step subagent, passed the way the subagent tool takes it (Pi: `provider/model-id:<effort>`). Main-session steps keep the session's model.
+A step subagent runs on the family set as `model` for its first phase in the user's `preferences.yaml`, else on the run's `primary`; `scripts/state <target repo> start <n|id>` resolves, records and prints that model for dispatch (for a review step, the family opposite to the step that wrote the code, whatever its phase's `model` says). Pass the model explicitly every time, since subagent defaults may point elsewhere: as `provider/model-id` where the subagent tool takes one, else as the tool's name for that model (Claude Code's Agent tool takes only an alias, such as `opus` for a `claude-opus-*` ID). `effort` (`low` | `medium` | `high`, unset = the harness default) is the thinking level of every step subagent, passed the way the subagent tool takes it (Pi: `provider/model-id:<effort>`). Main-session steps keep the session's model.
 
 **A step's family is the one it actually runs on.** A harness whose subagents run only its own vendor's models (Claude Code: only Claude) runs every step on that family, whatever `primary` or a phase's `model` says: say so once in the workflow (`primary openai, not reachable here: steps run on claude`), and record the model those steps actually run on. The review steps' family: [cross-family-review.md](cross-family-review.md).
 
@@ -27,7 +27,7 @@ Show each step's step model (and effort when set) on its line in §5, as `script
 
 ## Step model
 
-Every step that ran records the model it actually ran on in its `model` field, and its effort in `effort`; a step that never ran (pending, or skipped without running) keeps `model` `null`. Sources, first that applies:
+Every step that ran records the model it actually ran on in its `model` field, and its effort in `effort`; a step that never ran (pending, or skipped without running) keeps `model` `null`. For delegated work, `start` records the actual dispatch choice before execution. For other main-session work and historical records, sources are:
 
 1. the step's **agent record**;
 2. the model you passed to the step's subagent (as the user's `preferences.yaml` names it, also where the tool took only an alias), or the backend `review_other_family` reported;
@@ -35,7 +35,7 @@ Every step that ran records the model it actually ran on in its `model` field, a
 
 Effort takes 1, then 2; with neither it stays `null` (the harness default), never the session's. Record each ID verbatim, as its source names it, with no provider prefix added.
 
-When a step starts, pass the model you already know (2 or 3) with `step <n> running --model <id> [--effort <level>]`, so a paused or interrupted step already has one. When it closes (`done` or `failed`), pass `--model` / `--effort` again only when the step printed an agent record for itself; it overwrites the model set at start.
+A delegated step starts with `start <n>`: the resolved model and preferences' effort are recorded and printed. Dispatch exactly those settings. For an approved same-family fallback or an executor whose preflight names different settings, pass the actual choice with `start <n> --model <id> [--effort <level>]`. A restart keeps the recorded settings unless explicitly overridden; a model/family change still needs the approval in [resume.md](resume.md). If the executor cannot honor the choice, resolve that before dispatch or restart, never change attribution on delivery. Main-session steps use `step <n> running --main-session --model <session model> [--effort <level>]` (router and conversational steps need no `--main-session`).
 
 A covered step takes its covering step's model and effort: the script copies them when the covering step starts (if the covered step has no model yet) and when it closes. A covered step with its own agent record is closed separately, after its covering step: `step <id> done --outcome "..." --model <id>`.
 

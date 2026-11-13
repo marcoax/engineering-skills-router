@@ -82,7 +82,7 @@ const empty = () => ({ at: null, branch: null, head: null, changes: [], done: nu
 // Whether a step was interrupted more often than it may be retried without the user's yes.
 const usedUp = (p) => Boolean(p) && p.interruptions > RETRIES && (p.approved ?? 0) < p.interruptions;
 
-// Why step `ref` may not go on (new progress, a new delivery) yet, or null: past its retries it
+// Why step `ref` may not go on (new progress, a new attempt) yet, or null: past its retries it
 // needs the user's yes, which `approved` records with the interruptions it covers.
 function retryProblem(state, ref, { approved = false } = {}) {
   const step = state.steps[stepIndex(state, ref)];

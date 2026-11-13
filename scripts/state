@@ -1,12 +1,13 @@
 #!/usr/bin/env node
 // Usage: scripts/state <target-repo> <command> ...
 // The router's only way to change `.router/state.json` after writing it the first time.
-// Every change is validated with scripts/check-state; an invalid one is not kept.
+// Every candidate is validated with scripts/check-state before state or artifact writes.
 //
 //   step <n|id> <status> [--outcome "..."] [--model <model ID>] [--effort low|medium|high] [--main-session]
 //        pending | running | waiting | done | skipped | failed; done, skipped and failed need
-//        an outcome. A delegated step (step-result.md) is done only on an accepted delivery;
-//        --main-session closes a skill step that ran in the main session; PR preparation still needs accepted artifacts. A step that covers others carries them: running starts them and gives
+//        an outcome. Delegated running/done use start/deliver instead (step-result.md);
+//        --main-session runs other skill steps in the main session; PR preparation uses
+//        start/deliver. A covering step carries others: running starts them and gives
 //        those still open without a model its model and effort; done or failed closes those
 //        still open with its model and effort. A running or waiting step sets the workflow's
 //        status.
@@ -37,25 +38,20 @@
 //                            stay as they ran, and the run keeps its primary and handoff.
 //   show                     the workflow, one line per step, with the step model when set,
 //                            then the run's Models line (primary from the state)
-//   model <n|id>             the model a step's subagent runs on: its first phase's `model` in
-//                            config/preferences.yaml, else the run's primary; a review step
-//                            (review, framework-review, security, independent-review) the
-//                            family opposite to the step that wrote the code
-//   expect <n|id> [--requires note,findings,pr-body] [--purpose "..."]
-//                            opens a running step's delivery (step-result.md): a new attempt, and
-//                            the artifacts it must deliver (by default from the step). Prints the
-//                            result path, the attempt and the artifact paths for the step's brief.
-//                            Another pass of a review after an accepted verdict needs a --purpose
-//                            none of its earlier passes had.
-//   deliver <n|id> [<file>]  checks the step's result (default: its conventional result path) and
-//                            its artifacts; refuses with what is missing and what is valid, the
-//                            attempt left open. done lets the step close, fixes keeps it running,
-//                            blocked leaves it waiting.
+//   start <n|id> [--requires note,findings,pr-body] [--purpose "..."] [--env "..."]
+//                [--model <model ID>] [--effort low|medium|high] [--user-approved]
+//                            starts a pending delegated step with its resolved model/effort,
+//                            or opens a new attempt on a running one. Starts the run-headed note
+//                            and prints the brief and reusable checks. A further accepted review
+//                            pass needs a purpose none of its earlier passes served.
+//   deliver <n|id> [<file>]  checks the result and artifacts; a refused delivery writes nothing,
+//                            leaving the attempt open. done closes with the summary as outcome
+//                            and records optional result handoff; fixes stays running, blocked waits.
 //   artifact <n|id> <kind>   the path of an artifact an accepted done delivery carries
 //   progress <n|id> --done "..." [--next "..."] [--limits "..."] [--user-approved]
 //                            a running step's progress record (state.md "Progress"), with the
 //                            checkout's branch, HEAD and uncommitted paths; ends an interruption.
-//                            Past its retries (and for expect) it needs --user-approved
+//                            Past its retries (and for start) it needs --user-approved
 //   check <n|id> pass|fail|interrupted --command "..." --env "..." [--scope <path>,<path>]
 //                            a check the running step ran, tied to the content of its scope
 //                            (default: the whole repo); a rerun of a command replaces its result
@@ -80,7 +76,8 @@
 //   reconcile                the state beside the repo, for a resume: run, owner, branch, commits
 //                            since the base, the PR's state (gh), each note in .router/steps/ with
 //                            the run it belongs to, and the next step. Changes nothing.
-// `step <n> running` starts the step's note, `.router/steps/<n>-<id>.md`, headed `run: <run>`; a
+// `start <n>` (or main-session `step <n> running`) starts `.router/steps/<n>-<id>.md`,
+// headed `run: <run>`; a
 // note another run left there moves to that run's archive. Locking, notes, archives and the
 // reconciliation are in lib/run-files.js.
 const fs = require('node:fs');
@@ -111,7 +108,7 @@ const invokesFor = (target) => {
 
 const [target, command, ...rest] = process.argv.slice(2);
 if (!target || !command) {
-  console.error('usage: scripts/state <target-repo> compose|step|checklist|workflow|handoff|reply|primary|show|model|expect|deliver|artifact|progress|check|interrupt|recover|claim|takeover|owner|discard|reconcile ...');
+  console.error('usage: scripts/state <target-repo> compose|step|checklist|workflow|handoff|reply|primary|show|start|deliver|artifact|progress|check|interrupt|recover|claim|takeover|owner|discard|reconcile ...');
   process.exit(1);
 }
 const file = path.join(target, '.router', 'state.json');
@@ -136,7 +133,7 @@ for (let i = 0; i < rest.length; i++) {
   else flags[rest[i].slice(2)] = rest[++i] ?? '';
 }
 
-const READ_ONLY = ['show', 'model', 'owner', 'reconcile', 'artifact', 'recover'];
+const READ_ONLY = ['show', 'owner', 'reconcile', 'artifact', 'recover'];
 // One change at a time: every writing command holds `.router/state.lock` from reading the state
 // to writing it, so two sessions claiming at once leave one owner.
 if (!READ_ONLY.includes(command) && (command === 'compose' || fs.existsSync(path.dirname(file)))) {
@@ -146,6 +143,7 @@ if (!READ_ONLY.includes(command) && (command === 'compose' || fs.existsSync(path
     die(e.message);
   }
 }
+const artifactWrites = [];
 if (command === 'compose') compose();
 if (!fs.existsSync(file)) die(`.router/state.json not found in ${target}`);
 const before = fs.readFileSync(file, 'utf8');
@@ -245,7 +243,7 @@ function compose() {
   const covered = ops.recalculateCoverage({ ...next, status: 'selecting' }, invokesFor(target));
   // A new run archives the previous one, its notes with it, once the new state is valid.
   const archived = () => (isNew && previous ? [`archived: the previous run in ${files.archive(target, previous)}`] : []);
-  write(covered.state, previous ? JSON.stringify(previous) : null, `compose${isNew ? ' --new' : ''}`,
+  write(covered.state, `compose${isNew ? ' --new' : ''}`,
     [classified.line, ...covered.notes.map((n) => `coverage: ${n}`)], archived);
 }
 
@@ -265,19 +263,16 @@ function classify(next, previous) {
   return { errors, line: `classification: ${previous ? 'revised under' : 'checked against'} policy ${revision}` };
 }
 
-// Writes `next` (primary and time filled in), validates it with check-state and restores
-// `before` (null: no file) when it is invalid. `after` runs once it is kept and returns more lines.
-function write(next, before, label, lines = [], after = () => []) {
+// Validate the complete candidate before touching state, inline artifacts or notes.
+function write(next, label, lines = [], after = () => []) {
   if (next.primary == null) next.primary = models.preferredPrimary(prefs());
   next.updated_at = now();
+  const content = `${JSON.stringify(next, null, 2)}\n`;
+  const check = spawnSync(path.join(__dirname, 'check-state'), [target, '--stdin'], { encoding: 'utf8', input: content });
+  if (check.status !== 0) die(`the change would make the state invalid; kept the previous state\n${check.stdout}${check.stderr}`);
+  for (const w of artifactWrites) fs.writeFileSync(path.join(target, w.path), w.content);
   fs.mkdirSync(path.dirname(file), { recursive: true });
-  fs.writeFileSync(file, `${JSON.stringify(next, null, 2)}\n`);
-  const check = spawnSync(path.join(__dirname, 'check-state'), [target], { encoding: 'utf8' });
-  if (check.status !== 0) {
-    if (before == null) fs.rmSync(file);
-    else fs.writeFileSync(file, before);
-    die(`the change would make the state invalid; kept the previous state\n${check.stdout}${check.stderr}`);
-  }
+  fs.writeFileSync(file, content);
   console.log(`state: ${label} → workflow ${next.status}`);
   for (const line of [...lines, ...after()]) console.log(line);
   process.exit(0);
@@ -314,17 +309,6 @@ if (command === 'primary' && !args.length) {
   process.exit(0);
 }
 
-if (command === 'model') {
-  let i;
-  try {
-    i = ops.stepIndex(state, args[0]);
-  } catch (e) {
-    die(e.message);
-  }
-  console.log(models.stepModel(state, state.steps[i], prefs()));
-  process.exit(0);
-}
-
 const ownerLine = () => {
   const o = state.owner;
   if (!o?.session) return 'owner: none recorded (claim it before any change, once no other session runs it)';
@@ -351,7 +335,7 @@ if (command === 'claim' || command === 'takeover') {
     if (!('previous-closed' in flags)) die(`the workflow in ${target} is owned by session ${owner}: take it over only once the user confirms that session is closed, with --previous-closed`);
   }
   const claimed = owner === session ? state.owner : { session, since: now(), previous: command === 'takeover' ? owner : null };
-  write({ ...state, owner: claimed }, before, command);
+  write({ ...state, owner: claimed }, command);
 }
 if (command === 'discard') {
   requireOwner(state);
@@ -378,6 +362,16 @@ if (command === 'recover') {
   process.exit(0);
 }
 
+// Both router handoffs and result handoffs resolve the same checkout-relative value.
+function handoffValue(current, field, values) {
+  if (field === 'base' && values[0] === 'HEAD') {
+    const r = spawnSync('git', ['-C', target, 'rev-parse', 'HEAD'], { encoding: 'utf8', env: require('./lib/git-env')() });
+    if (r.status !== 0) throw new Error(`git rev-parse HEAD failed in ${target}: ${r.stderr.trim()}`);
+    values = [r.stdout.trim()];
+  }
+  return ops.setHandoff(current, field, values);
+}
+
 // Every command below changes the workflow: only its owner may (ADR 0002).
 requireOwner(state);
 
@@ -388,8 +382,7 @@ const lines = [];
 const replyWords = args.join(' ').trim().split(/\s+/);
 try {
   if (command === 'step') {
-    // A delegated step closes as done only on an accepted delivery (step-result.md).
-    const unaccepted = args[1] === 'done' && results.closeProblem(state, args[0], { inSession: flags['main-session'] === true });
+    const unaccepted = results.stepProblem(state, args[0], args[1], { inSession: flags['main-session'] === true });
     if (unaccepted) die(unaccepted);
     next = ops.setStep(state, args[0], args[1], flags);
   }
@@ -410,25 +403,37 @@ try {
     logged = command === 'primary' ? [family] : ['primary', family];
   }
   else if (command === 'handoff') {
-    let values = args.slice(1);
-    if (args[0] === 'base' && values[0] === 'HEAD') {
-      const r = spawnSync('git', ['-C', target, 'rev-parse', 'HEAD'], { encoding: 'utf8', env: require('./lib/git-env')() });
-      if (r.status !== 0) die(`git rev-parse HEAD failed in ${target}: ${r.stderr.trim()}`);
-      values = [r.stdout.trim()];
-    }
-    next = ops.setHandoff(state, args[0], values);
+    next = handoffValue(state, args[0], args.slice(1));
   } else if (command === 'reply') {
     // A swap changes what the step runs internally: coverage is recalculated before go.
     const replied = ops.reply(state, args.join(' '), invokesFor(target));
     next = replied.state;
     notes.push(...replied.notes);
   }
-  else if (command === 'expect') {
+  else if (command === 'start') {
+    prefs();
+    if (flags.model !== undefined && !/^\S+$/.test(flags.model)) die('--model: expected a model ID without spaces');
+    if (flags.effort !== undefined && !['low', 'medium', 'high'].includes(flags.effort)) die('--effort: expected low | medium | high');
     const requires = flags.requires === undefined ? undefined : flags.requires.split(',').map((k) => k.trim()).filter(Boolean);
     const attempt = files.token(4);
     const retry = progress.retryProblem(state, args[0], { approved: flags['user-approved'] === true });
     if (retry) die(retry);
-    const expected = results.expect(state, args[0], { requires, attempt, purpose: flags.purpose });
+    const i = ops.stepIndex(state, args[0]);
+    const step = state.steps[i];
+    if (!results.delegated(state, step)) die(`step ${step.id}: no delegated delivery; use step ${i + 1} running`);
+    if (!['pending', 'running'].includes(step.status)) die(`step ${step.id} is ${step.status}: start needs a pending or running step`);
+    const running = ops.setStep(state, args[0], 'running', {
+      model: flags.model ?? (step.status === 'running' ? step.model : null) ?? models.stepModel(state, step, prefs()),
+      effort: flags.effort ?? (step.status === 'running' ? step.effort : prefs().effort) ?? null,
+    });
+    const expected = results.openAttempt(running, args[0], { requires, attempt, purpose: flags.purpose });
+    const p = expected.state.steps[i].progress;
+    if (p) {
+      p.interrupted = null;
+      if (flags['user-approved']) p.approved = p.interruptions;
+    }
+    lines.push(`model: ${running.steps[i].model}`, `effort: ${running.steps[i].effort ?? 'harness default'}`,
+      ...progress.recovery(expected.state, progress.checkout(target), flags.env));
     next = expected.state;
     lines.push(...expected.lines);
   } else if (command === 'deliver') {
@@ -437,14 +442,14 @@ try {
       const f = rel === resultPath && args[1] ? path.resolve(args[1]) : path.join(target, rel);
       return fs.existsSync(f) && fs.statSync(f).isFile() ? fs.readFileSync(f, 'utf8') : null;
     };
-    const delivered = results.deliver(state, args[0], read);
+    const delivered = results.deliver(state, args[0], read, handoffValue);
     if (delivered.problems) {
       // Refused: nothing is written, the attempt stays open, the valid artifacts stay as they are.
       for (const p of delivered.problems) console.error(`error: ${p}`);
       for (const k of delivered.kept) console.error(`kept: ${k}`);
       process.exit(1);
     }
-    for (const w of delivered.writes) fs.writeFileSync(path.join(target, w.path), w.content);
+    artifactWrites.push(...delivered.writes);
     next = delivered.state;
     lines.push(...delivered.lines);
   }
@@ -464,5 +469,5 @@ try {
 
 // A state written without a primary family takes the preferences'; a stored one stays for the run.
 // A started step gets its note, headed by the run (ADR 0002).
-const started = () => (command === 'step' && args[1] === 'running' && next.run ? [files.startNote(target, next, ops.stepIndex(next, args[0]))] : []);
-write(next, before, `${command} ${logged.join(' ')}`, [...notes.map((n) => `coverage: ${n}`), ...lines], started);
+const started = () => ((command === 'start' || (command === 'step' && args[1] === 'running')) && next.run ? [files.startNote(target, next, ops.stepIndex(next, args[0]))] : []);
+write(next, `${command} ${logged.join(' ')}`, [...notes.map((n) => `coverage: ${n}`), ...lines], started);

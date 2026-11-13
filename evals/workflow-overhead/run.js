@@ -79,8 +79,8 @@ function scenario(root, label) {
 
   // 1. Context handed to the implementation agent: the brief SKILL.md §6 asks for (fields, with
   // paths), next to one that recopies what those paths point at.
-  const expected = st('expect', String(n));
-  m.commands.expect = !missing(expected);
+  const expected = st('start', String(n));
+  m.commands.start = !missing(expected);
   const notes = state.steps.slice(0, impl).map((s, i) => `.router/steps/${i + 1}-${s.id}.md`);
   for (const [i, s] of state.steps.slice(0, impl).entries()) put(notes[i], `run: ${state.run ?? 'none'}\n${s.id}: ${s.outcome}\n`);
   const references = [path.join(root, 'skills/engineering-router/SKILL.md'), path.join(root, 'skills/engineering-router/autonomy.md'),
@@ -91,7 +91,7 @@ function scenario(root, label) {
     `References: ${references.join(', ')}`,
     'Constraints: the target AGENTS.md; save progress with scripts/state progress/check',
     'Evidence already available: none (first attempt)',
-    `Expected output: ${m.commands.expect ? expected.out.trim().split('\n').join('; ') : 'a one-line outcome'}`,
+    `Expected output: ${m.commands.start ? expected.out.trim().split('\n').join('; ') : 'a one-line outcome'}`,
   ].join('\n');
   const recopied = brief + references.map((f) => `\n\n--- ${f}\n${fs.readFileSync(f, 'utf8')}`).join('');
   m.brief = { fields_bytes: Buffer.byteLength(brief), recopied_bytes: Buffer.byteLength(recopied) };
@@ -145,17 +145,16 @@ function scenario(root, label) {
   g('commit', '-qm', 'fix');
   const closeWithout = st('step', String(n), 'done', '--outcome', 'Built');
   m.delivery = { close_without_delivery_refused: !closeWithout.ok };
-  if (m.commands.expect) {
-    const again = st('expect', String(n));
+  if (m.commands.start) {
+    const again = st('start', String(n));
     const attempt = again.out.match(/^attempt: (\S+)/m)?.[1];
     const note = `.router/steps/${n}-implementation.md`;
     put(note, `run: ${read().run}\nBuilt the CSV export; tests pass.\n`);
     put(`.router/steps/${n}-implementation.result.json`, JSON.stringify({ step: 'implementation', attempt, verdict: 'done', summary: 'Built', artifacts: { note }, remaining: null }));
     m.delivery.accepted = st('deliver', String(n)).ok;
-    m.delivery.closed_after_delivery = st('step', String(n), 'done', '--outcome', 'Built').ok;
+    m.delivery.closed_after_delivery = read().steps[impl].status === 'done' && read().steps[impl].outcome === 'Built';
     const r = state.steps.findIndex((s) => s.id === 'review') + 1;
-    st('step', String(r), 'running', '--model', 'gpt-6-sol');
-    const pass = (...a) => st('expect', String(r), ...a);
+    const pass = (...a) => st('start', String(r), ...a);
     const deliverReview = (verdict, findings) => {
       const at = pass(...(m.reviewPasses ? ['--purpose', m.reviewPasses] : [])).out.match(/^attempt: (\S+)/m)?.[1];
       fs.appendFileSync(path.join(repo, `.router/steps/${r}-review.md`), 'Reviewed the export.\n');

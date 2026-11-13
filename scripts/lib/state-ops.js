@@ -104,10 +104,11 @@ function setHandoff(state, field, args) {
   const ref = () => {
     const number = Number(args[0]);
     if (!Number.isInteger(number) || number <= 0) fail(`${field}: expected <number> <url>`);
+    if (args[1] !== undefined && typeof args[1] !== 'string') fail(`${field}: expected <number> <url>`);
     return { number, url: args[1] ?? '' };
   };
   const one = () => {
-    if (!args[0]) fail(`${field}: expected a value`);
+    if (typeof args[0] !== 'string' || !args[0].trim()) fail(`${field}: expected a nonempty string value`);
     return args[0];
   };
   switch (field) {
@@ -118,7 +119,14 @@ function setHandoff(state, field, args) {
       h.tickets = [...(h.tickets ?? []).filter((x) => x.number !== t.number), t];
       break;
     }
-    case 'spec': h.spec = one(); break;
+    case 'spec': {
+      const spec = one();
+      const path = require('node:path');
+      if (path.isAbsolute(spec) || path.normalize(spec).split(path.sep)[0] === '..')
+        fail(`handoff.spec: must be a path relative to the target repo, got ${JSON.stringify(spec)}`);
+      h.spec = spec;
+      break;
+    }
     case 'branch': h.branch = one(); break;
     case 'base': h.base_commit = one(); break;
     default: fail(`handoff field must be one of issue, spec, ticket, branch, base, pr`);

@@ -25,8 +25,12 @@ The model a step actually ran on. Every step that ran has one; only a step that 
 _Avoid_: session model (for a step), default model
 
 **Step result**:
-What a delegated step delivers: a JSON object naming the step and its attempt, a verdict (`done`, `fixes` or `blocked`) and the artifacts the step declared. Only an accepted step result lets the step close or the workflow move past it; a skill step that ran in the main session says so with `--main-session`.
+What a delegated step delivers: a JSON object naming the step and its attempt, a verdict (`done`, `fixes` or `blocked`) and the artifacts the step declared. An accepted `done` step result closes the step, with its summary as the outcome and any produced handoff values recorded; a skill step that ran in the main session says so with `--main-session`.
 _Avoid_: ready marker, completion phrase
+
+**Attempt**:
+One execution of a delegated step for a declared purpose. A restart opens a new attempt, making an earlier attempt's result stale.
+_Avoid_: pass (a review purpose can survive a retry)
 
 **Step boundary**:
 The moment after one step has closed and before the next one starts. The step's note and the workflow state are written, so it is the only point where the workflow can pause on purpose and resume in a new session. An interrupted step resumes from its progress record instead.
@@ -57,7 +61,7 @@ The single-select question a new run asks before the workflow is shown, where su
 _Avoid_: model picker
 
 **Agent record**:
-A step's own statement of which agent ran it, on which harness, model and effort. When present, it is the authority on the step model.
+A step's own statement of which agent ran it, on which harness, model and effort. It is evidence of the step model; delegated dispatch settings are recorded before execution and checked against it.
 _Avoid_: agent line, attribution
 
 **Cross-family review**:

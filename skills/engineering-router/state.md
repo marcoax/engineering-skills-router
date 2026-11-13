@@ -247,12 +247,12 @@ Checked by `scripts/check-classification` and by `scripts/state … compose`. A 
 | `optional` (optional) | boolean | `true` when the user may switch the step on and off during selection (independent-review, verification). An optional step that is off is `skipped` with outcome `off (optional)`; switching it on sets `pending`. |
 | `covered_by` | string \| null | `id` of the step whose skill runs this one internally (e.g. testing inside implementation). Never set for a review step: a review runs on its own. |
 | `selected` (optional) | Selection \| null | The selector's own pick for a covered step, kept while `skill` holds the skill its covering step runs; restored when a swap leaves the step to run on its own. `null` for a step that is not covered. |
-| `model` | string \| null | The **step model**: the model the step actually ran on, for every step that ran (`running`, `waiting`, `done`, `failed`, or `skipped` after running). Precedence: agent record, then the model passed to the step's subagent (or `review_other_family`'s backend), then the session's model; full rules in [models.md](models.md). Recorded as the source names it (`claude-bridge/claude-opus-5-5` and `claude-opus-5-5` may both appear), no spaces. `null` only for a step that did not run. |
-| `effort` (optional) | `"low"` \| `"medium"` \| `"high"` \| null | The step's effort, from the agent record or the one passed to the step ([models.md](models.md)); `null` when neither names one (the harness default). Never taken from the session. |
+| `model` | string \| null | The **step model**: the model the step actually ran on, for every step that ran (`running`, `waiting`, `done`, `failed`, or `skipped` after running). Delegated steps record the actual dispatch choice at `start`; other main-session and historical records use agent record, then dispatched model (or `review_other_family`'s backend), then the session's model; full rules in [models.md](models.md). Recorded as the source names it (`claude-bridge/claude-opus-5-5` and `claude-opus-5-5` may both appear), no spaces. `null` only for a step that did not run. |
+| `effort` (optional) | `"low"` \| `"medium"` \| `"high"` \| null | The step's effort recorded at `start`, or for main-session and historical work from its agent record or dispatch settings ([models.md](models.md)); `null` when neither names one (the harness default). Never taken from the session. |
 | `progress` (optional) | Progress \| null | What a running step has saved so far, so an interruption loses nothing ([ADR 0003](../../docs/adr/0003-progress-records.md)); `null` until it saves any. Written with `scripts/state … progress`, `check` and `interrupt`; read back with `recover`. |
 | `status` | string | Step status, see below. |
-| `outcome` | string \| null | One-line result once the step ends. |
-| `result` (optional) | Result \| null | The delivery a delegated step owes ([step-result.md](step-result.md)): set by `scripts/state … expect`, accepted by `… deliver`. A step that has one closes as `done` only on an accepted `done` verdict. `null` or absent for a step that declares none. |
+| `outcome` | string \| null | One-line result once the step ends; for an accepted `done` delivery, its `summary`. |
+| `result` (optional) | Result \| null | The delivery a delegated step owes ([step-result.md](step-result.md)): opened by `scripts/state … start`, accepted by `… deliver`. An accepted `done` verdict closes the step and copies the delivered summary to its outcome. `null` or absent for a step that declares none. |
 
 Step `status`:
 
@@ -280,7 +280,7 @@ A step's latest progress, rewritten by `progress`; `branch`, `head` and `changes
 | `limits` | string \| null | Known limits and open points; `null` when none. |
 | `interrupted` | Interruption \| null | The last interruption, until the step saves progress again. |
 | `interruptions` | integer | How many times the step was interrupted; it is retried at most twice ([resume.md](resume.md)). |
-| `approved` (optional) | integer \| null | The interruptions the user's yes to another retry covers (`progress --user-approved`); past the retries, `progress` and `expect` are refused until it reaches `interruptions`; `null` until the user approves one. |
+| `approved` (optional) | integer \| null | The interruptions the user's yes to another retry covers (`progress --user-approved` or `start --user-approved`); past the retries, `progress` and `start` are refused until it reaches `interruptions`; `null` until the user approves one. |
 | `checks` | Check[] | The checks the step ran, one per command: a rerun replaces the earlier one. |
 
 ## Interruption
@@ -323,6 +323,8 @@ A check's result holds only for the content it ran on: `recover` reuses a passin
 | `remaining` | string \| null | What blocks the step or is left, from a `blocked` (or any) delivery. |
 | `purpose` (optional) | string \| null | What this attempt is for: the step's summary on its first pass; another pass of a review after an accepted verdict declares its own, distinct one (a review counts once per purpose). |
 | `earlier` (optional) | Attempt[] | The step's earlier attempts, oldest first; a review's findings carry decisions only after one of them delivered `fixes`. |
+
+The delivered result's optional `handoff` is validated and applied to the workflow's Handoff on `done`; it is not stored again in Result. Existing Result records, including accepted deliveries whose steps were not yet closed, remain valid without rewriting.
 
 ## Attempt
 

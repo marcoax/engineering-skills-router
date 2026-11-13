@@ -1,0 +1,89 @@
+{
+  "version": 1,
+  "task": "Old delegated review",
+  "type": "feature",
+  "risk": "medium",
+  "complexity": "medium",
+  "path": "full",
+  "properties": [
+    "brownfield",
+    "user-facing"
+  ],
+  "classification": {
+    "policy": 3,
+    "ticket": false,
+    "facts": [],
+    "rationale": {
+      "type": "a new capability on an existing page",
+      "risk": "no fact applies; a wrong export is visible to users but contained and reversible",
+      "complexity": "a query, a CSV writer and a button across three files"
+    },
+    "uncertain": []
+  },
+  "primary": "claude",
+  "status": "done",
+  "updated_at": "2026-10-17T09:42:00Z",
+  "steps": [
+    {
+      "id": "security",
+      "phases": [
+        "security"
+      ],
+      "skill": "addyosmani/security-and-hardening",
+      "reason": "five review axes fit a user-facing export",
+      "summary": "Cross-family review of the diff since the base commit",
+      "alternatives": [
+        {
+          "skill": "mattpocock/code-review",
+          "reason": "standards and spec axes"
+        }
+      ],
+      "confirm": false,
+      "covered_by": null,
+      "model": "openai-codex/gpt-6-sol",
+      "effort": "medium",
+      "status": "done",
+      "outcome": "No findings",
+      "result": {
+        "attempt": "old-attempt",
+        "requires": [
+          "findings"
+        ],
+        "verdict": "done",
+        "artifacts": [
+          {
+            "kind": "findings",
+            "path": ".router/steps/1-security.findings.json"
+          }
+        ],
+        "remaining": null,
+        "purpose": "Check security",
+        "earlier": []
+      }
+    }
+  ],
+  "handoff": {
+    "issue": {
+      "number": 42,
+      "url": "https://github.com/acme/app/issues/42"
+    },
+    "spec": null,
+    "tickets": [],
+    "branch": "42-csv-export",
+    "base_commit": "3f2a9c1e7b4d8f0a6c5e2b9d1f3a7c4e8b0d2f6a",
+    "pr": null
+  },
+  "run": "20261017T093000Z-4f2a",
+  "owner": {
+    "session": "session-example",
+    "since": "2026-10-17T09:30:00Z",
+    "previous": null
+  },
+  "manual_checklist": [],
+  "reviewed": [
+    {
+      "source": "addyosmani",
+      "revision": "301b02b12bff98e4688e6984af6556802322bbde"
+    }
+  ]
+}

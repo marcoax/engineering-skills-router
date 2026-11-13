@@ -1,6 +1,6 @@
 # Context at a step boundary
 
-Read when a completed `scripts/state … step <n> done` command prints a `config:` line, or a line like:
+Read when an accepted `scripts/state … deliver <n>` or a main-session `step <n> done` command prints a `config:` line, or a line like:
 
 ```text
 context: 162000 of 200000 window, threshold 150000

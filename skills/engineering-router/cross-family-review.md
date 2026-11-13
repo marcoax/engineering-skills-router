@@ -2,7 +2,7 @@
 
 Read from SKILL.md before showing the workflow (§5), and again when a review step runs (§6).
 
-Every step that reviews code (`review`, `framework-review`, `security`, `independent-review`, and the fresh re-check after fixes) is a **cross-family review**. It runs on the family opposite to the one the last code-writing step (implementation, or its fixes) actually ran on. That holds whatever `primary` or a review phase's `model` in `preferences.yaml` says: `scripts/state <target repo> model <n|id>` prints that model. Why: [ADR 0001](../../docs/adr/0001-single-cross-family-review.md).
+Every step that reviews code (`review`, `framework-review`, `security`, `independent-review`, and the fresh re-check after fixes) is a **cross-family review**. It runs on the family opposite to the one the last code-writing step (implementation, or its fixes) actually ran on. That holds whatever `primary` or a review phase's `model` in `preferences.yaml` says: `scripts/state <target repo> start <n|id>` resolves and records that dispatch model. Why: [ADR 0001](../../docs/adr/0001-single-cross-family-review.md).
 
 The implementation's family is the one it actually runs on ([models.md](models.md)). In Claude Code that is `claude` even when `primary` is `openai`, so the reviews go to `openai`. On Pi with `primary openai`, the implementation runs on gpt, so the reviews go to `claude`. When a preference would put a review on the writer's family, say so once in the workflow: `review: preferences.yaml sets review on <family>, the writer's family: runs on <other>`.
 
@@ -35,9 +35,9 @@ Where the review runs through `review_other_family`, call that tool instead. Pas
 - the base commit and the command `git diff <base commit>...HEAD`;
 - the issue or spec;
 - the instruction to only report findings, never edit;
-- the lines `scripts/state <target repo> expect <n> --requires findings` printed, and the instruction to end the answer with its step result as a json block, findings inline ([step-result.md](step-result.md)).
+- the lines `scripts/state <target repo> start <n> --requires findings` printed, and the instruction to end the answer with its step result as a json block, findings inline ([step-result.md](step-result.md)).
 
-Its answer opens with the backend, model and effort that ran: record those in the step's `model`. Save the answer unchanged to a file and pass it to `scripts/state <target repo> deliver <n> <file>`; the delivered findings, not the prose, are the step's findings.
+Record the actual backend model and effort from preflight at `start` with `--model` / `--effort` when they differ from the resolved defaults; dispatch those settings. Its answer opens with the backend, model and effort that ran: verify they match, resolving a mismatch before retrying rather than changing attribution on delivery. Save the answer unchanged to a file and pass it to `scripts/state <target repo> deliver <n> <file>`; the delivered findings, not the prose, are the step's findings.
 
 When the tool or subagent fails (an error, a wrong `unverified` provider ID, a quota), say why and ask once for the rest of the run: retry, run the remaining reviews as same-family reviews, or stop. Never fall back without asking.
 
