@@ -3,7 +3,7 @@
 // recognizable verdict and the declared artifacts in their formats. Pure functions on the
 // parsed state; the caller reads files through `read(rel)` (its text, or null when absent).
 const path = require('node:path');
-const { clone, fail, setStep, stepIndex, REVIEW_PHASES } = require('./state-ops');
+const { clone, fail, setStep, setHandoff, stepIndex, REVIEW_PHASES } = require('./state-ops');
 const { findingsProblems } = require('./runs');
 const { STEPS_DIR, notePath, noteRun, noteBody } = require('./run-files');
 
@@ -26,15 +26,13 @@ const isReview = (step) => REVIEW_PHASES.includes(step.id);
 const delegated = (state, step) => Boolean(state.run) && step.skill != null && !step.covered_by
   && !(step.phases ?? []).some((p) => MAIN_SESSION_PHASES.includes(p));
 
-// Why step `ref` may not close as done yet, or null. A delegated step needs an accepted done
-// delivery, unless it ran in the main session. PR preparation always validates its artifacts.
-function closeProblem(state, ref, { inSession = false } = {}) {
+// Delegated work and PR preparation use start/deliver; other main-session work uses step.
+function stepProblem(state, ref, status, { inSession = false } = {}) {
   const i = stepIndex(state, ref);
   const step = state.steps[i];
   const preparation = Boolean(state.run) && step.id === 'pull-request' && step.skill != null;
-  if ((!preparation && (inSession || !delegated(state, step))) || step.result?.verdict === 'done') return null;
-  if (preparation) return `step ${step.id}: PR preparation needs an accepted delivery in the main session too: \`expect ${i + 1}\`, then \`deliver ${i + 1}\` (step-result.md)`;
-  return `step ${step.id}: a delegated step needs an accepted delivery to close as done: \`expect ${i + 1}\` before it starts, then \`deliver ${i + 1}\` (step-result.md); a skill step run in the main session closes with --main-session`;
+  if (!['running', 'done'].includes(status) || (!preparation && (inSession || !delegated(state, step)))) return null;
+  return `step ${step.id}: ${preparation ? 'PR preparation needs an accepted delivery, including in the main session' : 'a delegated step uses start and deliver'}: use \`start ${i + 1}\`, then \`deliver ${i + 1}\` (step-result.md); other main-session skill steps use --main-session`;
 }
 
 // What a step delivers unless the caller declares otherwise: every step its note; a review its
@@ -50,11 +48,11 @@ function defaultRequires(step) {
 // one's is the step's summary, and another pass after an accepted verdict declares a distinct
 // `purpose`; a retry of an attempt that delivered nothing keeps its purpose. Returns
 // { state, lines } with the lines the step's brief carries.
-function expect(state, ref, { requires, attempt, purpose }) {
+function openAttempt(state, ref, { requires, attempt, purpose }) {
   const s = clone(state);
   const i = stepIndex(s, ref);
   const step = s.steps[i];
-  if (step.status !== 'running') fail(`step ${step.id} is ${step.status}: start it (step ${i + 1} running) before expecting its delivery`);
+  if (step.status !== 'running') fail(`step ${step.id} is ${step.status}: start it with start ${i + 1}`);
   const kinds = requires ?? defaultRequires(step);
   const unknown = kinds.filter((k) => !KINDS.includes(k));
   if (unknown.length) fail(`--requires: unknown artifact ${unknown.join(', ')} (${KINDS.join(', ')})`);
@@ -72,8 +70,7 @@ function expect(state, ref, { requires, attempt, purpose }) {
   const p = paths(s, i);
   const lines = [`result: ${p.result}`, `attempt: ${attempt}`, `requires: ${kinds.map((k) => `${k} ${p[k]}`).join(', ')}`];
   if (pass) lines.push(`purpose: ${pass}`);
-  // The note is started headed by its run (run-files.js startNote): the step appends below it.
-  if (s.run && kinds.includes('note')) lines.push(`note: keep its first line \`run: ${s.run}\` and append below it`);
+  // The note's line comes from run-files.js startNote, which heads the note with its run.
   return { state: s, lines };
 }
 
@@ -97,15 +94,15 @@ const inside = (rel) => typeof rel === 'string' && rel.trim() && !path.isAbsolut
 
 // Checks a delivery against the step's open expectation. Returns { problems, kept } when it is
 // refused (the state is unchanged, the attempt stays open), else { state, verdict, actionable,
-// lines, writes }: a done or fixes verdict keeps the step running (done lets it close), blocked
+// lines, writes }: done closes the step with its summary, fixes keeps it running, blocked
 // leaves it waiting; `writes` are inline artifacts for the caller to save ({path, content}).
-function deliver(state, ref, read) {
+function deliver(state, ref, read, handoffValue = setHandoff) {
   const i = stepIndex(state, ref);
   const step = state.steps[i];
   const p = paths(state, i);
   const expected = step.result;
   const refuse = (problems, kept = []) => ({ problems, kept });
-  if (!expected || expected.verdict !== null) return refuse([`step ${step.id}: no delivery expected (expect ${i + 1} first)`]);
+  if (!expected || expected.verdict !== null) return refuse([`step ${step.id}: no delivery expected (start ${i + 1} first)`]);
   if (step.status !== 'running') return refuse([`step ${step.id} is ${step.status}, not running`]);
   const text = read(p.result);
   if (text == null) return refuse([`result: ${p.result} not found`]);
@@ -117,6 +114,19 @@ function deliver(state, ref, read) {
     return refuse([`result.attempt: ${JSON.stringify(result.attempt)} is not the current attempt ${expected.attempt}`]);
 
   const problems = [];
+  let s = clone(state);
+  if (result.handoff !== undefined) {
+    if (!result.handoff || typeof result.handoff !== 'object' || Array.isArray(result.handoff))
+      problems.push('result.handoff: must be an object');
+    else for (const [field, value] of Object.entries(result.handoff)) {
+      try {
+        const reference = ['issue', 'ticket', 'pr'].includes(field);
+        if (reference && (!value || typeof value !== 'object' || Array.isArray(value) || !Number.isInteger(value.number)))
+          fail(`${field}: expected {number, url}`);
+        s = handoffValue(s, field, reference ? [value.number, value.url] : [value]);
+      } catch (e) { problems.push(`result.handoff.${field}: ${e.message}`); }
+    }
+  }
   const verdict = result.verdict;
   if (!VERDICTS.includes(verdict)) problems.push(`result.verdict: no recognizable verdict (${VERDICTS.join(' | ')}), got ${JSON.stringify(verdict)}`);
   if (typeof result.summary !== 'string' || !result.summary.trim()) problems.push('result.summary: one line, required');
@@ -126,6 +136,7 @@ function deliver(state, ref, read) {
   for (const kind of Object.keys(given)) if (!KINDS.includes(kind)) problems.push(`artifacts.${kind}: unknown artifact (${KINDS.join(', ')})`);
 
   // Each declared artifact must be there and valid; a blocked step reports what it has.
+  const issue = (verdict === 'done' ? s : state).handoff?.issue;
   const ids = new Set(state.steps.map((s) => s.id));
   const kept = [];
   const artifacts = [];
@@ -174,8 +185,8 @@ function deliver(state, ref, read) {
           });
         if (!own.length) findings = list;
       }
-    } else if (kind === 'pr-body' && state.handoff?.issue?.number != null) {
-      const n = state.handoff.issue.number;
+    } else if (kind === 'pr-body' && issue?.number != null) {
+      const n = issue.number;
       if (!new RegExp(`\\bCloses #${n}\\b`, 'i').test(content)) own.push(`pr-body: must link the issue with "Closes #${n}"`);
     }
     if (own.length) problems.push(...own);
@@ -192,14 +203,17 @@ function deliver(state, ref, read) {
   if (verdict === 'fixes' && !actionable) problems.push('verdict fixes needs at least one actionable finding (a finding without a decision)');
   if (problems.length) return refuse(problems, kept);
 
-  let s = clone(state);
+  if (verdict !== 'done') s = clone(state);
   s.steps[i].result = { ...expected, verdict, artifacts, remaining };
   const lines = [];
   if (verdict === 'blocked') {
     s = setStep(s, i + 1, 'waiting');
     lines.push(`blocked: ${remaining}`);
-  } else if (verdict === 'fixes') lines.push(`fixes: ${plural(actionable)}: run the fixes, then expect ${i + 1} again`);
-  else lines.push(`done: ${result.summary}`);
+  } else if (verdict === 'fixes') lines.push(`fixes: ${plural(actionable)}: run the fixes, then start ${i + 1} again`);
+  else {
+    s = setStep(s, i + 1, 'done', { outcome: result.summary });
+    lines.push(`done: ${result.summary}`);
+  }
   return { state: s, verdict, actionable, lines, writes };
 }
 
@@ -212,4 +226,4 @@ function artifact(state, ref, kind) {
   return found.path;
 }
 
-module.exports = { expect, deliver, artifact, paths, defaultRequires, closeProblem, VERDICTS, KINDS };
+module.exports = { openAttempt, delegated, deliver, artifact, paths, defaultRequires, stepProblem, VERDICTS, KINDS };

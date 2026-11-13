@@ -80,8 +80,8 @@ test("Pi boundary: threshold from an explicit configuration directory", async ()
   fs.symlinkSync(path.join(ROOT, "node_modules"), path.join(router, "node_modules"));
   fs.writeFileSync(path.join(config, "preferences.yaml"), "preferences:\n  context_threshold: 162000\n");
   process.env.ENGINEERING_ROUTER_CONFIG = config;
-  const command = `node "${router}/scripts/state" "${target}" step 2 done`;
-  const content = [{type: "text", text: "state: step 2 done → workflow running\n"}];
+  const command = `node "${router}/scripts/state" "${target}" deliver review "answer file.md" --session session-example`;
+  const content = [{type: "text", text: "state: deliver review answer file.md → workflow running\ndone: No findings\n"}];
   const result = await hook()!({toolName: "bash", input: {command}, isError: false, content}, {cwd: target, getContextUsage: () => ({tokens: 162000, contextWindow: 200000})});
   assert.equal(result?.content.at(-1).text, "context: 162000 of 200000 window, threshold 162000");
  } finally {
@@ -98,8 +98,8 @@ test("Pi boundary: an unreadable configuration is reported", async () => {
  try {
   fs.writeFileSync(path.join(config, "preferences.yaml"), "preferences: [unclosed\n");
   process.env.ENGINEERING_ROUTER_CONFIG = config;
-  const command = `node "${ROOT}/scripts/state" "${target}" step 2 done`;
-  const content = [{type: "text", text: "state: step 2 done → workflow running\n"}];
+  const command = `node "${ROOT}/scripts/state" "${target}" deliver review`;
+  const content = [{type: "text", text: "state: deliver review → workflow running\ndone: No findings\n"}];
   const result = await hook()!({toolName: "bash", input: {command}, isError: false, content}, {cwd: target, getContextUsage: () => ({tokens: 190000, contextWindow: 200000})});
   assert.ok((result?.content.at(-1).text ?? "").startsWith(`config: error: ${path.join(config, "preferences.yaml")}: malformed YAML`), JSON.stringify(result));
  } finally {
@@ -116,6 +116,55 @@ for (const [label, command, output, isError] of [
 ] as const) {
  test(`Pi leaves ${label} alone`, async () => {
   const result = await hook()!({toolName: "bash", input: {command}, isError, content: [{type: "text", text: output}]}, {cwd: ROOT, getContextUsage: () => {throw new Error('not a boundary');}});
+  assert.equal(result, undefined);
+ });
+}
+
+// start owns the dispatch settings; only an accepted done delivery is a boundary.
+test('Pi appends context after a delegated done delivery closes its step', async () => {
+ const target = fixture();
+ try {
+  const started = spawnSync(`${ROOT}/scripts/state`, [target, 'start', 'review', '--requires', 'findings'], {encoding: 'utf8'});
+  assert.equal(started.status, 0, started.stderr);
+  const attempt = started.stdout.match(/^attempt: (\S+)$/m)![1];
+  fs.writeFileSync(path.join(target, '.router/steps/5-review.result.json'), JSON.stringify({step: 'review', attempt, verdict: 'done', summary: 'No findings', artifacts: {findings: []}}));
+  const run = spawnSync(`${ROOT}/scripts/state`, [target, 'deliver', 'review'], {encoding: 'utf8'});
+  assert.equal(run.status, 0, run.stderr);
+  const command = `node "${ROOT}/scripts/state" "${target}" deliver review`;
+  const result = await hook()!({toolName: 'bash', input: {command}, isError: false, content: [{type: 'text', text: run.stdout}]}, {cwd: target, getContextUsage: () => ({tokens: 162000, contextWindow: 200000})});
+  assert.match(result?.content.at(-1).text ?? '', /context: 162000 of 200000 window, threshold 150000/);
+ } finally {fs.rmSync(target, {recursive: true, force: true});}
+});
+
+test('Pi leaves a genuine blocked delivery with multiline done prose alone', async () => {
+ const target = fixture();
+ try {
+  const started = spawnSync(`${ROOT}/scripts/state`, [target, 'start', 'review'], {encoding: 'utf8'});
+  assert.equal(started.status, 0, started.stderr);
+  const attempt = started.stdout.match(/^attempt: (\S+)$/m)![1];
+  const remaining = 'Need approval\ndone: implementation checks';
+  fs.writeFileSync(path.join(target, '.router/steps/5-review.result.json'), JSON.stringify({step: 'review', attempt, verdict: 'blocked', summary: 'Waiting for approval', remaining}));
+  const run = spawnSync(`${ROOT}/scripts/state`, [target, 'deliver', 'review'], {encoding: 'utf8'});
+  assert.equal(run.status, 0, run.stderr);
+  const state = JSON.parse(fs.readFileSync(path.join(target, '.router/state.json'), 'utf8'));
+  assert.equal(state.steps[4].status, 'waiting');
+  assert.equal(state.steps[4].result.remaining, remaining);
+  assert.match(run.stdout, /blocked: Need approval\ndone: implementation checks/);
+  let measurements = 0;
+  const command = `node "${ROOT}/scripts/state" "${target}" deliver review`;
+  const result = await hook()!({toolName: 'bash', input: {command}, isError: false, content: [{type: 'text', text: run.stdout}]}, {cwd: target, getContextUsage: () => {measurements++; return {tokens: 162000, contextWindow: 200000};}});
+  assert.equal(result, undefined);
+  assert.equal(measurements, 0);
+ } finally {fs.rmSync(target, {recursive: true, force: true});}
+});
+
+for (const [label, output, isError] of [
+ ['fixes delivery', 'state: deliver review → workflow running\nfixes: 1 actionable finding: run the fixes\n', false],
+ ['blocked delivery', 'state: deliver review → workflow waiting\nblocked: missing approval\n', false],
+ ['refused delivery', 'error: result.attempt: stale\n', true],
+] as const) {
+ test(`Pi leaves ${label} alone`, async () => {
+  const result = await hook()!({toolName: 'bash', input: {command: `${ROOT}/scripts/state /target deliver review`}, isError, content: [{type: 'text', text: output}]}, {cwd: ROOT, getContextUsage: () => {throw new Error('not a boundary');}});
   assert.equal(result, undefined);
  });
 }

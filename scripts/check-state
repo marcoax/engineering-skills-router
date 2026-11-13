@@ -10,7 +10,7 @@ const ROOT = path.resolve(__dirname, '..');
 const STATE_FILE = '.router/state.json';
 const target = process.argv[2];
 if (!target) {
-  console.error('usage: scripts/check-state <target-repo>');
+  console.error('usage: scripts/check-state <target-repo> [--stdin]');
   process.exit(1);
 }
 const file = path.join(target, STATE_FILE);
@@ -22,10 +22,11 @@ const isObj = (v) => typeof v === 'object' && v !== null && !Array.isArray(v);
 const isStr = (v) => typeof v === 'string';
 const json = (v) => JSON.stringify(v);
 
-if (!fs.existsSync(file)) fatal(`${STATE_FILE}: not found in ${target}`);
+const stdin = process.argv[3] === '--stdin';
+if (!stdin && !fs.existsSync(file)) fatal(`${STATE_FILE}: not found in ${target}`);
 let state;
 try {
-  state = JSON.parse(fs.readFileSync(file, 'utf8'));
+  state = JSON.parse(fs.readFileSync(stdin ? 0 : file, 'utf8'));
 } catch (e) {
   fatal(`invalid JSON: ${e.message}`);
 }

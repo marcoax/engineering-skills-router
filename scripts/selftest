@@ -25,7 +25,7 @@ for (const dir of ['vendors', 'node_modules']) fs.symlinkSync(path.join(ROOT, di
 
 const prefsFile = path.join(tmp, 'config/preferences.yaml');
 const fail = (msg) => { console.log(`FAIL: ${msg}`); process.exit(1); };
-const scriptTests = spawnSync(process.execPath, ['--test', path.join(ROOT, 'scripts/lib/git-env.test.js'), path.join(ROOT, 'scripts/lib/install-claude.test.js'), path.join(ROOT, 'scripts/lib/progress.test.js'), path.join(ROOT, 'scripts/lib/manual-checklist.test.js')], { encoding: 'utf8' });
+const scriptTests = spawnSync(process.execPath, ['--test', path.join(ROOT, 'scripts/state.test.js'), path.join(ROOT, 'scripts/lib/git-env.test.js'), path.join(ROOT, 'scripts/lib/install-claude.test.js'), path.join(ROOT, 'scripts/lib/progress.test.js'), path.join(ROOT, 'scripts/lib/manual-checklist.test.js')], { encoding: 'utf8' });
 if (scriptTests.status !== 0) fail(`Script tests\n${scriptTests.stdout}${scriptTests.stderr}`);
 const run = (script, ...args) => {
   const r = spawnSync(path.join(tmp, 'scripts', script), args, { encoding: 'utf8' });
@@ -347,12 +347,13 @@ fs.rmSync(prefsFile);
     fs.readFileSync(path.join(ROOT, STATE_MD), 'utf8').match(/```json\n([\s\S]*?)```/)[1]);
   // The effective behavior a user sees: selected and excluded skills, a step's model, the threshold.
   const behavior = (extra) => {
+    fs.writeFileSync(path.join(target, '.router/state.json'), fs.readFileSync(path.join(ROOT, STATE_MD), 'utf8').match(/```json\n([\s\S]*?)```/)[1].replace('"claude-bridge/claude-opus-5-5"', 'null'));
     const docs = runIn('list-skills', ['--reselect', 'documentation'], extra).out;
     const review = runIn('list-skills', ['--reselect', 'review'], extra).out;
     return [
       docs.match(/^1\. .*$/m)?.[0], docs.match(/^ {3}path: .*notes.*$/m)?.[0],
       review.match(/^\d+\. mattpocock\/code-review {2}.*$/m)?.[0],
-      runIn('state', [target, 'model', 'implementation'], extra).out.trim(),
+      runIn('state', [target, 'start', 'implementation'], extra).out.match(/^model: (.+)$/m)?.[1],
       runIn('context-threshold', [], extra).out.trim(),
     ].join('\n');
   };
@@ -410,7 +411,7 @@ fs.rmSync(prefsFile);
     if (r.ok || !r.out.includes(`error: ${path.join(dir, file)}: ${msg}`)) fail(`expected: ${file}: ${msg}\n${r.out}`);
     // Every runtime reader says so too, without a stack trace and without falling back to defaults.
     const env = { ENGINEERING_ROUTER_CONFIG: dir };
-    for (const [script, args] of [['list-skills', ['review']], ['context-threshold', []], ['config', []], ['state', [target, 'model', 'implementation']]]) {
+    for (const [script, args] of [['list-skills', ['review']], ['context-threshold', []], ['config', []], ['state', [target, 'start', 'implementation']]]) {
       const rr = runIn(script, args, env);
       if (rr.ok || !rr.out.includes(`error: ${path.join(dir, file)}: ${msg}`) || /^\s+at /m.test(rr.out))
         fail(`${script} should diagnose ${file}: ${msg}\n${rr.out}`);
@@ -1447,13 +1448,14 @@ expectStateOk('unknown fields', variant((s) => { s.extra = 1; s.steps[0].extra =
   const attemptOf = (r) => r.out.match(/^attempt: (\S+)$/m)?.[1];
 
   // A step without a declared delivery closes as before; one with it, only after a validated one.
-  ok('review running', st('step', 'review', 'running', '--model', 'gpt-6-sol'));
-  const expected = ok('expect the review', st('expect', 'review'));
+  const expected = ok('start the review', st('start', 'review'));
+  if (step('review').status !== 'running' || step('review').model !== 'openai-codex/gpt-6-sol' || !expected.out.includes('purpose:') || expected.out.includes('recover:'))
+    fail(`start should resolve the model and print the purpose, without a resume plan for a fresh step\n${expected.out}`);
   const attempt = attemptOf(expected);
   if (!attempt || !expected.out.includes('result: .router/steps/5-review.result.json')
     || !expected.out.includes('requires: note .router/steps/5-review.md, findings .router/steps/5-review.findings.json'))
-    fail(`expect should print the result path, the attempt and the declared artifacts\n${expected.out}`);
-  refused('closing before a delivery', st('step', 'review', 'done', '--outcome', 'Reviewed'), 'needs an accepted delivery');
+    fail(`start should print the result path, the attempt and the declared artifacts\n${expected.out}`);
+  refused('closing before a delivery', st('step', 'review', 'done', '--outcome', 'Reviewed'), 'use `start');
   if (step('review').status !== 'running') fail('a refused close should leave the step running');
 
   // Missing, malformed or deceptive results never pass.
@@ -1496,7 +1498,7 @@ expectStateOk('unknown fields', variant((s) => { s.extra = 1; s.steps[0].extra =
   refused('a note without its run line', st('deliver', 'review'), `note: .router/steps/5-review.md needs first line "run: ${read().run}"`);
   if (fs.readFileSync(stateFile, 'utf8') !== beforeUntagged || fs.readFileSync(path.join(repo, '.router/steps/5-review.md'), 'utf8') !== 'Reviewed the diff.\n')
     fail('a refused untagged note must keep the state, attempt and note unchanged');
-  refused('closing after an untagged note', st('step', 'review', 'done', '--outcome', 'Reviewed'), 'needs an accepted delivery');
+  refused('closing after an untagged note', st('step', 'review', 'done', '--outcome', 'Reviewed'), 'use `start');
   put('.router/steps/5-review.md', `run: ${read().run}\nReviewed the diff.\n`);
 
   // Invalid findings format; findings to fix lead to fixes, not to done.
@@ -1521,30 +1523,29 @@ expectStateOk('unknown fields', variant((s) => { s.extra = 1; s.steps[0].extra =
   const fixes = ok('a review with findings to fix', st('deliver', 'review'));
   if (!fixes.out.includes('fixes: 1 actionable finding') || step('review').status !== 'running' || step('review').result.verdict !== 'fixes')
     fail(`a fixes verdict should keep the step running for the fixes\n${fixes.out}`);
-  refused('closing after a fixes verdict', st('step', 'review', 'done', '--outcome', 'Reviewed'), 'needs an accepted delivery');
+  refused('closing after a fixes verdict', st('step', 'review', 'done', '--outcome', 'Reviewed'), 'use `start');
 
   // After the fixes, a new attempt: the old one is refused, the decided findings close the step.
   // A review pass counts once per purpose: another pass on the step declares a distinct one.
-  refused('another review pass without a purpose', st('expect', 'review'), 'another pass of review needs --purpose');
-  refused('another review pass for the same purpose', st('expect', 'review', '--purpose', step('review').summary), 'already ran for that purpose');
-  const again = attemptOf(ok('expect the fixes delivery', st('expect', 'review', '--purpose', 'record the decisions after the fixes')));
+  refused('another review pass without a purpose', st('start', 'review'), 'another pass of review needs --purpose');
+  refused('another review pass for the same purpose', st('start', 'review', '--purpose', step('review').summary), 'already ran for that purpose');
+  const again = attemptOf(ok('expect the fixes delivery', st('start', 'review', '--purpose', 'record the decisions after the fixes')));
   if (step('review').result.purpose !== 'record the decisions after the fixes' || step('review').result.earlier?.[0]?.verdict !== 'fixes')
     fail(`another pass should record its purpose and the earlier attempt: ${JSON.stringify(step('review').result)}`);
-  if (!again || again === attempt) fail('a new expectation should start a new attempt');
+  if (!again || again === attempt) fail('a new attempt should start a new attempt');
   put('.router/steps/5-review.findings.json', [{ ...finding, decision: 'fixed' }]);
-  refused('the earlier attempt after a new expectation', st('deliver', 'review'), 'is not the current attempt');
+  refused('the earlier attempt after a new attempt', st('deliver', 'review'), 'is not the current attempt');
   put('.router/steps/5-review.result.json', result({ attempt: again, summary: '1 finding, fixed' }));
   ok('fixes delivered', st('deliver', 'review'));
-  ok('close the review after its delivery', st('step', 'review', 'done', '--outcome', '1 finding, fixed'));
+  if (step('review').status !== 'done' || step('review').outcome !== '1 finding, fixed') fail('done delivery should close the step with its summary');
   const closed = step('review').result;
   if (closed.verdict !== 'done' || closed.artifacts.length !== 2) fail(`the accepted delivery should stay on the step: ${JSON.stringify(closed)}`);
 
   // Pull-request preparation: body and consolidated findings in declared formats; absence of
   // findings is an explicit empty array.
-  ok('pull request running', st('step', 'pull-request', 'running', '--model', 'claude-opus-5-5'));
   refused('main-session PR preparation still needs artifacts', st('step', 'pull-request', 'done', '--outcome', 'Prepared', '--main-session'), 'PR preparation needs an accepted delivery');
-  refused('PR preparation cannot omit publication artifacts', st('expect', 'pull-request', '--requires', 'note'), 'pull-request requires pr-body and findings');
-  const prAttempt = attemptOf(ok('expect the PR preparation', st('expect', 'pull-request')));
+  refused('PR preparation cannot omit publication artifacts', st('start', 'pull-request', '--requires', 'note'), 'pull-request requires pr-body and findings');
+  const prAttempt = attemptOf(ok('expect the PR preparation', st('start', 'pull-request')));
   const prResult = (over) => ({ step: 'pull-request', attempt: prAttempt, verdict: 'done', summary: 'Prepared',
     artifacts: { 'pr-body': '.router/steps/6-pull-request.pr-body.md', findings: '.router/steps/6-pull-request.findings.json' }, ...over });
   put('.router/steps/6-pull-request.result.json', prResult());
@@ -1566,6 +1567,8 @@ expectStateOk('unknown fields', variant((s) => { s.extra = 1; s.steps[0].extra =
   const issueFreeRun = read();
   issueFreeRun.handoff.issue = null;
   issueFreeRun.handoff.spec = 'docs/specs/export.md';
+  issueFreeRun.steps[5].status = 'running';
+  issueFreeRun.status = 'running';
   issueFreeRun.steps[5].result = { ...issueFreeRun.steps[5].result, verdict: null, artifacts: [] };
   fs.writeFileSync(stateFile, JSON.stringify(issueFreeRun));
   put('.router/steps/6-pull-request.pr-body.md', 'Adds the export (spec docs/specs/export.md).\n');
@@ -1593,12 +1596,12 @@ expectStateOk('unknown fields', variant((s) => { s.extra = 1; s.steps[0].extra =
   if (rec.status !== 0 || back.kind !== 'ok' || back.record.findings.length !== 1 || back.record.findings[0].decision !== 'fixed'
     || !fs.readFileSync(published, 'utf8').startsWith('Adds the export.'))
     fail(`publication should use the accepted body and findings\n${rec.stdout}${rec.stderr}`);
-  ok('close the main-session pull request after delivery', st('step', 'pull-request', 'done', '--outcome', 'Opened #7', '--main-session'));
+  if (step('pull-request').status !== 'done') fail('PR preparation should close on delivery');
 
   // A read-only reviewer's answer, saved as it came: its last json block is the result, its
   // inline findings are written to the conventional path.
   fs.writeFileSync(stateFile, JSON.stringify(variant((s) => { s.steps[4].status = 'running'; })));
-  const roAttempt = attemptOf(ok('expect a read-only review', st('expect', 'review', '--requires', 'findings')));
+  const roAttempt = attemptOf(ok('expect a read-only review', st('start', 'review', '--requires', 'findings')));
   const answer = path.join(repo, 'answer.md');
   fs.writeFileSync(answer, `backend codex · gpt-6-sol · high\n\nNothing to report. ROUTER_STEP_READY\n\n\`\`\`json\n${JSON.stringify(
     { step: 'review', attempt: roAttempt, verdict: 'done', summary: 'No findings', artifacts: { findings: [] } })}\n\`\`\`\n`);
@@ -1611,7 +1614,7 @@ expectStateOk('unknown fields', variant((s) => { s.extra = 1; s.steps[0].extra =
   // in the main session (no subagents) says so. Router, conversational, covered and pre-run steps
   // close as before.
   fs.writeFileSync(stateFile, JSON.stringify(variant(() => {})));
-  refused('a delegated step closed without a delivery', st('step', 'implementation', 'done', '--outcome', 'Built'), 'needs an accepted delivery');
+  refused('a delegated step closed without a delivery', st('step', 'implementation', 'done', '--outcome', 'Built'), 'use `start');
   if (step('implementation').status !== 'running') fail('a refused close should leave the delegated step running');
   ok('a skill step run in the main session', st('step', 'implementation', 'done', '--outcome', 'Built', '--main-session'));
   if (step('testing').status !== 'done') fail('the covered step should close with its covering step');
@@ -1628,14 +1631,14 @@ expectStateOk('unknown fields', variant((s) => { s.extra = 1; s.steps[0].extra =
 
   // Blocked: the blocker is named and the step waits for it; the step closes no other way.
   fs.writeFileSync(stateFile, JSON.stringify(variant(() => {})));
-  const blocked = { step: 'implementation', attempt: attemptOf(ok('expect the implementation', st('expect', 'implementation'))),
+  const blocked = { step: 'implementation', attempt: attemptOf(ok('expect the implementation', st('start', 'implementation'))),
     verdict: 'blocked', summary: 'Stuck', artifacts: {} };
   put('.router/steps/3-implementation.result.json', blocked);
   refused('blocked without what remains', st('deliver', 'implementation'), 'result.remaining: required when the verdict is blocked');
   put('.router/steps/3-implementation.result.json', { ...blocked, remaining: 'The export needs a DB index nobody approved' });
   ok('blocked delivered', st('deliver', 'implementation'));
   if (step('implementation').status !== 'waiting' || read().status !== 'waiting') fail('a blocked verdict should leave the step and workflow waiting');
-  if (st('expect', 'review').ok) fail('expect should refuse a step that is not running');
+  if (st('start', 'specification').ok) fail('start should refuse a conversational step');
 }
 
 // setStep: a covered step takes its covering step's step model; one with its own agent record
@@ -1670,7 +1673,7 @@ expectStateOk('unknown fields', variant((s) => { s.extra = 1; s.steps[0].extra =
   const expectOk = (label, r) => { if (!r.ok) fail(`scripts/state ${label}\n${r.out}`); };
 
   // A step that ran records its step model as the source names it, bare IDs included.
-  expectOk('step running with a bare model ID', st('step', 'implementation', 'running', '--model', 'claude-opus-5-5'));
+  expectOk('step running with a bare model ID', st('step', 'implementation', 'running', '--model', 'claude-opus-5-5', '--main-session'));
   if (read().steps[3].model !== 'claude-opus-5-5') fail(`a covered step should take its covering step's model when it starts: ${JSON.stringify(read().steps[3])}`);
   // Closing from an agent record overwrites the model; the covered step follows it.
   expectOk('step done', st('step', 'implementation', 'done', '--outcome', 'Built', '--model', 'claude-sonnet-5-5', '--effort', 'high', '--main-session'));
@@ -1732,7 +1735,7 @@ expectStateOk('unknown fields', variant((s) => { s.extra = 1; s.steps[0].extra =
   expectOk('show after resume', afterResume);
   const firstOpen = afterResume.out.split('\n').find((line) => /^[○▶⏸]/u.test(line));
   if (firstOpen !== '○ 7. pull-request  mattpocock/pr') fail(`resume should start at the first incomplete step\n${afterResume.out}`);
-  expectOk('start first incomplete step', st('step', '7', 'running', '--model', 'claude-opus-5-5'));
+  expectOk('start first incomplete step', st('start', '7', '--model', 'claude-opus-5-5'));
   if (!st('show').out.includes('▶ 7. pull-request  mattpocock/pr  on claude-opus-5-5')) fail('resumed execution should start the pull request step');
 
   // scripts/record: composes a record scripts/stats reads back, and refuses unknown reviewers.
@@ -1782,7 +1785,7 @@ expectStateOk('unknown fields', variant((s) => { s.extra = 1; s.steps[0].extra =
   fs.writeFileSync(stateFile, JSON.stringify(example));
 
   // The owner advances the workflow; any other session is refused, whatever command it runs.
-  expectOk('step by the owner', st('step', 'review', 'running', '--model', 'gpt-6-sol'));
+  expectOk('step by the owner', st('start', 'review', '--model', 'gpt-6-sol'));
   for (const cmd of [['step', 'review', 'done', '--outcome', 'x'], ['workflow', 'paused'], ['handoff', 'branch', 'other'], ['reply', 'pause']])
     expectRefused(`${cmd[0]} by another session`, as('intruder', ...cmd), `owned by session ${example.owner.session}`);
   expectRefused('a claim by another session', as('intruder', 'claim'), `owned by session ${example.owner.session}`);
@@ -1806,7 +1809,7 @@ expectStateOk('unknown fields', variant((s) => { s.extra = 1; s.steps[0].extra =
   if (anonymous.status === 0 || !anonymous.stderr.includes('no session identity')) fail(`a write without a session identity should be refused\n${anonymous.stderr}`);
   // The usage line names every command.
   const usage = run('state').out.split('\n')[0];
-  for (const cmd of ['compose', 'step', 'workflow', 'handoff', 'reply', 'primary', 'show', 'model', 'expect', 'deliver', 'artifact',
+  for (const cmd of ['compose', 'step', 'workflow', 'handoff', 'reply', 'primary', 'show', 'start', 'deliver', 'artifact',
     'progress', 'check', 'interrupt', 'recover', 'claim', 'takeover', 'owner', 'discard', 'reconcile'])
     if (!usage.split(/[\s|]/).includes(cmd)) fail(`the scripts/state usage line should name ${cmd}\n${usage}`);
 
@@ -1864,7 +1867,7 @@ fs.statSync = function (p, ...a) { const r = statSync.call(this, p, ...a); if (S
   fs.writeFileSync(path.join(notes, '5-review.md'), 'run: run-801\nreview of #801: no findings\n');
   fs.writeFileSync(path.join(notes, '1-specification.md'), `run: ${example.run}\nspec published\n`);
   fs.writeFileSync(path.join(notes, '2-branch.md'), 'branch created (written before runs)\n');
-  const started = st('step', 'review', 'running');
+  const started = st('start', 'review');
   expectOk('step running with a foreign note in place', started);
   if (fs.readFileSync(path.join(notes, '5-review.md'), 'utf8') !== `run: ${example.run}\n`) fail('a foreign note should leave the step\'s note path to a new one headed by this run');
   if (fs.readFileSync(path.join(repo, '.router/runs/run-801/steps/5-review.md'), 'utf8') !== 'run: run-801\nreview of #801: no findings\n')
@@ -1872,19 +1875,19 @@ fs.statSync = function (p, ...a) { const r = statSync.call(this, p, ...a); if (S
   if (!started.out.includes(`note: .router/steps/5-review.md, first line \`run: ${example.run}\``)) fail(`step running should name the step's note and its run line\n${started.out}`);
   // This run's note, or one without a run line (this step's own before an interruption), stays.
   fs.writeFileSync(path.join(notes, '5-review.md'), `run: ${example.run}\nhalf done\n`);
-  expectOk('step running again', st('step', 'review', 'running'));
+  expectOk('step running again', st('start', 'review'));
   if (!fs.readFileSync(path.join(notes, '5-review.md'), 'utf8').includes('half done')) fail('a note of this run must be kept when its step starts again');
   fs.writeFileSync(path.join(notes, '5-review.md'), 'half done, no run line\n');
-  expectOk('step running once more', st('step', 'review', 'running'));
+  expectOk('step running once more', st('start', 'review'));
   if (!fs.existsSync(path.join(notes, '5-review.md'))) fail('a note without a run line must stay where it is');
   // A note the step has not written yet is started with its run line, so the step only appends.
   fs.rmSync(path.join(notes, '5-review.md'));
-  expectOk('step running without a note', st('step', 'review', 'running'));
+  expectOk('step running without a note', st('start', 'review'));
   if (fs.readFileSync(path.join(notes, '5-review.md'), 'utf8') !== `run: ${example.run}\n`) fail('starting a step should head its missing note with the run line');
   // A run id read from a note never leads outside .router/runs/.
   for (const evil of ['..', '../..', '../../escaped']) {
     fs.writeFileSync(path.join(notes, '5-review.md'), `run: ${evil}\nplanted\n`);
-    expectOk(`step running over a note of run ${evil}`, st('step', 'review', 'running'));
+    expectOk(`step running over a note of run ${evil}`, st('start', 'review'));
     const runs = path.join(repo, '.router/runs');
     const moved = fs.readdirSync(runs, { recursive: true }).map((f) => path.join(runs, f)).filter((f) => fs.statSync(f).isFile() && fs.readFileSync(f, 'utf8') === `run: ${evil}\nplanted\n`);
     if (moved.length !== 1 || fs.existsSync(path.join(repo, 'escaped')) || fs.existsSync(path.join(repo, '.router/steps/steps')))
@@ -2014,7 +2017,7 @@ fs.statSync = function (p, ...a) { const r = statSync.call(this, p, ...a); if (S
   if (/inside/.test(st('show').out)) fail(`show should list no covered step after the swap\n${st('show').out}`);
   // Closing the implementation leaves the independent checks pending.
   expectOk('go', st('reply', 'go'));
-  expectOk('implementation running', st('step', 'implementation', 'running', '--model', 'claude-opus-5-5'));
+  expectOk('implementation running', st('step', 'implementation', 'running', '--model', 'claude-opus-5-5', '--main-session'));
   expectOk('implementation done', st('step', 'implementation', 'done', '--outcome', 'Built', '--main-session'));
   for (const id of ['testing', 'review']) {
     if (byId(id).status !== 'pending') fail(`${id} should stay pending when the implementation closes: ${JSON.stringify(byId(id))}`);
@@ -2321,7 +2324,7 @@ fs.statSync = function (p, ...a) { const r = statSync.call(this, p, ...a); if (S
   const usedUpError = 'step implementation: retries used up (3 interruptions): ask the user, then pass --user-approved';
   const refusedRetry = st('progress', 'implementation', '--done', 'fix half done', '--next', 'finish the fix');
   if (refusedRetry.ok || !refusedRetry.out.includes(usedUpError)) fail(`progress past the retries should be refused\n${refusedRetry.out}`);
-  const refusedExpect = st('expect', 'implementation');
+  const refusedExpect = st('start', 'implementation');
   if (refusedExpect.ok || !refusedExpect.out.includes(usedUpError)) fail(`expect past the retries should be refused\n${refusedExpect.out}`);
   expectOk('a retry the user approved', st('progress', 'implementation', '--done', 'fix half done', '--next', 'finish the fix in src/fix.js', '--user-approved'));
   if (read().steps[2].progress.approved !== 3) fail(`the user's yes is recorded with the interruptions it covers: ${JSON.stringify(read().steps[2].progress)}`);
@@ -2399,10 +2402,22 @@ ${primary ? `  primary: ${primary}\n` : ''}  effort: medium
   // Each step's model follows the run's primary and a phase's own model wins, except a review's:
   // it runs on the family opposite to the step that wrote the code (ADR 0001), the one that step
   // actually ran on once its model is recorded.
-  const stepModels = () => ['implementation', 'review', 'specification'].map((id) => st('model', id).out.trim()).join(' ');
+  const startModel = (id) => {
+    const saved = fs.readFileSync(stateFile, 'utf8');
+    const s = JSON.parse(saved);
+    const step = s.steps.find((x) => x.id === id);
+    Object.assign(step, { status: 'pending', outcome: null });
+    if (id === 'specification') step.phases = ['debugging'];
+    fs.writeFileSync(stateFile, JSON.stringify(s));
+    const r = st('start', id);
+    fs.writeFileSync(stateFile, saved);
+    if (!r.ok) fail(`start model ${id}: ${r.out}`);
+    return r.out.match(/^model: (.+)$/m)?.[1];
+  };
+  const stepModels = () => ['implementation', 'review', 'specification'].map(startModel).join(' ');
   const unrecorded = (s) => { s.steps[2].model = null; };
   fs.writeFileSync(stateFile, JSON.stringify(variant((s) => { unrecorded(s); s.primary = 'openai'; })));
-  fs.writeFileSync(prefsFile, `preferences:\n  primary: claude\n  specification:\n    model: claude\n`);
+  fs.writeFileSync(prefsFile, `preferences:\n  primary: claude\n  debugging:\n    model: claude\n`);
   const C = 'claude-bridge/claude-opus-5-5';
   const O = 'openai-codex/gpt-6-sol';
   if (stepModels() !== [O, C, C].join(' ')) fail(`step models should follow the run's primary openai, the review the other family: ${stepModels()}`);
@@ -2411,8 +2426,8 @@ ${primary ? `  primary: ${primary}\n` : ''}  effort: medium
   if (stepModels() !== [C, O, C].join(' ')) fail(`a review's own model never puts it on the family that wrote the code: ${stepModels()}`);
   // The implementation actually ran on gpt although the primary is claude: the review goes to claude.
   fs.writeFileSync(stateFile, JSON.stringify(variant((s) => { s.steps[2].model = 'gpt-6.1-sol'; s.primary = 'claude'; })));
-  if (st('model', 'review').out.trim() !== C) fail(`the review should follow the family the implementation ran on: ${st('model', 'review').out}`);
-  if (st('model', 'nowhere').ok) fail('model should refuse an unknown step');
+  if (startModel('review') !== C) fail(`the review should follow the family the implementation ran on: ${startModel('review')}`);
+  if (st('start', 'nowhere').ok) fail('start should refuse an unknown step');
 
   prefs(null);
   fs.writeFileSync(stateFile, JSON.stringify(fresh));
@@ -2455,7 +2470,7 @@ ${primary ? `  primary: ${primary}\n` : ''}  effort: medium
   fs.writeFileSync(stateFile, JSON.stringify(variant((s) => { s.primary = 'claude'; s.status = 'selecting'; s.steps.forEach((x) => { x.status = 'pending'; x.outcome = null; x.model = null; x.effort = null; }); })));
   if (!st('primary', 'openai').ok || read().primary !== 'openai') fail(`primary openai should set the run's primary: ${read().primary}`);
   if (!st('show').out.split('\n').includes(models('openai'))) fail(`show should follow the chosen primary\n${st('show').out}`);
-  if (st('model', 'review').out.trim() !== C) fail(`the review should run on the family opposite to the chosen primary: ${st('model', 'review').out}`);
+  if (startModel('review') !== C) fail(`the review should run on the family opposite to the chosen primary: ${startModel('review')}`);
   if (!st('primary', '1').ok || read().primary !== 'openai') fail(`answer 1 should keep the current primary: ${read().primary}`);
   if (!st('primary', '2').ok || read().primary !== 'claude') fail(`answer 2 should switch to the other family: ${read().primary}`);
   if (st('primary', 'gemini').ok || st('primary', '3').ok || read().primary !== 'claude') fail('primary should refuse an answer that is not a family or its number');
@@ -2609,7 +2624,7 @@ ${primary ? `  primary: ${primary}\n` : ''}  effort: medium
   const updates = ['running', 'waiting for your decision', 'recoverable error', 'done'].filter((u) => !section(6).includes(`- **${u}**`));
   if (updates.length) fail(`router SKILL.md §6 should tell updates apart: missing ${updates.join(', ')}`);
   // After implementation: work repeated per item is measured under load, and an extra review pass
-  // declares its purpose through expect.
+  // declares its purpose through start.
   const after = fs.readFileSync(path.join(ROOT, 'skills/engineering-router/after-implementation.md'), 'utf8');
   if (!/\*\*Per-item cost\.\*\*/.test(after) || !/representative load/.test(after)) fail('after-implementation.md should require a per-item cost check under a representative load');
   if (!/--purpose/.test(after) || /have a fresh reviewer check it/.test(after)) fail('after-implementation.md should run another review pass only with a declared --purpose');
