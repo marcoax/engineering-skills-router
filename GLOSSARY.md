@@ -25,12 +25,28 @@ The model a step actually ran on. Every step that ran has one; only a step that 
 _Avoid_: session model (for a step), default model
 
 **Step result**:
-What a delegated step delivers: a JSON object naming the step and its attempt, a verdict (`done`, `fixes` or `blocked`) and the artifacts the step declared. An accepted `done` step result closes the step, with its summary as the outcome and any produced handoff values recorded; a skill step that ran in the main session says so with `--main-session`.
+What a delegated step delivers: a JSON object naming the step and its attempt, a verdict (`done`, `fixes` or `blocked`) and the artifacts the step declared. An accepted `done` step result closes the step, with its summary as the outcome and any produced handoff values recorded; a review step can also close on its accepted `fixes` verdict, once every finding it reported is decided. A skill step that ran in the main session says so with `--main-session`.
 _Avoid_: ready marker, completion phrase
 
 **Attempt**:
-One execution of a delegated step for a declared purpose. A restart opens a new attempt, making an earlier attempt's result stale.
+One execution of a delegated step: a review pass for a declared purpose, or a fixes run, which has none. A restart opens a new attempt, making an earlier attempt's result stale.
 _Avoid_: pass (a review purpose can survive a retry)
+
+**Coordinating step**:
+The review step that holds its findings and their decisions, and on which the fixes run and its re-check are attempts ([ADR 0007](docs/adr/0007-decisions-without-a-review-pass.md)).
+_Avoid_: fixes step
+
+**Actionable finding**:
+A finding a review step reported that has no decision yet (`fixed`, `declined` or `deferred`). While one is actionable the review step stays running.
+_Avoid_: open finding, pending finding
+
+**Fixes run**:
+The attempt on a review step that fixes its actionable findings, on the model that wrote the code, and records `fixed` on each one it fixed. It is not a review pass.
+_Avoid_: fixes pass, fix step
+
+**Re-check**:
+The one review pass a behavior-changing fix declares in its fixes run's `recheck`, for that change only; the review step waits for it before closing.
+_Avoid_: second review, decisions pass
 
 **Step boundary**:
 The moment after one step has closed and before the next one starts. The step's note and the workflow state are written, so it is the only point where the workflow can pause on purpose and resume in a new session. An interrupted step resumes from its progress record instead.

@@ -284,7 +284,8 @@ test('a read-only review start prints where its answer goes, and delivering it p
     { title: 'Name the CSV helper', severity: 'low', found_by: ['review'] },
   ]));
   const fixes = f.ok('deliver', '5', file);
-  assert.match(fixes, /^fixes: 2 actionable findings: run the fixes, then start 5 again$/m);
+  assert.match(fixes, /^fixes: 2 actionable findings$/m);
+  assert.match(fixes, /^next: start 5 --fixes for those to fix; decide 5 <n> declined\|deferred --reason "\.\.\." for the others$/m);
   assert.match(fixes, /^finding: high: Export drops the header row\nfinding: low: Name the CSV helper$/m);
 
   const second = f.ok('start', '5', '--requires', 'findings', '--purpose', 'Re-check after the fixes');
@@ -292,10 +293,12 @@ test('a read-only review start prints where its answer goes, and delivering it p
   const file2 = path.join(f.target, answerPathOf(second));
   assert.notEqual(file2, file);
   fs.writeFileSync(file2, answerText(again, []));
+  // A pass that finds nothing new leaves the reported findings to decide: the step stays running.
   const done = f.ok('deliver', '5', file2);
-  assert.match(done, /^done: Reviewed$/m);
   assert.match(done, /^findings: none$/m);
   assert.doesNotMatch(done, /^finding: /m);
+  assert.match(done, /^actionable: 1\. Export drops the header row \(high\)\nactionable: 2\. Name the CSV helper \(low\)$/m);
+  assert.doesNotMatch(done, /^done: /m);
 });
 
 test('a start whose step writes its own note prints no answer path', (t) => {

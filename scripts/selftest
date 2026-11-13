@@ -1510,36 +1510,82 @@ expectStateOk('unknown fields', variant((s) => { s.extra = 1; s.steps[0].extra =
   refused('a finding with an unknown severity', st('deliver', 'review'), 'findings[0].severity: one of critical, high, medium, low');
   put('.router/steps/5-review.findings.json', [finding]);
   refused('done with an actionable finding', st('deliver', 'review'), 'verdict done with 1 actionable finding');
-  // The reviewer reports; deciding is the supervisor's, after the fixes: a review's own decisions
-  // never let it skip them.
+  // The reviewer reports; deciding is the fixes run's and the main session's: a review's own
+  // decisions never let it skip them.
   put('.router/steps/5-review.findings.json', [{ ...finding, decision: 'deferred' }]);
-  refused('a reviewer deciding its own findings', st('deliver', 'review'),
-    'findings[0].decision: a review\'s findings are decided after its fixes verdict, never by the review itself');
+  refused('a reviewer deciding its own findings', st('deliver', 'review'), 'findings[0].decision: a review never decides its own findings');
   put('.router/steps/5-review.findings.json', []);
   put('.router/steps/5-review.result.json', result({ verdict: 'fixes' }));
   refused('fixes without a finding to fix', st('deliver', 'review'), 'verdict fixes needs at least one actionable finding');
-  put('.router/steps/5-review.findings.json', [finding]);
-  put('.router/steps/5-review.result.json', result({ verdict: 'fixes', summary: '1 finding to fix' }));
+  // The review reports three findings; the fixes run decides the one it fixed, the main session
+  // the ones it declines or defers, and the step closes once none is actionable (#99).
+  const slow = { title: 'Export loads every row into memory', severity: 'medium', found_by: ['review'] };
+  const style = { title: 'Rename the export helper', severity: 'low', found_by: ['review'] };
+  put('.router/steps/5-review.findings.json', [finding, slow, style]);
+  put('.router/steps/5-review.result.json', result({ verdict: 'fixes', summary: '3 findings to fix' }));
+  refused('a decision before the fixes verdict', st('decide', 'review', '3', 'deferred', '--reason', 'naming pass later'),
+    'decisions come after a review\'s accepted fixes verdict');
+  refused('the fixes before the fixes verdict', st('start', 'review', '--fixes'), 'no finding to fix');
   const fixes = ok('a review with findings to fix', st('deliver', 'review'));
-  if (!fixes.out.includes('fixes: 1 actionable finding') || step('review').status !== 'running' || step('review').result.verdict !== 'fixes')
+  if (!fixes.out.includes('fixes: 3 actionable findings') || step('review').status !== 'running' || step('review').result.verdict !== 'fixes')
     fail(`a fixes verdict should keep the step running for the fixes\n${fixes.out}`);
   refused('closing after a fixes verdict', st('step', 'review', 'done', '--outcome', 'Reviewed'), 'use `start');
 
-  // After the fixes, a new attempt: the old one is refused, the decided findings close the step.
   // A review pass counts once per purpose: another pass on the step declares a distinct one.
   refused('another review pass without a purpose', st('start', 'review'), 'another pass of review needs --purpose');
   refused('another review pass for the same purpose', st('start', 'review', '--purpose', step('review').summary), 'already ran for that purpose');
-  const again = attemptOf(ok('expect the fixes delivery', st('start', 'review', '--purpose', 'record the decisions after the fixes')));
-  if (step('review').result.purpose !== 'record the decisions after the fixes' || step('review').result.earlier?.[0]?.verdict !== 'fixes')
-    fail(`another pass should record its purpose and the earlier attempt: ${JSON.stringify(step('review').result)}`);
-  if (!again || again === attempt) fail('a new attempt should start a new attempt');
-  put('.router/steps/5-review.findings.json', [{ ...finding, decision: 'fixed' }]);
-  refused('the earlier attempt after a new attempt', st('deliver', 'review'), 'is not the current attempt');
-  put('.router/steps/5-review.result.json', result({ attempt: again, summary: '1 finding, fixed' }));
-  ok('fixes delivered', st('deliver', 'review'));
-  if (step('review').status !== 'done' || step('review').outcome !== '1 finding, fixed') fail('done delivery should close the step with its summary');
-  const closed = step('review').result;
-  if (closed.verdict !== 'done' || closed.artifacts.length !== 2) fail(`the accepted delivery should stay on the step: ${JSON.stringify(closed)}`);
+
+  // The fixes run is its own attempt on the coordinating step, on the implementation's model;
+  // the step keeps the review's model, and the fixes declare no review purpose.
+  const fixesStart = ok('start the fixes', st('start', 'review', '--fixes'));
+  const fixesAttempt = attemptOf(fixesStart);
+  if (!fixesAttempt || fixesAttempt === attempt || !fixesStart.out.includes(`model: ${step('implementation').model}`)
+    || step('review').model !== 'openai-codex/gpt-6-sol' || !fixesStart.out.includes('result: .router/steps/5-fixes.result.json')
+    || !fixesStart.out.includes('requires: note .router/steps/5-fixes.md, findings .router/steps/5-fixes.findings.json')
+    || step('review').result.earlier?.at(-1)?.verdict !== 'fixes')
+    fail(`start --fixes should open a fixes attempt on the implementation's model, keeping the review's\n${fixesStart.out}\n${JSON.stringify(step('review'))}`);
+  fs.appendFileSync(path.join(repo, '.router/steps/5-fixes.md'), 'Fixed the date filter test-first.\n');
+  const fixesResult = (over) => ({ step: 'review', attempt: fixesAttempt, verdict: 'done', summary: 'Fixed the date filter',
+    artifacts: { note: '.router/steps/5-fixes.md', findings: '.router/steps/5-fixes.findings.json' }, remaining: null, ...over });
+  put('.router/steps/5-fixes.result.json', fixesResult());
+  put('.router/steps/5-fixes.findings.json', [{ title: 'Cache the export', severity: 'low', found_by: ['review'], decision: 'fixed' }]);
+  refused('a fixed finding the review did not report', st('deliver', 'review'), 'findings[0]: "Cache the export" is not a finding the review reported');
+  put('.router/steps/5-fixes.findings.json', [{ ...slow, decision: 'declined' }]);
+  refused('the fixes run declining a finding', st('deliver', 'review'), 'findings[0].decision: the fixes run records "fixed"', 'decide 5');
+  put('.router/steps/5-fixes.findings.json', [{ ...finding, decision: 'fixed' }]);
+  put('.router/steps/5-fixes.result.json', fixesResult({ verdict: 'fixes' }));
+  refused('a fixes run delivering fixes', st('deliver', 'review'), 'a fixes run delivers done');
+  put('.router/steps/5-fixes.result.json', fixesResult({ attempt }));
+  refused('the review\'s attempt after the fixes started', st('deliver', 'review'), 'is not the current attempt');
+  put('.router/steps/5-fixes.result.json', fixesResult());
+  const fixed = ok('the fixes delivered with their decisions', st('deliver', 'review'));
+  if (step('review').status !== 'running' || !fixed.out.includes(`actionable: 2. ${slow.title}`) || !fixed.out.includes(`actionable: 3. ${style.title}`)
+    || fixed.out.includes('actionable: 1.'))
+    fail(`a fixes delivery leaving findings actionable should keep the step running and name them\n${fixed.out}`);
+
+  // The main session records declined and deferred, one command per finding, with its reason.
+  refused('a decision without its reason', st('decide', 'review', '2', 'declined'), '--reason');
+  refused('fixed through decide', st('decide', 'review', '2', 'fixed', '--reason', 'x'), 'decision: declined | deferred');
+  refused('a decision on a finding the review did not report', st('decide', 'review', 'Cache the export', 'declined', '--reason', 'x'), 'no finding "Cache the export"');
+  refused('a decision on a decided finding', st('decide', 'review', '1', 'declined', '--reason', 'x'), 'is already fixed');
+  const declined = ok('a declined finding', st('decide', 'review', '2', 'declined', '--reason', 'rows are streamed: src/export.js:40'));
+  if (step('review').status !== 'running' || !declined.out.includes(`actionable: 3. ${style.title}`) || declined.out.includes('actionable: 2.'))
+    fail(`a decision leaving a finding actionable should keep the step running and name it\n${declined.out}`);
+  const deferred = ok('a deferred finding', st('decide', 'review', style.title, 'deferred', '--reason', 'naming pass in #120'));
+  const outcome = step('review').outcome;
+  if (step('review').status !== 'done' || !deferred.out.includes('done: ') || !outcome.includes('3 findings to fix')
+    || !outcome.includes('Fixed the date filter') || !outcome.includes('1 fixed, 1 declined, 1 deferred'))
+    fail(`the last decision should close the step with its outcome from the deliveries\n${deferred.out}\n${outcome}`);
+  // The review's findings file holds every finding with its decision, as scripts/record reads it.
+  const decidedFile = path.join(repo, '.router/steps/5-review.findings.json');
+  const decided = JSON.parse(fs.readFileSync(decidedFile, 'utf8'));
+  if (JSON.stringify(decided.map((f) => [f.title, f.severity, f.decision])) !== JSON.stringify([
+    [finding.title, 'high', 'fixed'], [slow.title, 'medium', 'declined'], [style.title, 'low', 'deferred']])
+    || decided[1].reason !== 'rows are streamed: src/export.js:40')
+    fail(`the review's findings should carry their decisions and reasons: ${JSON.stringify(decided)}`);
+  const recorded = run('record', repo, '--findings', decidedFile);
+  if (!recorded.ok || JSON.stringify(JSON.parse(recorded.out.match(/\{[\s\S]*\}/)[0]).findings) !== JSON.stringify(decided.map(({ reason, ...f }) => f)))
+    fail(`scripts/record should read the decided findings unchanged\n${recorded.out}`);
 
   // Pull-request preparation: body and consolidated findings in declared formats; absence of
   // findings is an explicit empty array.
@@ -1628,6 +1674,111 @@ expectStateOk('unknown fields', variant((s) => { s.extra = 1; s.steps[0].extra =
   ok('a state written before runs closes as before', st('step', 'implementation', 'done', '--outcome', 'Built'));
   if (!fs.readFileSync(path.join(ROOT, 'skills/engineering-router/SKILL.md'), 'utf8').includes('--main-session'))
     fail('SKILL.md §6 should say how a skill step run in the main session closes');
+
+  // A review whose only finding is declined closes on the decision, with no fixes run (#99).
+  const reviewing = () => fs.writeFileSync(stateFile, JSON.stringify(variant((s) => {
+    Object.assign(s.steps[2], { status: 'done', outcome: 'Built', progress: undefined });
+    Object.assign(s.steps[3], { status: 'done', outcome: 'ran inside implementation', model: s.steps[2].model });
+  })));
+  const reviewPass = (over) => {
+    const at = attemptOf(ok('start a review pass', st('start', 'review', ...(over.purpose ? ['--purpose', over.purpose] : []))));
+    fs.appendFileSync(path.join(repo, '.router/steps/5-review.md'), 'Reviewed.\n');
+    put('.router/steps/5-review.findings.json', over.findings);
+    put('.router/steps/5-review.result.json', result({ attempt: at, verdict: over.verdict, summary: over.summary }));
+    return st('deliver', 'review');
+  };
+  reviewing();
+  ok('a review with one finding', reviewPass({ verdict: 'fixes', summary: '1 finding', findings: [finding] }));
+  ok('declining the only finding', st('decide', 'review', '1', 'declined', '--reason', 'the filter applies upstream: src/query.js:12'));
+  if (step('review').status !== 'done' || step('review').outcome !== '1 finding; findings: 1 declined' || step('review').result.verdict !== 'fixes')
+    fail(`a decision leaving nothing actionable should close the step after a fixes verdict: ${JSON.stringify(step('review'))}`);
+  if (!run('check-state', repo).ok) fail(`a review closed by its decisions should be a valid state\n${run('check-state', repo).out}`);
+  refused('a decision on a closed step', st('decide', 'review', '1', 'deferred', '--reason', 'x'), 'is done, not running');
+  // check-state: a review step done while a finding is actionable, or a re-check is pending.
+  const closedReview = read();
+  expectState('a review done with an actionable finding', { ...closedReview, steps: closedReview.steps.map((s) => (s.id !== 'review' ? s
+    : { ...s, result: { ...s.result, findings: [finding] } })) }, 'steps[4].result: step review done with 1 actionable finding');
+  expectState('a review done with a re-check pending', { ...closedReview, steps: closedReview.steps.map((s) => (s.id !== 'review' ? s
+    : { ...s, result: { ...s.result, recheck: 'the date filter' } })) }, 'steps[4].result: step review done with a re-check pending');
+
+  // A fix that changes behavior declares its re-check: the step waits for that pass, which needs a
+  // purpose distinct from the earlier ones and still never decides findings.
+  reviewing();
+  ok('a review with one finding', reviewPass({ verdict: 'fixes', summary: '1 finding', findings: [finding] }));
+  const recheckAttempt = attemptOf(ok('start the fixes', st('start', 'review', '--fixes')));
+  fs.appendFileSync(path.join(repo, '.router/steps/5-fixes.md'), 'Fixed the date filter; the query changed.\n');
+  put('.router/steps/5-fixes.findings.json', [{ title: finding.title, decision: 'fixed' }]);
+  put('.router/steps/5-fixes.result.json', { step: 'review', attempt: recheckAttempt, verdict: 'done', summary: 'Fixed the date filter',
+    artifacts: { note: '.router/steps/5-fixes.md', findings: '.router/steps/5-fixes.findings.json' }, remaining: null, recheck: 'the date filter query' });
+  const toRecheck = ok('fixes that change behavior', st('deliver', 'review'));
+  if (step('review').status !== 'running' || !toRecheck.out.includes('recheck: the date filter query: start 5 --purpose "re-check the date filter query"'))
+    fail(`a fixes delivery declaring a re-check should keep the step running and say how\n${toRecheck.out}`);
+  refused('a re-check without a purpose', st('start', 'review'), 'another pass of review needs --purpose');
+  refused('a re-check for the review\'s purpose', st('start', 'review', '--purpose', step('review').summary), 'already ran for that purpose');
+  refused('a re-check deciding findings', reviewPass({ purpose: 're-check the date filter query', verdict: 'done', summary: 'Re-checked',
+    findings: [{ ...finding, decision: 'fixed' }] }), 'findings[0].decision: a review never decides its own findings');
+  put('.router/steps/5-review.findings.json', []);
+  const rechecked = ok('the re-check finds nothing new', st('deliver', 'review'));
+  if (step('review').status !== 'done' || !rechecked.out.includes('done: 1 finding; Fixed the date filter; Re-checked; findings: 1 fixed'))
+    fail(`the re-check should close the step once nothing is actionable\n${rechecked.out}`);
+  if (JSON.parse(fs.readFileSync(path.join(repo, '.router/steps/5-review.findings.json'), 'utf8'))[0]?.decision !== 'fixed')
+    fail('the re-check should keep the decided findings in the review\'s findings file');
+
+  // Later partial fixes must not erase a re-check owed by an earlier fixes run.
+  for (const laterRecheck of [undefined, null, 'the export memory usage']) {
+    reviewing();
+    ok('a review with two findings', reviewPass({ verdict: 'fixes', summary: '2 findings', findings: [finding, slow] }));
+    for (const [index, fixedFinding] of [finding, slow].entries()) {
+      const at = attemptOf(ok('start partial fixes', st('start', 'review', '--fixes')));
+      fs.appendFileSync(path.join(repo, '.router/steps/5-fixes.md'), `Fixed ${fixedFinding.title}.\n`);
+      put('.router/steps/5-fixes.findings.json', [{ title: fixedFinding.title, decision: 'fixed' }]);
+      put('.router/steps/5-fixes.result.json', { step: 'review', attempt: at, verdict: 'done', summary: `Fixed ${fixedFinding.title}`,
+        artifacts: { note: '.router/steps/5-fixes.md', findings: '.router/steps/5-fixes.findings.json' },
+        recheck: index === 0 ? 'the date filter query' : laterRecheck });
+      const partial = ok('partial fixes delivered', st('deliver', 'review'));
+      const pending = ['the date filter query', ...(index === 1 && laterRecheck ? [laterRecheck] : [])].join('; ');
+      if (step('review').status !== 'running' || step('review').result.recheck !== pending
+        || (index === 1 && !partial.out.includes(`recheck: ${pending}: start 5 --purpose "re-check ${pending}"`)))
+        fail(`partial fixes must preserve every pending re-check\n${partial.out}\n${JSON.stringify(step('review'))}`);
+    }
+    const pending = step('review').result.recheck;
+    ok('re-check every pending change', reviewPass({ purpose: `re-check ${pending}`, verdict: 'done', summary: 'Re-checked both fixes', findings: [] }));
+    if (step('review').status !== 'done' || step('review').result.recheck !== null
+      || step('review').result.findings.some((f) => f.decision !== 'fixed'))
+      fail(`the review should clear pending re-checks and retain fixed decisions: ${JSON.stringify(step('review'))}`);
+  }
+
+  // A re-check that reports a fixed finding as still broken makes it actionable again: the step
+  // names it, and the fixes run can take it again.
+  reviewing();
+  ok('a review with one finding', reviewPass({ verdict: 'fixes', summary: '1 finding', findings: [finding] }));
+  const againAttempt = attemptOf(ok('start the fixes', st('start', 'review', '--fixes')));
+  fs.appendFileSync(path.join(repo, '.router/steps/5-fixes.md'), 'Fixed the date filter.\n');
+  put('.router/steps/5-fixes.findings.json', [{ title: finding.title, decision: 'fixed' }]);
+  put('.router/steps/5-fixes.result.json', { step: 'review', attempt: againAttempt, verdict: 'done', summary: 'Fixed the date filter',
+    artifacts: { note: '.router/steps/5-fixes.md', findings: '.router/steps/5-fixes.findings.json' }, remaining: null, recheck: 'the date filter query' });
+  ok('fixes that change behavior', st('deliver', 'review'));
+  const stillBroken = ok('a re-check reporting the fixed finding again',
+    reviewPass({ purpose: 're-check the date filter query', verdict: 'fixes', summary: 'Still broken', findings: [finding] }));
+  if (step('review').status !== 'running' || step('review').result.findings[0]?.decision !== undefined
+    || !stillBroken.out.includes(`actionable: 1. ${finding.title} (high)`))
+    fail(`a finding the re-check reports again should be actionable again, and named\n${stillBroken.out}\n${JSON.stringify(step('review').result.findings)}`);
+  ok('the fixes run takes the re-reported finding', st('start', 'review', '--fixes'));
+
+  // Findings delivered at a path of the review's choosing: the step's recorded findings file
+  // holds the decided list.
+  reviewing();
+  const ownAttempt = attemptOf(ok('start a review pass', st('start', 'review')));
+  fs.appendFileSync(path.join(repo, '.router/steps/5-review.md'), 'Reviewed.\n');
+  put('.router/steps/review-findings.json', [finding]);
+  put('.router/steps/5-review.result.json', result({ attempt: ownAttempt, verdict: 'fixes', summary: '1 finding',
+    artifacts: { note: '.router/steps/5-review.md', findings: '.router/steps/review-findings.json' } }));
+  ok('a review with findings at its own path', st('deliver', 'review'));
+  ok('declining the only finding', st('decide', 'review', '1', 'declined', '--reason', 'the filter applies upstream: src/query.js:12'));
+  const recordedFindings = step('review').result.artifacts.find((a) => a.kind === 'findings')?.path;
+  const atRecorded = recordedFindings && JSON.parse(fs.readFileSync(path.join(repo, recordedFindings), 'utf8'));
+  if (atRecorded?.[0]?.decision !== 'declined')
+    fail(`the step's recorded findings file should hold the decided findings: ${recordedFindings}: ${JSON.stringify(atRecorded)}`);
 
   // Blocked: the blocker is named and the step waits for it; the step closes no other way.
   fs.writeFileSync(stateFile, JSON.stringify(variant(() => {})));
@@ -2628,6 +2779,15 @@ ${primary ? `  primary: ${primary}\n` : ''}  effort: medium
   const after = fs.readFileSync(path.join(ROOT, 'skills/engineering-router/after-implementation.md'), 'utf8');
   if (!/\*\*Per-item cost\.\*\*/.test(after) || !/representative load/.test(after)) fail('after-implementation.md should require a per-item cost check under a representative load');
   if (!/--purpose/.test(after) || /have a fresh reviewer check it/.test(after)) fail('after-implementation.md should run another review pass only with a declared --purpose');
+  // The fixes and the decisions on findings are described once, in step-result.md (#99); no
+  // pass records the decisions.
+  const routerDocs = fs.readdirSync(path.join(ROOT, 'skills/engineering-router')).filter((f) => f.endsWith('.md'))
+    .map((f) => [f, fs.readFileSync(path.join(ROOT, 'skills/engineering-router', f), 'utf8')]);
+  const describing = routerDocs.filter(([, text]) => /`decide <n>|start <n> --fixes/.test(text)).map(([f]) => f);
+  if (JSON.stringify(describing) !== '["step-result.md"]') fail(`the fixes and decisions should be described in step-result.md only, found in: ${describing.join(', ')}`);
+  if (!/^## Fixes and decisions$/m.test(routerDocs.find(([f]) => f === 'step-result.md')[1])) fail('step-result.md should have a Fixes and decisions section');
+  const stale = routerDocs.filter(([, text]) => /record the decisions/i.test(text)).map(([f]) => f);
+  if (stale.length) fail(`recording the decisions is no longer a review pass: ${stale.join(', ')}`);
 }
 
 const adapterDir = path.join(ROOT, 'adapters/pi');

@@ -4,7 +4,7 @@ status: accepted
 
 # A delegated step moves on only on an accepted step result
 
-The expectation and separate step-close lifecycle below is superseded by [ADR 0006](0006-delegated-step-lifecycle.md); the remaining result contract still applies.
+The expectation and separate step-close lifecycle below is superseded by [ADR 0006](0006-delegated-step-lifecycle.md); the remaining result contract still applies. How a review's findings are decided after its `fixes` verdict, without a pass of their own, is amended by [ADR 0007](0007-decisions-without-a-review-pass.md).
 
 A step subagent returned a one-line outcome, and the main session decided from the answer's prose whether the step had succeeded. We replace that with a **step result**: before the step starts, `scripts/state … expect <n>` opens an attempt and declares the artifacts the step owes (a note; findings for a review; body and consolidated findings for the pull request). The subagent writes the artifacts and a small JSON result (step, attempt, verdict `done` / `fixes` / `blocked`, summary, artifact paths) under `.router/steps/`. `scripts/state … deliver <n>` checks it. A step that declared a delivery closes as `done` only on an accepted `done` verdict, enforced by `check-state`. A delegated step of a run (a skill step, not conversational, not run inside another) cannot close as `done` without one even if it never declared it: `step <n> done` refuses it unless `--main-session` says it ran in the main session. PR preparation keeps its delivery even when the main session writes it; publication still consumes validated files.
 

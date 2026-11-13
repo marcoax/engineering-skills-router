@@ -136,6 +136,26 @@ test('Pi appends context after a delegated done delivery closes its step', async
  } finally {fs.rmSync(target, {recursive: true, force: true});}
 });
 
+test('Pi appends context after the decision that closes a review step, not one that leaves it running', async () => {
+ const target = fixture();
+ try {
+  const state = (...args: string[]) => spawnSync(`${ROOT}/scripts/state`, [target, ...args], {encoding: 'utf8'});
+  const attempt = state('start', 'review', '--requires', 'findings').stdout.match(/^attempt: (\S+)$/m)![1];
+  const findings = ['Export drops the header row', 'Name the CSV helper'].map((title) => ({title, severity: 'low', found_by: ['review']}));
+  fs.writeFileSync(path.join(target, '.router/steps/5-review.result.json'), JSON.stringify({step: 'review', attempt, verdict: 'fixes', summary: '2 findings', artifacts: {findings}}));
+  assert.equal(state('deliver', 'review').status, 0);
+  const boundary = async (args: string[]) => {
+   const run = state(...args);
+   assert.equal(run.status, 0, run.stderr);
+   const command = `node "${ROOT}/scripts/state" "${target}" ${args.map((a) => `"${a}"`).join(' ')}`;
+   return hook()!({toolName: 'bash', input: {command}, isError: false, content: [{type: 'text', text: run.stdout}]}, {cwd: target, getContextUsage: () => ({tokens: 162000, contextWindow: 200000})});
+  };
+  assert.equal(await boundary(['decide', 'review', '1', 'declined', '--reason', 'the header is written upstream']), undefined);
+  const closed = await boundary(['decide', 'review', 'Name the CSV helper', 'deferred', '--reason', 'naming pass in #120']);
+  assert.match(closed?.content.at(-1).text ?? '', /context: 162000 of 200000 window, threshold 150000/);
+ } finally {fs.rmSync(target, {recursive: true, force: true});}
+});
+
 test('Pi leaves a genuine blocked delivery with multiline done prose alone', async () => {
  const target = fixture();
  try {

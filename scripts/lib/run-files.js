@@ -103,8 +103,7 @@ function archive(target, state) {
 // step appends to it. A note another run left at that path moves to that run's archive; one of
 // this run, or without a run line (perhaps this step's own, before an interruption), stays.
 // Returns the `note:` line.
-function startNote(target, state, i) {
-  const rel = notePath(state, i);
+function startNote(target, state, i, rel = notePath(state, i)) {
   const note = path.join(target, rel);
   const line = `note: ${rel}, first line \`run: ${state.run}\`; append below it`;
   const header = `run: ${state.run}\n`;
