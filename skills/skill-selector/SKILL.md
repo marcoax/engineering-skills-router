@@ -5,7 +5,7 @@ disable-model-invocation: true
 argument-hint: "<task, issue URL or spec path> [target repo]"
 ---
 
-You are an **advisor**. For one engineering task you propose which skill fits each phase it needs, consulting every vendor's own guide and reading each candidate before you name it. All vendor skills start on **equal standing**: task fit decides, never the vendor, the listing order or any legacy ranking. Your output is a proposal; the user, or the engineering router, decides what runs.
+You are an **advisor**. For one engineering task you propose which skill fits each phase it needs. A **decided phase** keeps the skill already known for it; for every other phase you consult every vendor's own guide and read each candidate before you name it. All vendor skills start on **equal standing**: task fit decides, never the vendor, the listing order or any legacy ranking. Your output is a proposal; the user, or the engineering router, decides what runs.
 
 **Read-only.** The whole run reads: no `.router/` state, branch, issue, commit or file in the target repo, no vendor workflow started, no implementation. A guide or candidate that says to start work, run setup or hand the user a prompt to send is source material here: note its advice and carry on selecting.
 
@@ -22,26 +22,36 @@ Take each input from the request when given; otherwise settle it here and say so
 - **task**: the request; read the issue (`gh issue view`) or spec file it names.
 - **target repo**: the one the task is about, the current repo by default. Inspect it read-only: brownfield or greenfield, the code the task touches, and whether `docs/agents/skills.yaml`, `docs/agents/issue-tracker.md`, `GLOSSARY.md` or `docs/adr/` exist.
 - **classification**: type, risk, complexity and properties, each with a one-line reason, by the criteria, facts and minimum risks in `skills/engineering-router/classification.md` under the repo root; when the router passes its checked classification, take it as given.
-- **explicit choices**: `prefer` and `exclude` in the user's `preferences.yaml` (where `scripts/config` says), plus any skill or phase the user named.
+- **explicit choices**: any skill or phase the user named, and whether they asked to **reselect** every phase. `prefer`, `exclude` and the project's skills are resolved by `scripts/list-skills` (§4).
 - **harness capabilities**: `subagents`, `isolated-outputs` (separate output locations for parallel candidates), `gh` logged in, network. Record each by these names: a `requires` naming a harness capability is checked against them.
 
 Done when all five are recorded.
 
-## 3. Consult the guides
+## 3. Choose phases
+
+Pick the phases this task needs from `catalog/categories.yaml`, starting from the router's default flow (its SKILL.md §2) and keeping the smallest useful set. Each phase gets a task-specific reason. Discovery, code-understanding, clarification and architecture enter when the task's behavior or design is still uncertain: locating the file the task touches leaves that question open. `framework-review` enters only when the target has `docs/agents/skills.yaml` with a fitting skill. Name every default-flow phase you leave out, with its reason (on a light path: every phase light.md leaves out); `check-selection` refuses a default-flow phase that is neither selected, omitted nor missing. Done when every chosen and every omitted phase has a reason.
+
+## 4. Decide
+
+Run `scripts/list-skills --target <target repo> <phase> ...` for the chosen phases; add `--reselect` only when the user asked to reselect, which leaves no phase decided.
+
+A phase printed as `decided: <id>  [<origin>]` is a **decided phase**: an explicit choice (`preference`, `project`) or a remembered selection (`remembered · <run>`). Take it as printed, reading nothing for it: the skill is the default, the origin is the default's reason, word for word, and the lettered lines are its alternatives with their reasons. A skill the user named for a phase comes first: it is the default, marked `"explicit": true`, with your reason.
+
+Every other phase is **open**: it prints its full candidate listing, after a `not decided:` line when a remembered selection expired. Done when every chosen phase is decided or open. With no open phase, go to §7.
+
+## 5. Consult the guides
+
+Guides serve the open phases only.
 
 Run `scripts/list-skills --guides`. Read each listed guide's `SKILL.md` in full at its path, and follow the pointers relevant to this task (linked skills and docs inside the same vendor checkout). Collect, per guide, the skills it nominates for this task and the distinctions it draws between them.
 
 A guide whose file is missing or unreadable is **unavailable**: record it with the reason and continue with the remaining guides and the catalog. Done when every listed guide is either read or recorded unavailable.
 
-## 4. Choose phases
+## 6. Select
 
-Pick the phases this task needs from `catalog/categories.yaml`, starting from the router's default flow (its SKILL.md §2) and keeping the smallest useful set. Each phase gets a task-specific reason. Discovery, code-understanding, clarification and architecture enter when the task's behavior or design is still uncertain: locating the file the task touches leaves that question open. `framework-review` enters only when the target has `docs/agents/skills.yaml` with a fitting skill. Name every default-flow phase you leave out, with its reason (on a light path: every phase light.md leaves out); `check-selection` refuses a default-flow phase that is neither selected, omitted nor missing. Done when every chosen and every omitted phase has a reason.
+§4's listing gives each open phase's candidates as `[origin, status]`: `preference` and `project` are explicit choices (here one the script left open, such as a `cost: high` skill), `personal` the user's own skills, `vendor` everything else; the order within `vendor` is by name and carries no meaning. Usage signals (`use_when`, `avoid_when`, `complexity`, `cost`, `invokes`, `requires`) are the router's own metadata; `description` is the vendor's text. Quote them as such.
 
-## 5. Select
-
-Run `scripts/list-skills --target <target repo> <phase> ...`. It lists each phase's candidates as `[origin, status]`: `preference` and `project` are explicit choices, `personal` the user's own skills, `vendor` everything else; the order within `vendor` is by name and carries no meaning. Usage signals (`use_when`, `avoid_when`, `complexity`, `cost`, `invokes`, `requires`) are the router's own metadata; `description` is the vendor's text. Quote them as such.
-
-For each phase:
+For each open phase:
 
 1. Shortlist the `ok` candidates that the description, usage signals and guide advice tie to this task. A skill a guide nominates counts only when the listing shows it `ok` for the phase; otherwise record it under **unregistered** and leave it out of the proposal.
 2. **Read every shortlisted `SKILL.md` in full** (catalog `path`, or the absolute path printed for personal and project skills) before you recommend it: its process, side effects, prerequisites and cost.
@@ -52,14 +62,14 @@ For each phase:
 
 `complexity` informs fit but never empties a phase: when it rules out every candidate that otherwise fits, propose those anyway and say they are sized for other tasks. A phase with no candidate left is a **missing capability**, with the reason. Done when every phase has a default or is missing.
 
-## 6. Report
+## 7. Report
 
 Show the proposal, then the same selection as one ` ```json ` block:
 
 ```text
 Task: <one line>
 Classification: <type> · risk <risk> · complexity <complexity> · <properties>   (<given | inferred>: <reason>)
-Evidence: guides read <ids>; unavailable <id>: <reason>; catalog <OK | n errors>   [reduced evidence: <what is missing>]
+Evidence: decided <phases>; guides read <ids | none: every phase decided>; unavailable <id>: <reason>; catalog <OK | n errors>   [reduced evidence: <what is missing>]
 Capabilities: <subagents, isolated-outputs, gh, ...>
 
 1. <phase>: <why this task needs it>
@@ -86,4 +96,4 @@ Unregistered: <skill> named by <guide>, not cataloged for <phase>
 }
 ```
 
-`explicit` appears only on a default the user chose. Save the JSON block to a file in the system temp directory and run `scripts/check-selection --target <target repo> <file>`. When it reports an error, correct that pick from the listing and show the corrected proposal. Done when `check-selection` prints `selection OK` and the proposal is shown; to run a workflow, the user invokes the engineering router.
+`explicit` appears only on a default the user chose. Save the JSON block to a file in the system temp directory and run `scripts/check-selection --target <target repo> <file>` (with `--reselect` when §4 ran with it). It refuses another default for a decided phase unless that default is `"explicit": true`. When it reports an error, correct that pick from the listing and show the corrected proposal. Done when `check-selection` prints `selection OK` and the proposal is shown; to run a workflow, the user invokes the engineering router.

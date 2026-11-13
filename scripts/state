@@ -192,6 +192,8 @@ function compose() {
     next.run = `${now().replace(/[-:]/g, '')}-${files.token(2)}`;
     next.owner = { session, since: now(), previous: null };
     next.manual_checklist = [];
+    // What a later run needs to tell whether this run's selections still hold (ADR 0005).
+    next.reviewed = require('./lib/decided').reviewed();
   }
   if (!isNew) {
     if (![...ops.UNFINISHED, 'selecting'].includes(previous?.status)) die(`no workflow to recompose in ${target}: start one with compose --new`);
@@ -207,6 +209,9 @@ function compose() {
     next.primary = previous.primary ?? next.primary;
     next.handoff = previous.handoff;
     next.manual_checklist = previous.manual_checklist ?? [];
+    // The run keeps the revisions it was composed under; a state from before them stays without.
+    if (previous.reviewed === undefined) delete next.reviewed;
+    else next.reviewed = previous.reviewed;
   }
   const Catalog = require('./lib/catalog');
   Catalog.requireConfig();
@@ -350,7 +355,8 @@ if (command === 'claim' || command === 'takeover') {
 }
 if (command === 'discard') {
   requireOwner(state);
-  const dir = files.archive(target, state);
+  // Marked, so no later run remembers its selections (ADR 0005).
+  const dir = files.archive(target, { ...state, discarded: true });
   fs.rmSync(file);
   console.log(`state: discarded → archived in ${dir}`);
   process.exit(0);

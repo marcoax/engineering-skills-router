@@ -170,6 +170,8 @@ The router writes this file in the **target repo** during a workflow so that ada
 | `handoff` | Handoff | What the steps have produced so far. |
 | `run` (optional) | string | The run's id, set by `compose --new`: the first line of each of its step notes is `run: <run>`, and `.router/runs/<run>/` keeps the run once it is archived ([ADR 0002](../../docs/adr/0002-workflow-ownership.md)). Missing in a state written before it. |
 | `owner` (optional) | Owner \| null | The session that may change the workflow; `null` or missing in a state written before it, which is claimed before any change. |
+| `reviewed` (optional) | `{source, revision}[]` | The reviewed vendor revisions (`catalog/reviewed.yaml`) when `compose --new` wrote the run; a recomposition keeps them. A later run reuses this run's skills as remembered selections only while they match ([ADR 0005](../../docs/adr/0005-decided-phases-skip-selection.md)). Missing in a state written before it, which yields no remembered selection. |
+| `discarded` (optional) | boolean | `true` only in the archive of a run removed with `discard`: none of its selections is remembered. |
 | `manual_checklist` (optional) | Checklist point[] | The run's manual checklist, at most 15 points. Missing in a state written before it, which reads as empty instead of `null`. |
 
 Workflow `status`:
@@ -235,7 +237,7 @@ Checked by `scripts/check-classification` and by `scripts/state … compose`. A 
 | `id` | string | Unique, stable within the workflow. Usually the phase name; router steps use `branch`, `verification`, `pull-request`; the general review is `review`. States written before [ADR 0001](../../docs/adr/0001-single-cross-family-review.md) may hold `review-1`, `review-2` and `comparison`. |
 | `phases` | string[] | Catalog categories this step fills; empty for router steps without a phase (`branch`, `verification`). |
 | `skill` | string \| null | Chosen catalog id (`source/name`); `null` when the router does the step itself. |
-| `reason` | string | One line: why this skill (or step) was chosen. A `cost: high` skill's reason starts "High cost", as an alternative too, so a swap carries it. |
+| `reason` | string | One line: why this skill (or step) was chosen. A decided step's reason is its origin: `preference`, `project` or `remembered · <run>` ([ADR 0005](../../docs/adr/0005-decided-phases-skip-selection.md)). A `cost: high` skill's reason starts "High cost", as an alternative too, so a swap carries it. |
 | `summary` | string | One line: what the step does for this task. |
 | `alternatives` | `{skill, reason}[]` | At most two other `ok` candidates, each with a one-line reason ("High cost" first for a `cost: high` one). After a swap, the previous skill takes the swapped alternative's place. |
 | `prerequisites` (optional) | string[] | The selector's hard prerequisites for the step's skill (tools, files, harness capabilities), one line each; may be empty. |
