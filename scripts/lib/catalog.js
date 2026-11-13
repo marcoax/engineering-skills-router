@@ -236,7 +236,7 @@ function pickProblem(id, phases, allSkills = skills(), prefs = preferences()) {
 const HARNESS_CAPABILITIES = ['subagents', 'isolated-outputs'];
 // One-word `requires` values the router acts on; anything else is a prose prerequisite.
 const REQUIRES_TOKENS = ['tracker-config', ...HARNESS_CAPABILITIES];
-// The opening a pick's reason needs when the skill's catalog `cost` is high (selector §5.7).
+// The opening a pick's reason needs when the skill's catalog `cost` is high (selector §6).
 const HIGH_COST = /^high cost\b/i;
 
 // Why a pick of `id` with `reason` breaks the cost rule, or null: a `cost: high` skill always

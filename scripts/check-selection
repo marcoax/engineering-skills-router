@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// Usage: scripts/check-selection [--target <repo>] <file>
+// Usage: scripts/check-selection [--target <repo>] [--reselect] <file>
 // Checks the references in a skill-selector proposal: the file is the selection JSON, or a
 // Markdown answer holding it as the last ```json block. Each selected phase needs a reason and a
 // default; each pick (default and at most two alternatives) needs a reason and must be an `ok`
@@ -20,16 +20,23 @@
 // A `cost: high` skill (pstack/arena) needs a reason starting "High cost" wherever it is picked,
 // and is a default only with `"explicit": true` (the user chose it). A pick whose `requires`
 // names a harness capability (HARNESS_CAPABILITIES) needs it in `capabilities`.
+// A decided phase (ADR 0005, lib/decided.js) keeps its skill as the default, with its origin as
+// that default's reason. Another default is refused unless the user asked for it: `"explicit": true`
+// on a default they named, or --reselect when they asked to select every phase again. A decided
+// skill the harness cannot run may be replaced.
 const fs = require('node:fs');
 const Catalog = require('./lib/catalog');
+const Decided = require('./lib/decided');
 
 const { DEFAULT_FLOW } = Catalog;
 
-const { target, args } = Catalog.targetArg(process.argv.slice(2));
+const { target, args: given } = Catalog.targetArg(process.argv.slice(2));
+const reselect = given.includes('--reselect');
+const args = given.filter((a) => a !== '--reselect');
 Catalog.requireConfig();
 const file = args[0];
 if (!file || !fs.existsSync(file)) {
-  console.error(`usage: scripts/check-selection [--target <repo>] <file>${file ? `\nnot found: ${file}` : ''}`);
+  console.error(`usage: scripts/check-selection [--target <repo>] [--reselect] <file>${file ? `\nnot found: ${file}` : ''}`);
   process.exit(1);
 }
 const text = fs.readFileSync(file, 'utf8');
@@ -54,6 +61,17 @@ const { capabilities } = selection;
 if (capabilities !== undefined && !isStrings(capabilities)) errors.push('capabilities must be a list of strings');
 
 const isNote = (v) => v == null || typeof v === 'string';
+const history = reselect ? [] : Decided.runs(target);
+// What is wrong with `pick` as the default of `phase` when the phase is decided, or null.
+const decidedProblem = (phase, pick) => {
+  if (reselect || pick?.explicit === true) return null;
+  const decision = Decided.decide(phase, { target, skills, history });
+  if (!decision.skill) return null;
+  if (pick?.skill === decision.skill)
+    return pick.reason === decision.origin ? null : `a decided phase's reason is its origin: ${JSON.stringify(decision.origin)}`;
+  if (isStrings(capabilities) && Catalog.capabilityProblem(decision.skill, capabilities, skills)) return null;
+  return `replaces the decided skill ${decision.skill} (${decision.origin}): keep it, or mark this default "explicit": true when the user named it`;
+};
 const selected = new Set();
 for (const p of phases) {
   const name = p?.phase;
@@ -79,6 +97,8 @@ for (const p of phases) {
     if (!hasReason(pick)) errors.push(`${where}: needs a reason`);
     const problem = Catalog.pickProblem(id, [name], skills);
     if (problem) { errors.push(`${where}: ${problem.message}`); continue; }
+    const decided = role === 'default' ? decidedProblem(name, pick) : null;
+    if (decided) errors.push(`${where}: ${decided}`);
     if (skills[id]?.cost === 'high') {
       const cost = Catalog.costProblem(id, pick.reason, skills);
       if (cost && hasReason(pick)) errors.push(`${where}: ${cost}`);

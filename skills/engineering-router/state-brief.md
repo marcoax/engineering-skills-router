@@ -35,7 +35,7 @@ Read from SKILL.md §5. Write the composed workflow like this example to a file 
 
 - **type**, **risk**, **complexity**, **path**, **properties** and **classification** as §1 checked them with `scripts/check-classification` ([classification.md](classification.md)). `compose --new` checks them again; a recomposition keeps the run's own unless the file revises them.
 - **Every step** of §5's list, in order, router and covered steps included; `id` unique (the phase name, or `branch`, `review`, `verification`, `pull-request`).
-- **skill** the selector's default (`source/name`), or `null` for a router step (then no alternatives). At most two **alternatives**, the selector's, none equal to the skill. `compose` refuses any that is not a usable candidate for the step's `phases`.
+- **skill** the selector's default (`source/name`), or `null` for a router step (then no alternatives). **reason** the default's reason as the proposal gives it: a decided phase's origin (`preference`, `project`, `remembered · <run>`) unchanged. At most two **alternatives**, the selector's, none equal to the skill. `compose` refuses any that is not a usable candidate for the step's `phases`.
 - **confirm** `false` by default; `true` for a user-requested checkpoint, recorded as in [autonomy.md](autonomy.md).
 - **prerequisites**, **cost** and **tie** the selector's notes for the step, unchanged (`[]`, `null` when it gave none).
 - **optional** `true` for independent-review, verification; while off: `status` `skipped`, `outcome` `off (optional)`.

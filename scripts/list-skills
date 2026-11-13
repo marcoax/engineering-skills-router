@@ -1,9 +1,14 @@
 #!/usr/bin/env node
-// Usage: scripts/list-skills [--target <repo>] [phase ...]
+// Usage: scripts/list-skills [--target <repo>] [--reselect] [phase ...]
 //        scripts/list-skills --guides
 //   no args  one line per phase with its candidates
-//   phases   full detail for each candidate: the source description, read from its SKILL.md
-//            frontmatter, then the catalog's use_when, avoid_when, complexity, cost, invokes, requires
+//   phases   a decided phase (ADR 0005, lib/decided.js) prints only its skill, its origin
+//            (preference | project | remembered · <run>), its path and its alternatives: nothing
+//            is read for it. Every other phase prints full detail for each candidate: the source
+//            description, read from its SKILL.md frontmatter, then the catalog's use_when,
+//            avoid_when, complexity, cost, invokes, requires
+//   --reselect  no phase is decided: the full listing of every phase, for a user who asks to
+//            select every phase again
 //   --guides the vendor guides (catalog/guides.yaml), with their source descriptions; guides are
 //            consulted for selection and are never phase candidates
 // Candidates stand on equal terms: an explicit preference first, then the target's project
@@ -16,8 +21,11 @@
 // Status: ok | missing (file not found, or a personal or project path outside its folder)
 //   | excluded (user preference) | unknown (not cataloged)
 const Catalog = require('./lib/catalog');
+const Decided = require('./lib/decided');
 
-const { target, args } = Catalog.targetArg(process.argv.slice(2));
+const { target, args: given } = Catalog.targetArg(process.argv.slice(2));
+const reselect = given.includes('--reselect');
+const args = given.filter((a) => a !== '--reselect');
 Catalog.requireConfig();
 const describe = (skill) => {
   const { text, error } = Catalog.description(skill);
@@ -48,6 +56,14 @@ for (const phase of phases) {
     continue;
   }
   console.log(`## ${phase}: ${categories[phase]}`);
+  const decision = reselect ? {} : Decided.decide(phase, { target, skills });
+  if (decision.skill) {
+    console.log(`decided: ${decision.skill}  [${decision.origin}]\n   path: ${decision.path}`);
+    decision.alternatives.forEach((a, i) => console.log(`   ${'ab'[i]}) ${a.skill}: ${a.reason}`));
+    console.log();
+    continue;
+  }
+  if (decision.expired) console.log(`not decided: ${decision.expired.skill} remembered from ${decision.expired.run} expired: ${decision.expired.why}`);
   list.forEach((c, i) => {
     console.log(`${i + 1}. ${c.id}  [${c.origin}, ${c.status}]`);
     if (!c.skill) return;

@@ -161,4 +161,4 @@ function reconcile(target, state, ownerLine) {
   return lines;
 }
 
-module.exports = { lock, token, freePath, archive, startNote, reconcile, noteRun, noteBody, notePath, STEPS_DIR };
+module.exports = { lock, token, freePath, archive, startNote, reconcile, noteRun, noteBody, notePath, STEPS_DIR, RUNS_DIR };
