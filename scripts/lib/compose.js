@@ -35,7 +35,8 @@ function order(path, type, phases) {
 
 const strings = (v) => Catalog.arr(v).filter((x) => typeof x === 'string');
 const note = (v) => (typeof v === 'string' && v.trim() ? v : null);
-const routerStep = (id, reason, summary, extra = {}) => ({
+// A pending step with every default field; a router step as it is, a skill step with overrides.
+const newStep = (id, reason, summary, extra = {}) => ({
   id, phases: [], skill: null, reason, summary, alternatives: [], confirm: false, optional: false,
   covered_by: null, model: null, effort: null, status: 'pending', outcome: null, ...extra,
 });
@@ -64,13 +65,16 @@ function alternativesOf(entries) {
   return [...bySkill].map(([skill, reasons]) => ({ skill, reason: perPhase(reasons) }));
 }
 
+// A workflow is issue-free (issue-free.md) when the task is no issue and no step publishes one (§4).
+const issueFree = (steps, issue) => !issue && !steps.some((s) => Catalog.arr(s.phases).includes('issue-tracking'));
+
 // The router's steps (§2): the work branch, verification on the full path, and the pull request
 // when no selected skill writes its body (that skill's step is the pull-request step then).
-function routerSteps(path, issue, issueFree, steps) {
-  const out = [routerStep('branch', 'the work branch, from the default branch',
-    issue ? `Create ${issue.number}-<slug>` : issueFree ? 'Create <slug> (issue-free.md)' : 'Create <issue-number>-<slug> once the issue is published')];
-  if (path !== 'light') out.push(off(routerStep('verification', 'agent-checkable points in the manual checklist', 'Work through the [agent] checklist points')));
-  if (!steps.some((s) => s.id === 'pull-request')) out.push(routerStep('pull-request', 'the router opens the pull request', 'Open the pull request'));
+function routerSteps(path, issue, steps) {
+  const out = [newStep('branch', 'the work branch, from the default branch',
+    issue ? `Create ${issue.number}-<slug>` : issueFree(steps, issue) ? 'Create <slug> (issue-free.md)' : 'Create <issue-number>-<slug> once the issue is published')];
+  if (path !== 'light') out.push(off(newStep('verification', 'agent-checkable points in the manual checklist', 'Work through the [agent] checklist points')));
+  if (!steps.some((s) => s.id === 'pull-request')) out.push(newStep('pull-request', 'the router opens the pull request', 'Open the pull request'));
   return out;
 }
 
@@ -117,7 +121,7 @@ function build({ classification, selection, skills, trackerConfigured, issue = n
     // A skill tagged issue-tracking fills it in its step (to-spec, to-tickets).
     if (Catalog.arr(skills[skill]?.categories).includes('issue-tracking') && !phases.includes('issue-tracking')) phases.push('issue-tracking');
     const step = {
-      ...routerStep(first.phase, perPhase(entries.map((e) => [e.phase, e.default.reason])), perPhase(entries.map((e) => [e.phase, e.reason]))),
+      ...newStep(first.phase, perPhase(entries.map((e) => [e.phase, e.default.reason])), perPhase(entries.map((e) => [e.phase, e.reason]))),
       phases, skill, alternatives: alternativesOf(entries),
       prerequisites: [...new Set(entries.flatMap((e) => strings(e.prerequisites)))],
       cost: perPhase(entries.map((e) => [e.phase, e.cost])), tie: perPhase(entries.map((e) => [e.phase, e.tie])),
@@ -125,9 +129,7 @@ function build({ classification, selection, skills, trackerConfigured, issue = n
     return OPTIONAL.includes(step.id) ? off(step) : step;
   });
 
-  const fillsIssue = steps.some((s) => s.phases.includes('issue-tracking'));
-  const issueFree = !issue && !fillsIssue;
-  if (!multi) steps.push(...routerSteps(path, issue, issueFree, steps));
+  if (!multi) steps.push(...routerSteps(path, issue, steps));
 
   // A selected skill that publishes to the tracker needs its configuration first (§4).
   const needing = steps.find((s) => s.skill && Catalog.arr(skills[s.skill]?.requires).includes('tracker-config'));
@@ -136,7 +138,7 @@ function build({ classification, selection, skills, trackerConfigured, issue = n
     const source = needing.skill.split('/')[0];
     const setup = usable.find((c) => c.id.startsWith(`${source}/`)) ?? usable[0];
     if (setup) {
-      steps.push({ ...routerStep('setup', `${needing.skill} requires tracker-config; the target has no ${TRACKER_FILE}`,
+      steps.push({ ...newStep('setup', `${needing.skill} requires tracker-config; the target has no ${TRACKER_FILE}`,
         `Configure the issue tracker ${needing.skill} publishes to`), phases: ['setup'], skill: setup.id });
     } else missing.push({ phase: 'setup', reason: `${needing.skill} requires tracker-config and no setup skill is usable` });
   }
@@ -186,8 +188,7 @@ function present(state, prefs) {
   if (preset) lines.push(`        (primary from preferences.yaml: the reply "primary ${preset === 'claude' ? 'openai' : 'claude'}" changes it)`);
   for (const o of Catalog.arr(state.omitted)) lines.push(`Skipped: ${o.phase}: ${o.reason}`);
   for (const m of Catalog.arr(state.missing)) lines.push(`Missing: ${m.phase}: no available skill (${m.reason})`);
-  const fillsIssue = state.steps.some((s) => Catalog.arr(s.phases).includes('issue-tracking'));
-  if (!state.handoff?.issue && !fillsIssue) lines.push(`Issue-free: ${state.handoff?.spec ? `the spec file ${state.handoff.spec} is the handoff` : 'no selected skill publishes an issue'} (issue-free.md)`);
+  if (issueFree(state.steps, state.handoff?.issue)) lines.push(`Issue-free: ${state.handoff?.spec ? `the spec file ${state.handoff.spec} is the handoff` : 'no selected skill publishes an issue'} (issue-free.md)`);
   if (!started) {
     lines.push('Execution: go authorizes this workflow through commit, push and the open PR; stops only for exceptions or checkpoints you request. Merge and deployment are separate.');
     if (state.steps.some((s) => s.id === 'security')) lines.push('Security: runs if the diff or task triggers the conditional check (after-implementation.md).');
@@ -196,4 +197,4 @@ function present(state, prefs) {
   return lines;
 }
 
-module.exports = { build, present, order, TRACKER_FILE };
+module.exports = { build, present, TRACKER_FILE };

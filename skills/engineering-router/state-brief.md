@@ -5,13 +5,13 @@ Read from SKILL.md §5. `scripts/state` builds the workflow's steps itself: give
 ```sh
 scripts/state <target repo> compose --new \
   --classification <file> --selection <file> --task "<one line>" \
-  [--issue <number|url>] [--spec <path>] [--checkpoint <step>[,<step>]]
+  [--issue <number|url>] [--spec <path>] [--checkpoint <step>[,<step>]] [--reselect]
 ```
 
 - `--classification`: the classification file §1 checked with `scripts/check-classification` ([classification.md](classification.md)). `compose` checks it again.
 - `--selection`: the selector's JSON block, saved to a file, that `scripts/check-selection --target <target repo>` passed (§3). Add `--reselect` when the selection ran with it. `compose` checks it again.
 - `--task`: the task in one line.
-- `--issue`: the issue the task already is; it becomes `handoff.issue`. `--spec`: the spec file the task already is; it becomes `handoff.spec` and the workflow is issue-free ([issue-free.md](issue-free.md)).
+- `--issue`: the issue the task already is; it becomes `handoff.issue`. `--spec`: the spec file the task already is, which must exist in the target repo; it becomes `handoff.spec` and the workflow is issue-free ([issue-free.md](issue-free.md)).
 - `--checkpoint`: the steps (id or phase) the user asked to confirm before they start ([autonomy.md](autonomy.md)); each is recorded as `confirm` on its step.
 
 From those files `compose` writes `.router/state.json` with status `selecting`, so §2 and §4 hold without any step written by hand:
@@ -25,6 +25,6 @@ From those files `compose` writes `.router/state.json` with status `selecting`, 
 
 When a check fails, `compose` prints the checker's errors and writes nothing: correct the classification or the pick, check it again, and rerun. It then prints the workflow presentation of §5; `scripts/state <target repo> show` prints it again later.
 
-**A recomposition** (SKILL.md §5 `edit` and `full`, §6) drops `--new` and passes the new selection: `compose --selection <file> [--classification <file>]`. It keeps the run's completed steps, `primary`, handoff, manual checklist and reviewed revisions, and its classification unless `--classification` revises it. A completed step's phase must be selected again. A file holding a complete state is refused.
+**A recomposition** (SKILL.md §5 `edit` and `full`, §6) drops `--new` and passes the new selection: `compose --selection <file> [--classification <file>]`. It keeps the run's completed steps, `primary`, handoff, manual checklist and reviewed revisions, and its classification unless `--classification` revises it. A completed step's phase must be selected again. An `--issue` or `--spec` other than the run's handoff is refused: change the handoff with `scripts/state <target repo> handoff`. A file holding a complete state is refused, as `--selection` too.
 
 The state's format, for reading it, is [state.md](state.md).
