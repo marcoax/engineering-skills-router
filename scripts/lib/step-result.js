@@ -6,6 +6,7 @@ const path = require('node:path');
 const { clone, fail, setStep, setHandoff, stepIndex, REVIEW_PHASES } = require('./state-ops');
 const { findingsProblems, DECISIONS } = require('./runs');
 const { STEPS_DIR, notePath, noteRun, noteBody } = require('./run-files');
+const { lastJsonBlock } = require('./json-block');
 
 const VERDICTS = ['done', 'fixes', 'blocked'];
 const KINDS = ['note', 'findings', 'pr-body'];
@@ -111,10 +112,10 @@ function parseResult(text) {
   try {
     return JSON.parse(text);
   } catch {
-    const blocks = [...text.matchAll(/```json\s*\n([\s\S]*?)```/g)];
-    if (!blocks.length) return undefined;
+    const block = lastJsonBlock(text);
+    if (block == null) return undefined;
     try {
-      return JSON.parse(blocks.at(-1)[1]);
+      return JSON.parse(block);
     } catch {
       return undefined;
     }

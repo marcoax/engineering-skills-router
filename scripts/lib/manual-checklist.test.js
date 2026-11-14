@@ -10,6 +10,8 @@ const fixture = (t) => {
   const target = fs.mkdtempSync(path.join(os.tmpdir(), 'router-checklist-'));
   t.after(() => fs.rmSync(target, { recursive: true, force: true }));
   fs.mkdirSync(path.join(target, '.router'));
+  // An empty explicit config directory: defaults, whatever config/ this checkout holds.
+  fs.mkdirSync(path.join(target, 'config'));
   const example = fs.readFileSync(path.join(ROOT, 'skills/engineering-router/state.md'), 'utf8').match(/```json\n([\s\S]*?)```/)[1];
   const file = path.join(target, '.router/state.json');
   fs.writeFileSync(file, example);
@@ -113,11 +115,12 @@ test('check-state rejects a malformed manual checklist while missing and empty o
 
 test('recomposition and resume retain the manual checklist, new runs archive rather than inherit, and records ignore ticks', (t) => {
   const f = fixture(t);
+  // The composition input of the state.md example (scripts/fixtures).
+  const selection = ['--selection', path.join(ROOT, 'scripts/fixtures/compose-selection.json')];
+  const classification = ['--classification', path.join(ROOT, 'scripts/fixtures/compose-classification.json')];
+  passed(f.state('compose', ...selection));
   const recordBefore = f.run('record', f.target, '--checklist', '2,1,1,0');
   passed(recordBefore);
-  const composed = path.join(f.target, 'composed.json');
-  fs.writeFileSync(composed, JSON.stringify(f.read()));
-  passed(f.state('compose', composed));
   assert.deepEqual(f.read().manual_checklist, []);
   passed(f.set([point]));
   const old = f.read();
@@ -125,11 +128,10 @@ test('recomposition and resume retain the manual checklist, new runs archive rat
   const recordAfter = f.run('record', f.target, '--checklist', '2,1,1,0');
   passed(recordAfter);
   assert.equal(recordAfter.stdout, recordBefore.stdout);
-  fs.writeFileSync(composed, JSON.stringify(f.read()));
-  passed(f.state('compose', composed));
+  passed(f.state('compose', ...selection));
   assert.equal(f.read().manual_checklist[0].checked, true);
   passed(f.state('workflow', 'done'));
-  passed(f.state('compose', '--new', composed));
+  passed(f.state('compose', '--new', ...classification, ...selection, '--task', 'Add CSV export to the reports page'));
   assert.deepEqual(f.read().manual_checklist, []);
   assert.notEqual(f.read().run, old.run);
   const archived = JSON.parse(fs.readFileSync(path.join(f.target, '.router/runs', old.run, 'state.json'), 'utf8'));

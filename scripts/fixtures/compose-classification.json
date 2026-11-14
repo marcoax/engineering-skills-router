@@ -1,0 +1,19 @@
+{
+  "type": "feature",
+  "risk": "medium",
+  "complexity": "medium",
+  "path": "full",
+  "properties": ["brownfield", "user-facing"],
+  "classification": {
+    "policy": 3,
+    "ticket": false,
+    "facts": [],
+    "rationale": {
+      "type": "a new capability on an existing page",
+      "risk": "no fact applies; a wrong export is visible to users but contained and reversible",
+      "complexity": "a query, a CSV writer and a button across three files"
+    },
+    "uncertain": []
+  },
+  "requested": null
+}

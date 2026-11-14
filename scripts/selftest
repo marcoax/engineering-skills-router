@@ -25,7 +25,7 @@ for (const dir of ['vendors', 'node_modules']) fs.symlinkSync(path.join(ROOT, di
 
 const prefsFile = path.join(tmp, 'config/preferences.yaml');
 const fail = (msg) => { console.log(`FAIL: ${msg}`); process.exit(1); };
-const scriptTests = spawnSync(process.execPath, ['--test', path.join(ROOT, 'scripts/state.test.js'), path.join(ROOT, 'scripts/lib/git-env.test.js'), path.join(ROOT, 'scripts/lib/install-claude.test.js'), path.join(ROOT, 'scripts/lib/progress.test.js'), path.join(ROOT, 'scripts/lib/manual-checklist.test.js')], { encoding: 'utf8' });
+const scriptTests = spawnSync(process.execPath, ['--test', path.join(ROOT, 'scripts/state.test.js'), path.join(ROOT, 'scripts/compose.test.js'), path.join(ROOT, 'scripts/lib/git-env.test.js'), path.join(ROOT, 'scripts/lib/install-claude.test.js'), path.join(ROOT, 'scripts/lib/progress.test.js'), path.join(ROOT, 'scripts/lib/manual-checklist.test.js')], { encoding: 'utf8' });
 if (scriptTests.status !== 0) fail(`Script tests\n${scriptTests.stdout}${scriptTests.stderr}`);
 const run = (script, ...args) => {
   const r = spawnSync(path.join(tmp, 'scripts', script), args, { encoding: 'utf8' });
@@ -1256,9 +1256,12 @@ const expectStateOk = (label, state) => {
   if (!r.ok) fail(`check-state should accept ${label}\n${r.out}`);
 };
 expectStateOk('the state.md example', stateExample());
-// The agent writes the first state from state-brief.md: its example must pass too.
-expectStateOk('the state-brief.md example',
-  JSON.parse(fs.readFileSync(path.join(tmp, 'skills/engineering-router/state-brief.md'), 'utf8').match(/```json\n([\s\S]*?)```/)[1]));
+// state-brief.md describes the compose input; the agent writes no state or steps from it (#96).
+{
+  const brief = fs.readFileSync(path.join(tmp, 'skills/engineering-router/state-brief.md'), 'utf8');
+  if (/```json/.test(brief) || !/compose --new \\\n\s+--classification <file> --selection <file>/.test(brief))
+    fail('state-brief.md should describe the compose input (--classification, --selection), not a state to write');
+}
 const expectState = (label, state, ...msgs) => {
   const r = checkState(state);
   const missing = msgs.filter((m) => !r.out.includes(`error: ${m}`));
@@ -1833,17 +1836,16 @@ expectStateOk('unknown fields', variant((s) => { s.extra = 1; s.steps[0].extra =
   if (s.steps[3].model !== 'claude-sonnet-5-5' || s.steps[3].effort !== 'high') fail(`a covered step should take its covering step's model and effort: ${JSON.stringify(s.steps[3])}`);
   // show: a step with a model says what it ran on; a step without one gets nothing extra.
   const shown = st('show').out.split('\n');
-  if (!shown.includes('✓ 3. implementation  mattpocock/implement  on claude-sonnet-5-5 · effort high → Built')) fail(`show should print the step model and effort\n${shown.join('\n')}`);
-  if (!shown.includes('✓ 4. testing  mattpocock/tdd inside implementation  on claude-sonnet-5-5 · effort high → ran inside implementation')) fail(`show should print a covered step's model\n${shown.join('\n')}`);
-  if (!shown.includes('– 6. verification  (router) → off (optional)')) fail(`show should print nothing extra for a step without a model\n${shown.join('\n')}`);
+  if (!shown.includes('✓ 3. mattpocock/implement   implementation   on claude-sonnet-5-5 · effort high  → Built')) fail(`show should print the step model and effort\n${shown.join('\n')}`);
+  if (!shown.includes('✓ 4. mattpocock/tdd   testing   inside implementation   on claude-sonnet-5-5 · effort high  → ran inside implementation')) fail(`show should print a covered step's model\n${shown.join('\n')}`);
+  if (!shown.includes(`– 6. verification   ${s.steps[5].summary}   (off)`)) fail(`show should print nothing extra for a step without a model\n${shown.join('\n')}`);
   // A review never runs inside the implementation: it stays open when the implementation closes.
   if (s.steps[4].status !== 'pending') fail(`the review should stay open after the implementation: ${JSON.stringify(s.steps[4])}`);
   // The step's reason and alternatives, then the selector's prerequisites, cost note and tie, stay visible with their step.
-  const notes = shown.slice(shown.findIndex((l) => l.includes(' 1. specification')) + 1, shown.findIndex((l) => l.includes(' 2. branch')));
-  if (JSON.stringify(notes) !== JSON.stringify(['   why: decisions already settled in the conversation',
+  const notes = shown.slice(shown.findIndex((l) => l.includes(' 1. mattpocock/to-spec')) + 1, shown.findIndex((l) => l.includes(' 2. branch')));
+  if (JSON.stringify(notes) !== JSON.stringify([`   ${s.steps[0].summary}`, '   why: decisions already settled in the conversation',
     '   a) addyosmani/spec-driven-development: spec as a repo document instead of an issue',
-    '   needs: gh logged in, to publish the issue',
-    '   tie: to-spec and spec-driven-development fit equally; publishing an issue separates them']))
+    '   needs: gh logged in, to publish the issue · tie: to-spec and spec-driven-development fit equally; publishing an issue separates them']))
     fail(`show should print a step's prerequisites and tie\n${shown.join('\n')}`);
   expectOk('step pending', st('step', 'verification', 'pending'));
   if (read().steps[5].outcome !== null) fail('an open step keeps no outcome');
@@ -1885,9 +1887,9 @@ expectStateOk('unknown fields', variant((s) => { s.extra = 1; s.steps[0].extra =
   const afterResume = st('show');
   expectOk('show after resume', afterResume);
   const firstOpen = afterResume.out.split('\n').find((line) => /^[○▶⏸]/u.test(line));
-  if (firstOpen !== '○ 7. pull-request  mattpocock/pr') fail(`resume should start at the first incomplete step\n${afterResume.out}`);
+  if (!firstOpen?.startsWith('○ 7. mattpocock/pr   pull-request')) fail(`resume should start at the first incomplete step\n${afterResume.out}`);
   expectOk('start first incomplete step', st('start', '7', '--model', 'claude-opus-5-5'));
-  if (!st('show').out.includes('▶ 7. pull-request  mattpocock/pr  on claude-opus-5-5')) fail('resumed execution should start the pull request step');
+  if (!st('show').out.includes('▶ 7. mattpocock/pr   pull-request   on claude-opus-5-5')) fail('resumed execution should start the pull request step');
 
   // scripts/record: composes a record scripts/stats reads back, and refuses unknown reviewers.
   const { parseRecord: parseBack } = require(path.join(ROOT, 'scripts/lib/runs'));
@@ -2093,29 +2095,42 @@ fs.statSync = function (p, ...a) { const r = statSync.call(this, p, ...a); if (S
   if (JSON.parse(fs.readFileSync(path.join(archived, 'state.json'), 'utf8')).discarded !== true) fail('discard should mark the archived run discarded');
 }
 
+// compose's input: the checked classification and selection of the state.md example
+// (scripts/fixtures), written to scratch files, as the arguments compose takes.
+const FIXTURES = path.join(ROOT, 'scripts/fixtures');
+const exampleSelection = () => JSON.parse(fs.readFileSync(path.join(FIXTURES, 'compose-selection.json'), 'utf8'));
+const exampleClassification = () => JSON.parse(fs.readFileSync(path.join(FIXTURES, 'compose-classification.json'), 'utf8'));
+const composeInput = (name, { classification, selection = exampleSelection(), task = 'Add CSV export to the reports page' } = {}) => {
+  const put = (kind, value) => {
+    const f = path.join(tmp, `${name}-${kind}.json`);
+    fs.writeFileSync(f, JSON.stringify(value));
+    return f;
+  };
+  return [...(classification ? ['--classification', put('classification', classification)] : []),
+    '--selection', put('selection', selection), ...(task ? ['--task', task] : [])];
+};
+const trackerConfigured = (repo) => {
+  fs.mkdirSync(path.join(repo, 'docs/agents'), { recursive: true });
+  fs.writeFileSync(path.join(repo, 'docs/agents/issue-tracker.md'), 'GitHub issues\n');
+};
+
 // A new run is owned from its start by the session that composed it, under a fresh run id; the
 // previous finished run is archived with its notes; another session's selection is not replaced.
 {
   const repo = fs.mkdtempSync(path.join(tmp, 'owner-compose-'));
   const stateFile = path.join(repo, '.router/state.json');
-  const composed = path.join(tmp, 'owner-composed.json');
   const read = () => JSON.parse(fs.readFileSync(stateFile, 'utf8'));
-  const fresh = variant((s) => {
-    s.status = 'selecting';
-    s.steps.forEach((x) => Object.assign(x, { status: 'pending', outcome: null, model: null }));
-    s.handoff.branch = null;
-    s.handoff.base_commit = null;
-  });
-  fs.writeFileSync(composed, JSON.stringify(fresh));
-  const compose = (...a) => run('state', repo, 'compose', ...a, composed);
+  const fresh = composeInput('owner-new', { classification: exampleClassification() });
+  const again = composeInput('owner-again', { task: null });
+  const compose = (...a) => run('state', repo, 'compose', ...a, ...(a.includes('--new') ? fresh : again));
   let r = compose('--new');
   if (!r.ok) fail(`compose --new\n${r.out}`);
   const first = read();
-  if (first.owner?.session !== process.env.ROUTER_SESSION || !first.run || first.run === fresh.run) fail(`compose --new should own the run under a fresh run id: ${JSON.stringify([first.run, first.owner])}`);
+  if (first.owner?.session !== process.env.ROUTER_SESSION || !first.run) fail(`compose --new should own the run under a fresh run id: ${JSON.stringify([first.run, first.owner])}`);
   r = compose();
   if (!r.ok || read().run !== first.run || read().owner.session !== first.owner.session) fail(`a recomposition keeps the run and its owner\n${r.out}`);
-  if (run('state', repo, 'compose', composed, '--session', 'intruder').ok) fail('another session should not recompose the run');
-  if (run('state', repo, 'compose', '--new', composed, '--session', 'intruder').ok) fail('another session should not replace a selection it does not own');
+  if (run('state', repo, 'compose', ...again, '--session', 'intruder').ok) fail('another session should not recompose the run');
+  if (run('state', repo, 'compose', '--new', ...fresh, '--session', 'intruder').ok) fail('another session should not replace a selection it does not own');
   // Finished: the next run archives it with its notes.
   fs.mkdirSync(path.join(repo, '.router/steps'));
   fs.writeFileSync(path.join(repo, '.router/steps/1-specification.md'), `run: ${first.run}\nspec\n`);
@@ -2165,7 +2180,7 @@ fs.statSync = function (p, ...a) { const r = statSync.call(this, p, ...a); if (S
   if (byId('testing').covered_by !== null) fail(`after a swap to arena, testing should run on its own: ${JSON.stringify(byId('testing'))}`);
   if (!r.out.includes('testing runs on its own')) fail(`the swap should say testing runs on its own\n${r.out}`);
   reviewOnItsOwn('swap to arena');
-  if (/inside/.test(st('show').out)) fail(`show should list no covered step after the swap\n${st('show').out}`);
+  if (/ {3}inside \S+/.test(st('show').out)) fail(`show should list no covered step after the swap\n${st('show').out}`);
   // Closing the implementation leaves the independent checks pending.
   expectOk('go', st('reply', 'go'));
   expectOk('implementation running', st('step', 'implementation', 'running', '--model', 'claude-opus-5-5', '--main-session'));
@@ -2193,33 +2208,31 @@ fs.statSync = function (p, ...a) { const r = statSync.call(this, p, ...a); if (S
   if (byId('testing').status !== 'done' || byId('review').status !== 'pending')
     fail(`testing closes with its implementation, the review stays open: ${JSON.stringify(read().steps)}`);
 
-  // A composed review marked inside the implementation runs on its own, with the selector's pick.
+  // A composed workflow never has its review inside the implementation, though implement runs one.
   fs.rmSync(stateFile);
-  const coveredReview = path.join(tmp, 'swap-covered-review.json');
-  fs.writeFileSync(coveredReview, JSON.stringify(integrated((s) => {
-    Object.assign(s.steps[4], { covered_by: 'implementation', skill: 'mattpocock/code-review', alternatives: [],
-      selected: { skill: reviewSkill, reason: 'axes fit', alternatives: [] } });
-  })));
-  r = expectOk('compose --new with a covered review', run('state', repo, 'compose', '--new', coveredReview));
+  trackerConfigured(repo);
+  const selectorPick = { skill: 'addyosmani/test-driven-development', reason: 'prove-it tests fit this change',
+    alternatives: [{ skill: 'pstack/tdd', reason: 'test-first in small steps' }] };
+  const swapSelection = (mutate = () => {}) => {
+    const sel = exampleSelection();
+    sel.capabilities = ['subagents', 'isolated-outputs'];
+    sel.phases.find((p) => p.phase === 'implementation').alternatives = [{ skill: 'pstack/arena', reason: 'High cost: competing designs' },
+      { skill: 'addyosmani/incremental-implementation', reason: 'thin slices' }];
+    Object.assign(sel.phases.find((p) => p.phase === 'testing'),
+      { default: { skill: selectorPick.skill, reason: selectorPick.reason }, alternatives: selectorPick.alternatives });
+    mutate(sel);
+    return sel;
+  };
+  const composeNew = (name, sel) => run('state', repo, 'compose', '--new', ...composeInput(name, { classification: exampleClassification(), selection: sel }));
+  expectOk('compose --new', composeNew('swap', swapSelection()));
   reviewOnItsOwn('compose');
-  if (!r.out.includes('coverage: review runs on its own')) fail(`compose should say the review runs on its own\n${r.out}`);
 
   // Swapping back and forth keeps the selector's own pick for a covered step: covering keeps it
   // aside, running on its own restores it with its alternatives and reason.
-  fs.rmSync(stateFile);
-  const composedFile = path.join(tmp, 'swap-composed.json');
-  const selectorPick = { skill: 'addyosmani/test-driven-development', reason: 'prove-it tests fit this change',
-    alternatives: [{ skill: 'pstack/tdd', reason: 'test-first in small steps' }] };
-  fs.writeFileSync(composedFile, JSON.stringify(integrated((s) => {
-    Object.assign(s.steps[3], { covered_by: null, selected: null, ...selectorPick });
-  })));
   // A high-cost alternative without its cost up front is refused, so no control can pick it unexplained.
-  const unexplained = path.join(tmp, 'swap-unexplained.json');
-  fs.writeFileSync(unexplained, JSON.stringify(integrated((s) => { s.steps[2].alternatives[0].reason = 'competing designs'; })));
-  r = run('state', repo, 'compose', '--new', unexplained);
+  r = composeNew('swap-unexplained', swapSelection((sel) => { sel.phases.find((p) => p.phase === 'implementation').alternatives[0].reason = 'competing designs'; }));
   if (r.ok || !r.out.includes('error: implementation: alternative pstack/arena: high cost: its reason must start with "High cost"'))
     fail(`compose should refuse arena without its High cost reason\n${r.out}`);
-  expectOk('compose --new', run('state', repo, 'compose', '--new', composedFile));
   const covered = byId('testing');
   if (covered.covered_by !== 'implementation' || covered.skill !== 'mattpocock/tdd' || covered.alternatives.length !== 0)
     fail(`compose should cover testing with the skill implement runs: ${JSON.stringify(covered)}`);
@@ -2237,9 +2250,7 @@ fs.statSync = function (p, ...a) { const r = statSync.call(this, p, ...a); if (S
   // Swapping away from an implementation that ran the tests, with no testing step: the tests it
   // ran come back as a step of their own, right after it; swapping back covers them, once.
   fs.rmSync(stateFile);
-  const noTesting = path.join(tmp, 'swap-no-testing.json');
-  fs.writeFileSync(noTesting, JSON.stringify(integrated((s) => { s.steps.splice(3, 1); })));
-  expectOk('compose --new without testing', run('state', repo, 'compose', '--new', noTesting));
+  expectOk('compose --new without testing', composeNew('swap-no-testing', swapSelection((sel) => { sel.phases = sel.phases.filter((p) => p.phase !== 'testing'); })));
   r = expectOk('reply 3a (to arena, no testing step)', st('reply', '3a'));
   const ids = read().steps.map((x) => x.id);
   const testing = byId('testing');
@@ -2254,54 +2265,56 @@ fs.statSync = function (p, ...a) { const r = statSync.call(this, p, ...a); if (S
     fail(`swapping back should cover the restored testing step: ${JSON.stringify(read().steps)}`);
 }
 
-// compose: the selector-to-state boundary. A composed workflow becomes the executable state only
-// when every skill and alternative is a usable candidate for its step's phases, with coverage
+// compose: the selector-to-state boundary. compose builds the steps from the checked classification
+// and selection, refusing what check-classification or check-selection refuses, with coverage
 // recalculated from what the skills run. A new run (--new) never overwrites an unfinished one; a
 // recomposition keeps the completed steps, the run's primary and the handoff, and reconsiders only
 // the remaining work.
 {
   const repo = fs.mkdtempSync(path.join(tmp, 'compose-'));
+  trackerConfigured(repo);
   const stateFile = path.join(repo, '.router/state.json');
-  const composed = path.join(tmp, 'composed.json');
   const read = () => JSON.parse(fs.readFileSync(stateFile, 'utf8'));
-  const compose = (state, ...flags) => {
-    fs.writeFileSync(composed, JSON.stringify(state));
-    return run('state', repo, 'compose', ...flags, composed);
+  const compose = (input, ...flags) => run('state', repo, 'compose', ...flags, ...composeInput('compose', input));
+  const selection = (mutate = () => {}) => {
+    const sel = exampleSelection();
+    const at = (name) => sel.phases.find((p) => p.phase === name);
+    mutate(sel, at);
+    return sel;
   };
-  const fresh = (mutate = () => {}) => variant((s) => {
-    s.status = 'selecting';
-    s.steps.forEach((x) => Object.assign(x, { status: 'pending', outcome: null, model: null }));
-    s.handoff.branch = null;
-    s.handoff.base_commit = null;
-    s.steps[2].alternatives = [{ skill: 'addyosmani/incremental-implementation', reason: 'thin slices' }];
-    mutate(s);
-  });
-  const expectRefused = (label, state, flags, msg) => {
+  const classification = (mutate = () => {}) => {
+    const c = exampleClassification();
+    mutate(c);
+    return c;
+  };
+  const fresh = (mutate) => ({ classification: exampleClassification(), selection: selection(mutate) });
+  const expectRefused = (label, input, flags, msg) => {
     const before = fs.existsSync(stateFile) ? fs.readFileSync(stateFile, 'utf8') : null;
-    const r = compose(state, ...flags);
-    if (r.ok || !r.out.includes(`error: ${msg}`)) fail(`compose, ${label}: expected error: ${msg}\ngot:\n${r.out}`);
+    const r = compose(input, ...flags);
+    if (r.ok || !r.out.includes(msg)) fail(`compose, ${label}: expected: ${msg}\ngot:\n${r.out}`);
     if ((fs.existsSync(stateFile) ? fs.readFileSync(stateFile, 'utf8') : null) !== before) fail(`compose, ${label}: a refused composition must leave the state as it was`);
   };
 
-  // Unknown, unusable or misplaced references never reach the state.
-  expectRefused('unknown skill', fresh((s) => { s.steps[2].skill = 'nobody/nothing'; }), ['--new'],
-    'implementation: nobody/nothing: unknown skill (choose another, or report implementation as missing)');
-  expectRefused('a guide', fresh((s) => { s.steps[0].alternatives[0].skill = 'mattpocock/ask-matt'; }), ['--new'],
-    'specification: alternative mattpocock/ask-matt: a guide, not an executable skill');
-  expectRefused('wrong phase', fresh((s) => { s.steps[4].skill = 'mattpocock/tdd'; }), ['--new'],
-    'review: mattpocock/tdd: not a candidate for review');
+  // Unknown, unusable or misplaced references never reach the state: check-selection's errors.
+  expectRefused('unknown skill', fresh((s, at) => { at('implementation').default.skill = 'nobody/nothing'; }), ['--new'],
+    'error: implementation: default nobody/nothing: unknown skill');
+  expectRefused('a guide', fresh((s, at) => { at('specification').alternatives[0].skill = 'mattpocock/ask-matt'; }), ['--new'],
+    'error: specification: alternative mattpocock/ask-matt: a guide, not an executable skill');
+  expectRefused('wrong phase', fresh((s, at) => { at('review').default.skill = 'mattpocock/tdd'; }), ['--new'],
+    'error: review: default mattpocock/tdd: not a candidate for review');
   fs.writeFileSync(prefsFile, 'preferences:\n  exclude: [addyosmani/incremental-implementation]\n');
-  expectRefused('an excluded alternative', fresh(), ['--new'], 'implementation: alternative addyosmani/incremental-implementation: excluded');
+  expectRefused('an excluded alternative', fresh(), ['--new'], 'error: implementation: alternative addyosmani/incremental-implementation: excluded');
   fs.rmSync(prefsFile);
-  expectRefused('unknown phase', fresh((s) => { s.steps[2].phases = ['coding']; }), ['--new'], 'implementation: unknown phase coding');
+  expectRefused('unknown phase', fresh((s, at) => { at('implementation').phase = 'coding'; }), ['--new'], 'error: coding: unknown phase');
   expectRefused('recompose without a run', fresh(), [], 'no workflow to recompose');
+  expectRefused('a new run without a classification', { selection: selection() }, ['--new'], 'usage: scripts/state <target-repo> compose [--new] --classification <file> --selection <file>');
 
-  // A new run: written as selecting, with coverage taken from what the implementation runs.
-  let r = compose(fresh((s) => { s.steps[2].skill = 'addyosmani/incremental-implementation';
-    s.steps[2].alternatives = [{ skill: 'mattpocock/implement', reason: 'r' }]; delete s.primary; }), '--new');
-  if (!r.ok || !r.out.includes('coverage: testing runs on its own')) fail(`compose --new should write the run and recalculate coverage\n${r.out}`);
+  // A new run: written as selecting, with the steps and coverage taken from what the selection names.
+  let r = compose(fresh((s, at) => { at('implementation').default.skill = 'addyosmani/incremental-implementation';
+    at('implementation').alternatives = [{ skill: 'mattpocock/implement', reason: 'r' }]; }), '--new');
+  if (!r.ok) fail(`compose --new should write the run\n${r.out}`);
   let s = read();
-  if (s.status !== 'selecting' || s.primary !== 'claude' || s.steps[3].covered_by !== null) fail(`compose --new: ${JSON.stringify(s)}`);
+  if (s.status !== 'selecting' || s.primary !== 'claude' || s.steps[3].id !== 'testing' || s.steps[3].covered_by !== null) fail(`compose --new: ${JSON.stringify(s)}`);
   // A run records the reviewed vendor revisions at composition (ADR 0005).
   {
     const YAML = require(path.join(ROOT, 'node_modules/yaml'));
@@ -2320,12 +2333,12 @@ fs.statSync = function (p, ...a) { const r = statSync.call(this, p, ...a); if (S
     s.steps[2].status = 'pending';
   })));
   const done = read().steps.slice(0, 2);
-  const remaining = fresh((s) => {
-    s.primary = 'claude';
-    s.steps[0] = { ...s.steps[0], skill: 'addyosmani/spec-driven-development', alternatives: [] };
-    s.steps[2].skill = 'addyosmani/incremental-implementation';
-    s.steps[2].alternatives = [];
-  });
+  const remaining = { selection: selection((s, at) => {
+    at('specification').default.skill = 'addyosmani/spec-driven-development';
+    at('specification').alternatives = [];
+    at('implementation').default.skill = 'addyosmani/incremental-implementation';
+    at('implementation').alternatives = [];
+  }), task: null };
   r = compose(remaining);
   if (!r.ok) fail(`compose should recompose an unfinished run\n${r.out}`);
   s = read();
@@ -2333,35 +2346,48 @@ fs.statSync = function (p, ...a) { const r = statSync.call(this, p, ...a); if (S
   if (s.primary !== 'openai' || s.handoff.branch !== '42-csv-export' || s.handoff.issue?.number !== 42) fail(`recomposition should keep the run's primary and handoff: ${JSON.stringify(s)}`);
   if (s.status !== 'selecting' || s.steps[2].skill !== 'addyosmani/incremental-implementation' || s.steps[3].covered_by !== null)
     fail(`recomposition should take the new remaining work: ${JSON.stringify(s.steps.slice(2))}`);
-  expectRefused('dropping a completed step', fresh((s) => { s.steps.shift(); }), [], 'specification: a recomposition keeps completed steps');
+  expectRefused('dropping a completed step', { selection: selection((s) => {
+    s.phases = s.phases.filter((p) => p.phase !== 'specification');
+    s.omitted.push({ phase: 'specification', reason: 'written' });
+  }) }, [], 'error: specification: a recomposition keeps completed steps');
 
-  // The classification is checked at the same boundary (classification.md): a new run needs one,
-  // and an evidenced sensitive change cannot be written as a low-risk light path.
+  // The classification is checked at the same boundary (classification.md), with
+  // check-classification's errors: an evidenced sensitive change cannot be a low-risk light path.
   const authz = { fact: 'authorization', where: 'src/auth/guard.ts', evidence: 'changes which roles pass canEditInvoice' };
   fs.rmSync(stateFile);
-  expectRefused('a new run without classification', fresh((s) => { delete s.classification; }), ['--new'], 'classification: missing');
-  expectRefused('a sensitive change as a low-risk light path', fresh((s) => {
-    Object.assign(s, { risk: 'low', complexity: 'low', path: 'light' });
-    Object.assign(s.classification, { ticket: true, facts: [authz] });
-  }), ['--new'], 'classification: risk low is below the minimum high set by authorization (src/auth/guard.ts: changes which roles pass canEditInvoice)');
+  expectRefused('a sensitive change as a low-risk light path', { selection: selection(), classification: classification((c) => {
+    Object.assign(c, { risk: 'low', complexity: 'low', path: 'light' });
+    Object.assign(c.classification, { ticket: true, facts: [authz] });
+  }) }, ['--new'], 'error: risk low is below the minimum high set by authorization (src/auth/guard.ts: changes which roles pass canEditInvoice)');
   // A run approved under an earlier policy keeps its classification when recomposed without
   // revising it: no silent reclassification. A revision is checked against the current policy.
   fs.mkdirSync(path.dirname(stateFile), { recursive: true });
   fs.writeFileSync(stateFile, JSON.stringify(variant((s) => { s.classification.policy = 0; s.steps[2].status = 'pending'; })));
-  r = compose(fresh((s) => { delete s.classification; delete s.type; delete s.risk; delete s.complexity; delete s.path; delete s.properties; }));
+  r = compose({ selection: selection(), task: null });
   s = read();
   if (!r.ok || !r.out.includes('classification: kept (policy 0)') || s.classification.policy !== 0 || s.risk !== 'medium' || s.type !== 'feature')
     fail(`a recomposition should keep the run's classification\n${r.out}\n${JSON.stringify(s.classification)}`);
   // `full` from a light path keeps the classification: full is always offered.
   fs.writeFileSync(stateFile, JSON.stringify(variant((s) => { s.classification.policy = 0; s.path = 'light'; s.steps[2].status = 'pending'; })));
-  r = compose(fresh((s) => { s.classification.policy = 0; s.path = 'full'; }));
+  const old = classification((c) => { c.classification.policy = 0; });
+  r = compose({ selection: selection(), classification: old, task: null });
   if (!r.ok || !r.out.includes('classification: kept (policy 0)') || read().path !== 'full') fail(`full should keep the run's classification\n${r.out}`);
-  expectRefused('a revision under an old policy', fresh((s) => { s.classification.policy = 0; s.risk = 'high'; }), [],
-    'classification.policy: must be 3 (the current policy), got 0');
-  r = compose(fresh((s) => { s.risk = 'high'; s.classification.facts = [authz]; s.classification.rationale.risk = 'the export now checks roles'; }));
+  expectRefused('a revision under an old policy', { selection: selection(), classification: { ...old, risk: 'high' }, task: null }, [],
+    'error: classification.policy: must be 3 (the current policy), got 0');
+  r = compose({ selection: selection(), task: null, classification: classification((c) => {
+    c.risk = 'high';
+    c.classification.facts = [authz];
+    c.classification.rationale.risk = 'the export now checks roles';
+  }) });
   s = read();
   if (!r.ok || !r.out.includes('classification: revised under policy 3') || s.risk !== 'high' || s.classification.facts.length !== 1)
     fail(`an explicit recomposition may revise the classification under the current policy\n${r.out}`);
+  // A file holding a complete state is refused, with a pointer to the input compose takes.
+  const whole = path.join(tmp, 'compose-whole-state.json');
+  fs.writeFileSync(whole, JSON.stringify(stateExample()));
+  r = run('state', repo, 'compose', whole);
+  if (r.ok || !r.out.includes('a file holding a complete state is refused') || !r.out.includes('--classification <file> --selection <file>'))
+    fail(`compose should refuse a complete state file\n${r.out}`);
 }
 
 // Progress records (ADR 0003): a running step saves its progress and checks as it goes, so a
@@ -2615,7 +2641,7 @@ ${primary ? `  primary: ${primary}\n` : ''}  effort: medium
   prefs('claude');
   // edit and full recompose the workflow: the run keeps its primary, and the router is told so.
   const recompose = spawnSync(path.join(tmp, 'scripts', 'state'), [repo, 'reply', 'edit'], { encoding: 'utf8' });
-  if (recompose.status !== 2 || !recompose.stderr.includes('keep "primary": "openai"') || read().primary !== 'openai') {
+  if (recompose.status !== 2 || !recompose.stderr.includes("the run's primary (openai)") || !recompose.stderr.includes('compose --selection <file>') || read().primary !== 'openai') {
     fail(`reply edit should keep the run's primary and say so\n${recompose.stderr}`);
   }
   fs.writeFileSync(stateFile, JSON.stringify(variant((s) => { s.primary = 'claude'; s.status = 'selecting'; s.steps.forEach((x) => { x.status = 'pending'; x.outcome = null; x.model = null; x.effort = null; }); })));
@@ -2755,8 +2781,10 @@ ${primary ? `  primary: ${primary}\n` : ''}  effort: medium
   const section = (n) => router.split(/^## /m).find((s) => s.startsWith(`${n}. `)) ?? '';
   if (!section(3).includes('`skills/skill-selector/SKILL.md`') || !/scripts\/check-selection --target/.test(section(3)))
     fail('router SKILL.md §3 should select through skills/skill-selector/SKILL.md, checked by check-selection');
-  if (!/scripts\/state <target repo> compose --new <file>/.test(section(5)))
-    fail('router SKILL.md §5 should write a new workflow with scripts/state … compose --new');
+  if (!/scripts\/state <target repo> compose --new --classification <file> --selection <file>/.test(section(5)))
+    fail('router SKILL.md §5 should compose a new workflow from the classification and selection with scripts/state … compose --new');
+  // The agent composes from the checked files and writes no steps of its own (#96).
+  if (/compose (--new )?<file>/.test(router)) fail('router SKILL.md should not compose from a file of steps');
   if (/scripts\/list-skills/.test(section(3))) fail('router SKILL.md §3 should leave candidate listing to the selector');
   // check-selection requires a decision on the phases of §2's default flow, and only those.
   const flow = section(2).match(/```text\n([\s\S]*?)```/)?.[1].replace(/ /g, '-') ?? '';

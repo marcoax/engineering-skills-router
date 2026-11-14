@@ -1,45 +1,30 @@
 # Composing the state
 
-Read from SKILL.md §5. Write the composed workflow like this example to a file outside the target repo, then run `scripts/state <target repo> compose --new <file>` (a recomposition: `compose <file>`): its errors name the step or field to fix, and it writes `.router/state.json`. The full format, for anything this does not settle, is [state.md](state.md).
+Read from SKILL.md §5. `scripts/state` builds the workflow's steps itself: give it the two files already checked, never steps of your own ([ADR 0008](../../docs/adr/0008-compose-builds-the-steps.md)).
 
-```json
-{
-  "version": 1,
-  "task": "Add CSV export to the reports page",
-  "type": "feature", "risk": "medium", "complexity": "medium", "path": "full",
-  "properties": ["brownfield", "user-facing"],
-  "classification": { "policy": 2, "ticket": false, "facts": [],
-    "rationale": { "type": "new capability on an existing page", "risk": "no fact applies; contained and reversible", "complexity": "three files" },
-    "uncertain": [] },
-  "primary": "claude",
-  "status": "selecting",
-  "updated_at": "2026-10-17T09:42:00Z",
-  "steps": [
-    { "id": "specification", "phases": ["specification", "issue-tracking"], "skill": "mattpocock/to-spec",
-      "reason": "decisions already settled in the conversation", "summary": "Write the export spec and publish it as an issue",
-      "alternatives": [{ "skill": "addyosmani/spec-driven-development", "reason": "spec as a repo document instead" }],
-      "prerequisites": ["gh logged in, to publish the issue"], "cost": null, "tie": null,
-      "confirm": false, "optional": false, "covered_by": null, "model": null, "effort": null, "status": "pending", "outcome": null },
-    { "id": "branch", "phases": [], "skill": null, "reason": "work branch named after the issue", "summary": "Create <issue>-csv-export",
-      "alternatives": [], "confirm": false, "optional": false, "covered_by": null, "model": null, "effort": null, "status": "pending", "outcome": null },
-    { "id": "implementation", "phases": ["implementation"], "skill": "mattpocock/implement", "reason": "one spec, built here", "summary": "Build the export test-first",
-      "alternatives": [], "confirm": false, "optional": false, "covered_by": null, "model": null, "effort": null, "status": "pending", "outcome": null },
-    { "id": "review", "phases": ["review"], "skill": "addyosmani/code-review-and-quality", "reason": "five axes fit a user-facing export", "summary": "Cross-family review since the base commit",
-      "alternatives": [{ "skill": "mattpocock/code-review", "reason": "standards and spec axes" }], "confirm": false, "optional": false, "covered_by": null, "model": null, "effort": null, "status": "pending", "outcome": null },
-    { "id": "verification", "phases": [], "skill": null, "reason": "agent-checkable points in the checklist", "summary": "Work through the [agent] checklist points",
-      "alternatives": [], "confirm": false, "optional": true, "covered_by": null, "model": null, "effort": null, "status": "skipped", "outcome": "off (optional)" }
-  ],
-  "handoff": { "issue": null, "spec": null, "tickets": [], "branch": null, "base_commit": null, "pr": null }
-}
+```sh
+scripts/state <target repo> compose --new \
+  --classification <file> --selection <file> --task "<one line>" \
+  [--issue <number|url>] [--spec <path>] [--checkpoint <step>[,<step>]] [--reselect]
 ```
 
-- **type**, **risk**, **complexity**, **path**, **properties** and **classification** as §1 checked them with `scripts/check-classification` ([classification.md](classification.md)). `compose --new` checks them again; a recomposition keeps the run's own unless the file revises them.
-- **Every step** of §5's list, in order, router and covered steps included; `id` unique (the phase name, or `branch`, `review`, `verification`, `pull-request`).
-- **skill** the selector's default (`source/name`), or `null` for a router step (then no alternatives). **reason** the default's reason as the proposal gives it: a decided phase's origin (`preference`, `project`, `remembered · <run>`) unchanged. At most two **alternatives**, the selector's, none equal to the skill. `compose` refuses any that is not a usable candidate for the step's `phases`.
-- **confirm** `false` by default; `true` for a user-requested checkpoint, recorded as in [autonomy.md](autonomy.md).
-- **prerequisites**, **cost** and **tie** the selector's notes for the step, unchanged (`[]`, `null` when it gave none).
-- **optional** `true` for independent-review, verification; while off: `status` `skipped`, `outcome` `off (optional)`.
-- **covered_by** `null`, with the selector's default and alternatives on every step, also one an earlier skill runs (testing inside implementation): `compose` covers it from the catalog's `invokes`, gives it the skill the covering step runs and keeps the selector's pick in `selected`, which a swap restores when the step runs on its own again. A review step is never covered.
-- **primary**: the answer to the primary question; leave it out to take `primary` from the user's `preferences.yaml` (default `claude`). A recomposition keeps the run's own ([models.md](models.md)).
-- **model** and **effort** `null`: no step has run yet. From §6 on, `scripts/state` sets each step's step model ([models.md](models.md)), recorded as its source names it, when it starts and when it closes; `model` stays `null` only for a step that did not run.
-- **handoff.issue** is `{number, url}` when the task is an issue; everything else starts empty and is set later with `scripts/state … handoff`.
+- `--classification`: the classification file §1 checked with `scripts/check-classification` ([classification.md](classification.md)). `compose` checks it again.
+- `--selection`: the selector's JSON block, saved to a file, that `scripts/check-selection --target <target repo>` passed (§3). Add `--reselect` when the selection ran with it. `compose` checks it again.
+- `--task`: the task in one line.
+- `--issue`: the issue the task already is; it becomes `handoff.issue`. `--spec`: the spec file the task already is, which must exist in the target repo; it becomes `handoff.spec` and the workflow is issue-free ([issue-free.md](issue-free.md)).
+- `--checkpoint`: the steps (id or phase) the user asked to confirm before they start ([autonomy.md](autonomy.md)); each is recorded as `confirm` on its step.
+
+From those files `compose` writes `.router/state.json` with status `selecting`, so §2 and §4 hold without any step written by hand:
+
+- The steps follow §2's default flow, with the changes by type and, on a light path, [light.md](light.md)'s steps. The router steps (`branch`, `verification`, opening the PR) are in place; a selected `pull-request` skill's step is the PR step, which writes the body before the router opens the PR. A multi-session workflow is its multi-session step alone (and `setup` when needed): the later sessions implement from its output, so a selection that also picks their phases is refused.
+- A skill selected for two phases is one step, keeping each phase's selection: every phase's alternatives (one offered for both appears once), and the reasons, cost and tie as they are when the phases agree, otherwise each labelled with its phase. Lettered swaps cover all selected phases of the step, with `issue-tracking` inferred from the skill. Use `edit` to pick an alternative shown for only some phases. `issue-tracking` gets no step of its own: a skill selected for it alone is dropped, with a `dropped:` line. When the task has no parent issue and the specification does not publish one, the workflow is issue-free, including when planning publishes standalone tickets.
+- `setup` is prepended when a selected skill `requires: tracker-config` and the target has no `docs/agents/issue-tracker.md`.
+- Optional steps (independent-review, verification) are present and off.
+- Each step carries the selection's default, alternatives, reasons, prerequisites, cost and tie unchanged; a decided phase's reason is its origin. Coverage is calculated from the catalog's `invokes`; a covered step keeps the selector's pick aside.
+- The selection's `omitted` and `missing` phases are kept, and shown as `Skipped:` and `Missing:`.
+
+When a check fails, `compose` prints the checker's errors and writes nothing: correct the classification or the pick, check it again, and rerun. It then prints the workflow presentation of §5; `scripts/state <target repo> show` prints it again later.
+
+**A recomposition** (SKILL.md §5 `edit` and `full`, §6) drops `--new` and passes the new selection: `compose --selection <file> [--classification <file>]`. It keeps the run's completed steps, `primary`, handoff, manual checklist and reviewed revisions, and its classification unless `--classification` revises it. A completed step's phase must be selected again. A completed automatic `setup` stays in the workflow even after it has configured the tracker. Explicit checkpoints carry over to any remaining steps that retain the checkpointed work. An `--issue` or `--spec` other than the run's handoff is refused: change the handoff with `scripts/state <target repo> handoff`. A file holding a complete state is refused, as `--selection` too.
+
+The state's format, for reading it, is [state.md](state.md).

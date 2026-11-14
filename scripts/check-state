@@ -163,7 +163,11 @@ steps.forEach((s, i) => {
     else if (!cover && allHaveIds) errors.push(`${where}.covered_by: no step with id ${json(s.covered_by)}`);
   }
   if (Array.isArray(s.alternatives)) {
-    if (s.alternatives.length > 2) errors.push(`${where}.alternatives: at most two, got ${s.alternatives.length}`);
+    // At most two per phase the step was selected for (issue-tracking is filled alongside another).
+    const own = Array.isArray(s.phases) ? s.phases.filter((p) => p !== 'issue-tracking').length : 0;
+    const most = 2 * Math.max(1, own);
+    if (s.alternatives.length > most)
+      errors.push(`${where}.alternatives: at most two${most > 2 ? ` per phase (${most})` : ''}, got ${s.alternatives.length}`);
     if (s.skill === null && s.alternatives.length > 0) errors.push(`${where}.alternatives: must be empty when skill is null`);
     const altSkills = new Set();
     s.alternatives.forEach((a, j) => {

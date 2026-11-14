@@ -62,7 +62,7 @@ Each skill step runs in its own subagent when the harness has them, so the main 
 
 ## State as the seam
 
-The router writes `.router/state.json` in the target repo, a versioned format with one writer. Adapters only read it and send user choices back as chat messages in the router's own syntax. So the skill stays agent-neutral, any UI is optional, and a workflow can resume in a new session. `scripts/check-state` validates the file against `state.md`, because a model-written file drifts; `scripts/state … compose` writes a composed workflow only when every skill is a usable candidate, and recalculates which steps run inside another from the catalog's `invokes`, again after every swap.
+The router writes `.router/state.json` in the target repo, a versioned format with one writer. Adapters only read it and send user choices back as chat messages in the router's own syntax. So the skill stays agent-neutral, any UI is optional, and a workflow can resume in a new session. `scripts/check-state` validates the file against `state.md`, because a model-written file drifts; `scripts/state … compose` builds the workflow's steps from the checked classification and selection, writes it only when every skill is a usable candidate, and recalculates which steps run inside another from the catalog's `invokes`, again after every swap.
 
 ## Agent-neutral core
 
