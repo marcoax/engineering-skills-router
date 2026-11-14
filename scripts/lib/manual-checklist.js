@@ -24,8 +24,10 @@ function manualChecklistErrors(points) {
 // What `checklist set` reads: the JSON array of points, or the checklist's own lines, one point
 // per line as "action → expected"; list markers, numbering, task boxes and the [agent]/[you]
 // tags are dropped, and the last arrow splits action from expected.
-const LINE_PREFIX = /^\s*(?:[-*+]\s+|\d+[.)]\s+)?(?:\[[ xX]\]\s+)?(?:\[(?:agent|you)\]\s*)?/;
-const LINE_SUFFIX = /\s*\[(?:agent|you)\]\s*$/;
+const TAGS = ['agent', 'you'];
+const LINE_PREFIX = /^\s*(?:[-*+]\s+|\d+[.)]\s+)?(?:\[[ xX]\]\s+)?/;
+// A tag as a token of its own, bare, in bold or in code.
+const TAG = new RegExp(`(?:^|\\s+)(\\*\\*|\`)?\\[(?:${TAGS.join('|')})\\]\\1(?=\\s|$)`, 'g');
 
 function checklistInput(text) {
   try {
@@ -35,7 +37,7 @@ function checklistInput(text) {
   }
   return text.split('\n').flatMap((line, i) => {
     if (!line.trim()) return [];
-    const point = line.replace(LINE_PREFIX, '').replace(LINE_SUFFIX, '');
+    const point = line.replace(LINE_PREFIX, '').replace(TAG, '');
     const arrow = point.lastIndexOf('→');
     const action = point.slice(0, Math.max(arrow, 0)).trim();
     const expected = point.slice(arrow + 1).trim();

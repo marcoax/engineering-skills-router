@@ -227,6 +227,22 @@ test('lines keep the id and tick of unchanged points, also reordered, under the 
   }
 });
 
+test('the [agent]/[you] tags are dropped wherever they stand as a token, also in bold or code', (t) => {
+  const f = fixture(t);
+  passed(f.setLines([
+    '- **[you]** Open the panel → Checklist appears',
+    '- [agent] [you] Open export as a reader → CSV contains only permitted rows',
+    '1. Open the menu → `[agent]` it lists every entry `[you]`',
+    '2. Open the log [agent] → it shows [x][you]-tagged rows',
+  ]));
+  assert.deepEqual(fields(f), [
+    { action: 'Open the panel', expected: 'Checklist appears', checked: false },
+    { ...point, checked: false },
+    { action: 'Open the menu', expected: 'it lists every entry', checked: false },
+    { action: 'Open the log', expected: 'it shows [x][you]-tagged rows', checked: false },
+  ]);
+});
+
 test('input is JSON only when it parses as JSON; a bare task-box line is a checklist line', (t) => {
   const f = fixture(t);
   passed(f.setStdin('[ ] [you] Open the panel → Checklist appears\n'));
