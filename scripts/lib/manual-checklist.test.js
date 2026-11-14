@@ -13,9 +13,13 @@ const fixture = (t) => {
   const example = fs.readFileSync(path.join(ROOT, 'skills/engineering-router/state.md'), 'utf8').match(/```json\n([\s\S]*?)```/)[1];
   const file = path.join(target, '.router/state.json');
   fs.writeFileSync(file, example);
-  const run = (script, ...args) => spawnSync(path.join(ROOT, 'scripts', script), args, {
-    encoding: 'utf8', env: { ...process.env, ENGINEERING_ROUTER_CONFIG: '', XDG_CONFIG_HOME: path.join(target, 'config'), ROUTER_SESSION: 'session-example' },
-  });
+  // A trailing options object gives the command its standard input.
+  const run = (script, ...args) => {
+    const { input } = typeof args.at(-1) === 'object' ? args.pop() : {};
+    return spawnSync(path.join(ROOT, 'scripts', script), args, {
+      encoding: 'utf8', input, env: { ...process.env, ENGINEERING_ROUTER_CONFIG: '', XDG_CONFIG_HOME: path.join(target, 'config'), ROUTER_SESSION: 'session-example' },
+    });
+  };
   const state = (...args) => run('state', target, ...args);
   const read = () => JSON.parse(fs.readFileSync(file, 'utf8'));
   const set = (items) => {
@@ -23,7 +27,12 @@ const fixture = (t) => {
     fs.writeFileSync(input, JSON.stringify(items));
     return state('checklist', 'set', input);
   };
-  return { target, file, read, state, set, run };
+  const setLines = (lines) => {
+    const input = path.join(target, 'checklist.md');
+    fs.writeFileSync(input, lines.join('\n'));
+    return state('checklist', 'set', input);
+  };
+  return { target, file, read, state, set, setLines, run };
 };
 const point = { action: 'Open export as a reader', expected: 'CSV contains only permitted rows' };
 const passed = (r) => assert.equal(r.status, 0, r.stdout + r.stderr);
@@ -157,4 +166,23 @@ test('old states without run or checklist still advance; cleared lists and unown
   const unowned = fs.readFileSync(f.file, 'utf8');
   assert.notEqual(f.state('reply', `checklist with-run ${f.read().manual_checklist[0].id} on`).status, 0);
   assert.equal(fs.readFileSync(f.file, 'utf8'), unowned);
+});
+
+const fields = (f) => f.read().manual_checklist.map(({ action, expected, checked }) => ({ action, expected, checked }));
+
+test('checklist set saves the checklist from its own lines, from a file or standard input, without markers or tags', (t) => {
+  const f = fixture(t);
+  passed(f.setLines([
+    '- [agent] Open export as a reader → CSV contains only permitted rows',
+    '',
+    '2. `scripts/state x show` → run the command → it prints the state [you]',
+    '* [ ] [you] Open the panel → Checklist appears',
+  ]));
+  assert.deepEqual(fields(f), [
+    { ...point, checked: false },
+    { action: '`scripts/state x show` → run the command', expected: 'it prints the state', checked: false },
+    { action: 'Open the panel', expected: 'Checklist appears', checked: false },
+  ]);
+  passed(f.state('checklist', 'set', '-', { input: '1) Open the panel → Checklist appears\n' }));
+  assert.deepEqual(fields(f), [{ action: 'Open the panel', expected: 'Checklist appears', checked: false }]);
 });
