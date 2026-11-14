@@ -185,13 +185,15 @@ test('checklist set saves the checklist from its own lines, from a file or stand
   assert.deepEqual(fields(f), [{ action: 'Open the panel', expected: 'Checklist appears', checked: false }]);
 });
 
-test('the router\'s checklist example is saved as written, from standard input', (t) => {
+test('the router\'s checklist example is saved as written, from standard input, skipping its Also changed line', (t) => {
   const f = fixture(t);
   const doc = fs.readFileSync(path.join(ROOT, 'skills/engineering-router/after-implementation.md'), 'utf8');
   const [, command, lines] = doc.match(/```sh\n(scripts\/state <target repo> checklist set -) <<'EOF'\n([\s\S]*?)EOF\n```/) ?? [];
   assert.ok(command, 'after-implementation.md shows checklist set with a heredoc example');
+  const points = lines.trim().split('\n');
+  assert.match(points.at(-1), /^Also changed: /, 'the example ends with the closing Also changed line');
   passed(f.setStdin(lines));
-  assert.equal(f.read().manual_checklist.length, lines.trim().split('\n').length);
+  assert.equal(f.read().manual_checklist.length, points.length - 1);
   assert.ok(f.read().manual_checklist.every((p) => !/\[(agent|you)\]/.test(p.action + p.expected)));
 });
 

@@ -31,6 +31,7 @@ After implementation, and again after behavior-changing fixes, save the points f
 scripts/state <target repo> checklist set - <<'EOF'
 1. [agent] `/admin/export` as a reader → download the CSV → it holds only the reader's rows
 2. [you] `/admin` on a phone → open the menu → every entry fits the screen
+Also changed: the export's column order, the README
 EOF
 ```
 
