@@ -186,3 +186,35 @@ test('checklist set saves the checklist from its own lines, from a file or stand
   passed(f.state('checklist', 'set', '-', { input: '1) Open the panel → Checklist appears\n' }));
   assert.deepEqual(fields(f), [{ action: 'Open the panel', expected: 'Checklist appears', checked: false }]);
 });
+
+test('a checklist line without action → expected is refused by its number and text, and nothing is written', (t) => {
+  const f = fixture(t);
+  passed(f.setLines(['Open the panel → Checklist appears']));
+  for (const bad of ['Open the panel', '[you] → Checklist appears', '- Open the panel →', 'Also changed: the README']) {
+    const before = fs.readFileSync(f.file, 'utf8');
+    const r = f.setLines(['1. Open export as a reader → CSV contains only permitted rows', '', bad]);
+    assert.notEqual(r.status, 0, bad);
+    assert.ok(r.stderr.includes('line 3') && r.stderr.includes(bad), r.stderr);
+    assert.equal(fs.readFileSync(f.file, 'utf8'), before, bad);
+  }
+});
+
+test('lines keep the id and tick of unchanged points, also reordered, under the limit and the duplicate check', (t) => {
+  const f = fixture(t);
+  passed(f.setLines(['- [agent] Open the panel → Checklist appears', '- [you] Open export as a reader → CSV contains only permitted rows']));
+  const { run, manual_checklist: [panel, csv] } = f.read();
+  passed(f.state('checklist', 'check', run, csv.id, 'on'));
+  passed(f.setLines(['1. [you] Open export as a reader → CSV contains only permitted rows', '2. [agent] Open the panel → Checklist appears']));
+  assert.deepEqual(f.read().manual_checklist, [{ ...csv, checked: true }, panel]);
+  // The same content under another tag is the same point.
+  passed(f.setLines(['- [agent] Open the panel → Checklist appears', '- [agent] Open export as a reader → CSV contains only permitted rows']));
+  assert.deepEqual(f.read().manual_checklist, [panel, { ...csv, checked: true }]);
+  for (const lines of [
+    ['[agent] Open the panel → Checklist appears', '[you] Open the panel → Checklist appears'],
+    Array.from({ length: 16 }, (_, i) => `${i + 1}. Step ${i} → Result`),
+  ]) {
+    const before = fs.readFileSync(f.file, 'utf8');
+    assert.notEqual(f.setLines(lines).status, 0, lines[0]);
+    assert.equal(fs.readFileSync(f.file, 'utf8'), before);
+  }
+});
