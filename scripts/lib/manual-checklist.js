@@ -21,6 +21,31 @@ function manualChecklistErrors(points) {
   return errors;
 }
 
+// What `checklist set` reads, as state.md states it in prose.
+const TAGS = ['agent', 'you'];
+const LINE_PREFIX = /^\s*(?:[-*+]\s+|\d+[.)]\s+)?(?:\[[ xX]\]\s+)?/;
+// A tag as a token of its own, bare, in bold or in code.
+const TAG = new RegExp(`(?:^|\\s+)(\\*\\*|\`)?\\[(?:${TAGS.join('|')})\\]\\1(?=\\s|$)`, 'g');
+
+function parseChecklist(text) {
+  try {
+    return JSON.parse(text);
+  } catch (error) {
+    if (/^\s*\[\s*\{/.test(text)) throw new Error(`checklist JSON: ${error.message}`);
+  }
+  return text.split('\n').flatMap((line, i) => {
+    if (!line.trim()) return [];
+    const unmarked = line.replace(LINE_PREFIX, '');
+    if (unmarked.startsWith('Also changed')) return [];
+    const point = unmarked.replace(TAG, '');
+    const arrow = point.lastIndexOf('→');
+    const action = point.slice(0, Math.max(arrow, 0)).trim();
+    const expected = point.slice(arrow + 1).trim();
+    if (arrow < 0 || !action || !expected) throw new Error(`checklist line ${i + 1} is not "action → expected": ${line.trim()}`);
+    return [{ action, expected }];
+  });
+}
+
 function setManualChecklist(state, items) {
   if (!state.run) throw new Error('manual checklist needs a run id (compose --new)');
   if (!Array.isArray(items) || items.some((item) => !item || typeof item !== 'object' || Array.isArray(item)
@@ -42,4 +67,4 @@ function checkChecklistPoint(state, run, id, value) {
   return { ...state, manual_checklist: state.manual_checklist.map((p) => p.id === id ? { ...p, checked: value === 'on' } : p) };
 }
 
-module.exports = { manualChecklistErrors, setManualChecklist, checkChecklistPoint };
+module.exports = { manualChecklistErrors, parseChecklist, setManualChecklist, checkChecklistPoint };
