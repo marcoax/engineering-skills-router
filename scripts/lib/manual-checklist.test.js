@@ -226,3 +226,21 @@ test('lines keep the id and tick of unchanged points, also reordered, under the 
     assert.equal(fs.readFileSync(f.file, 'utf8'), before);
   }
 });
+
+test('input is JSON only when it parses as JSON; a bare task-box line is a checklist line', (t) => {
+  const f = fixture(t);
+  passed(f.setStdin('[ ] [you] Open the panel → Checklist appears\n'));
+  assert.deepEqual(fields(f), [{ action: 'Open the panel', expected: 'Checklist appears', checked: false }]);
+  passed(f.setStdin('[x] Open export as a reader → CSV contains only permitted rows'));
+  assert.deepEqual(fields(f), [{ ...point, checked: false }]);
+  for (const [bad, message] of [
+    ['[{"action": "Open the panel"', 'JSON'],
+    ['["Open the panel → Checklist appears"]', 'must be an array of checklist points'],
+  ]) {
+    const before = fs.readFileSync(f.file, 'utf8');
+    const r = f.setStdin(bad);
+    assert.notEqual(r.status, 0, bad);
+    assert.ok(r.stderr.includes(message), r.stderr);
+    assert.equal(fs.readFileSync(f.file, 'utf8'), before, bad);
+  }
+});

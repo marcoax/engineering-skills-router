@@ -28,7 +28,11 @@ const LINE_PREFIX = /^\s*(?:[-*+]\s+|\d+[.)]\s+)?(?:\[[ xX]\]\s+)?(?:\[(?:agent|
 const LINE_SUFFIX = /\s*\[(?:agent|you)\]\s*$/;
 
 function checklistInput(text) {
-  if (/^\s*\[\s*[{\]]/.test(text)) return JSON.parse(text);
+  try {
+    return JSON.parse(text);
+  } catch (error) {
+    if (/^\s*\[\s*\{/.test(text)) throw new Error(`checklist JSON: ${error.message}`);
+  }
   return text.split('\n').flatMap((line, i) => {
     if (!line.trim()) return [];
     const point = line.replace(LINE_PREFIX, '').replace(LINE_SUFFIX, '');
