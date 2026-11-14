@@ -172,6 +172,8 @@ The router writes this file in the **target repo** during a workflow so that ada
 | `owner` (optional) | Owner \| null | The session that may change the workflow; `null` or missing in a state written before it, which is claimed before any change. |
 | `reviewed` (optional) | `{source, revision}[]` | The reviewed vendor revisions (`catalog/reviewed.yaml`) when `compose --new` wrote the run; a recomposition keeps them. A later run reuses this run's skills as remembered selections only while they match ([ADR 0005](../../docs/adr/0005-decided-phases-skip-selection.md)). Missing in a state written before it, which yields no remembered selection. |
 | `discarded` (optional) | boolean | `true` only in the archive of a run removed with `discard`: none of its selections is remembered. |
+| `omitted` (optional) | `{phase, reason}[]` | The phases the selection left out, each with its reason, as `compose` took them from it; the workflow shows them as `Skipped:`. Missing in a state written before it. |
+| `missing` (optional) | `{phase, reason}[]` | The phases no available skill fills (a **missing capability**), each with its reason; the workflow shows them as `Missing:`. Missing in a state written before it. |
 | `manual_checklist` (optional) | Checklist point[] | The run's manual checklist, at most 15 points. Missing in a state written before it, which reads as empty instead of `null`. |
 
 Workflow `status`:
@@ -212,7 +214,7 @@ Set by `scripts/state`: `compose --new`, `claim` and `takeover`. Every other cha
 
 ## Classification
 
-Checked by `scripts/check-classification` and by `scripts/state … compose`. A recomposition keeps the run's classification, policy revision included, unless the composed file revises it; a revision is checked against the current policy.
+Checked by `scripts/check-classification` and by `scripts/state … compose`. A recomposition keeps the run's classification, policy revision included, unless its `--classification` revises it; a revision is checked against the current policy.
 
 | Field | Type | Meaning |
 |---|---|---|
@@ -239,7 +241,8 @@ Checked by `scripts/check-classification` and by `scripts/state … compose`. A 
 | `skill` | string \| null | Chosen catalog id (`source/name`); `null` when the router does the step itself. |
 | `reason` | string | One line: why this skill (or step) was chosen. A decided step's reason is its origin: `preference`, `project` or `remembered · <run>` ([ADR 0005](../../docs/adr/0005-decided-phases-skip-selection.md)). A `cost: high` skill's reason starts "High cost", as an alternative too, so a swap carries it. |
 | `summary` | string | One line: what the step does for this task. |
-| `alternatives` | `{skill, reason}[]` | At most two other `ok` candidates, each with a one-line reason ("High cost" first for a `cost: high` one). After a swap, the previous skill takes the swapped alternative's place. |
+| `alternatives` | `{skill, reason}[]` | Other `ok` candidates that can fill all the step’s selected phases (`issue-tracking` aside), each with a one-line reason ("High cost" first for a `cost: high` one). After a swap, the previous skill takes the swapped alternative's place. |
+| `phase_alternatives` (optional) | Phase alternative[] | Selector alternatives that cover only part of a combined step. Shown with their phases and available through `edit`. |
 | `prerequisites` (optional) | string[] | The selector's hard prerequisites for the step's skill (tools, files, harness capabilities), one line each; may be empty. |
 | `cost` (optional) | string \| null | The selector's cost note for the step (arena's **High cost** included); `null` when it gave none. |
 | `tie` (optional) | string \| null | The selector's tie: the skills it judged equivalent for the step and what separates them; `null` when there is none. |
@@ -264,6 +267,14 @@ Step `status`:
 | `done` | Finished; `outcome` set. |
 | `skipped` | Will not run (user declined, or no longer needed); `outcome` says why. |
 | `failed` | Could not finish; `outcome` says why. |
+
+## Phase alternative
+
+| Field | Type | Meaning |
+|---|---|---|
+| `skill` | string | Catalog skill ID. |
+| `reason` | string | The selector’s reason for proposing the skill. |
+| `phases` | string[] | Phases for which the selector proposed the skill. |
 
 ## Progress
 

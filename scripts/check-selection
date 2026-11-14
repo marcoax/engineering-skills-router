@@ -27,6 +27,7 @@
 const fs = require('node:fs');
 const Catalog = require('./lib/catalog');
 const Decided = require('./lib/decided');
+const { lastJsonBlock } = require('./lib/json-block');
 
 const { DEFAULT_FLOW } = Catalog;
 
@@ -40,10 +41,9 @@ if (!file || !fs.existsSync(file)) {
   process.exit(1);
 }
 const text = fs.readFileSync(file, 'utf8');
-const blocks = [...text.matchAll(/```json\r?\n([\s\S]*?)```/g)].map((m) => m[1]);
 let selection;
 try {
-  selection = JSON.parse(blocks.length > 0 ? blocks.at(-1) : text);
+  selection = JSON.parse(lastJsonBlock(text) ?? text);
 } catch (e) {
   console.error(`${file}: no selection JSON: ${e.message}`);
   process.exit(1);

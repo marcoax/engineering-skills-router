@@ -134,12 +134,13 @@ function setHandoff(state, field, args) {
   return s;
 }
 
-function swap(state, i, letter) {
+function swap(state, i, letter, phasesFor) {
   const s = clone(state);
   const step = s.steps[i];
   const j = LETTERS.indexOf(letter);
   const alt = step.alternatives[j];
   if (!alt) fail(`step ${i + 1} (${step.id}) has no alternative ${letter}`);
+  if (phasesFor) step.phases = phasesFor(step, alt.skill);
   // The old skill takes the swapped alternative's place.
   step.alternatives[j] = { skill: step.skill, reason: step.reason };
   step.skill = alt.skill;
@@ -221,11 +222,12 @@ function toggle(state, i, on) {
 
 // A reply in the selection syntax (state.md): go, <n><letter>, <n>on, <n>off, stop, pause,
 // resume. `edit` and `full` are not state changes: the router reselects and recomposes (§3-§4).
-function applyReply(state, reply) {
+function applyReply(state, reply, phasesFor) {
   const r = String(reply).trim().toLowerCase();
   if (r === 'edit' || r === 'full') {
-    const keep = state.primary ? `, and keep "primary": "${state.primary}"` : '';
-    const e = new Error(`${r} reopens SKILL.md §3-§4: select and recompose the workflow, then write it with \`scripts/state <target repo> compose <file>\`, which keeps the handoff and completed steps${keep}`);
+    const keep = state.primary ? ` and the run's primary (${state.primary})` : '';
+    const path = r === 'full' ? ' with `path` full' : ' when it changes';
+    const e = new Error(`${r} reopens SKILL.md §3: select again, then recompose with \`scripts/state <target repo> compose --selection <file>\` (and \`--classification <file>\`${path}), which keeps the handoff, completed steps${keep}`);
     e.code = 'RECOMPOSE';
     throw e;
   }
@@ -244,13 +246,13 @@ function applyReply(state, reply) {
   const i = stepIndex(state, m[1]);
   if (m[2] === 'on' || m[2] === 'off') return toggle(state, i, m[2] === 'on');
   if (state.status !== 'selecting') fail(`${r}: swaps apply while selecting, the workflow is ${state.status}`);
-  return swap(state, i, m[2]);
+  return swap(state, i, m[2], phasesFor);
 }
 
 // A selection reply with what it changed: a swap restores the checks the old skill ran inside
 // the step and recalculates coverage from the newly selected skill. Returns { state, notes }.
-function reply(state, text, invokes) {
-  const next = applyReply(state, text);
+function reply(state, text, invokes, phasesFor) {
+  const next = applyReply(state, text, phasesFor);
   const m = String(text).trim().toLowerCase().match(/^(\d+)[a-z]$/);
   if (!m) return { state: next, notes: [] };
   const i = Number(m[1]) - 1;
@@ -259,4 +261,4 @@ function reply(state, text, invokes) {
   return { state: covered.state, notes: [...restored.notes, ...covered.notes] };
 }
 
-module.exports = { clone, fail, recalculateCoverage, reply, ran, setStep, setWorkflow, checkPrimaryOpen, setPrimary, setHandoff, applyReply, stepIndex, STEP_STATUSES, WORKFLOW_STATUSES, OPEN, CLOSED, UNFINISHED, REVIEW_PHASES, LETTERS };
+module.exports = { clone, fail, recalculateCoverage, reply, ran, setStep, setWorkflow, checkPrimaryOpen, setPrimary, setHandoff, applyReply, stepIndex, STEP_STATUSES, WORKFLOW_STATUSES, OPEN, CLOSED, UNFINISHED, REVIEW_PHASES, LETTERS, OFF };
