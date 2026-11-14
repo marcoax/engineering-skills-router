@@ -187,6 +187,16 @@ test('checklist set saves the checklist from its own lines, from a file or stand
   assert.deepEqual(fields(f), [{ action: 'Open the panel', expected: 'Checklist appears', checked: false }]);
 });
 
+test('the router\'s checklist example is saved as written, from standard input', (t) => {
+  const f = fixture(t);
+  const doc = fs.readFileSync(path.join(ROOT, 'skills/engineering-router/after-implementation.md'), 'utf8');
+  const [, command, lines] = doc.match(/```sh\n(scripts\/state <target repo> checklist set -) <<'EOF'\n([\s\S]*?)EOF\n```/) ?? [];
+  assert.ok(command, 'after-implementation.md shows checklist set with a heredoc example');
+  passed(f.state('checklist', 'set', '-', { input: lines }));
+  assert.equal(f.read().manual_checklist.length, lines.trim().split('\n').length);
+  assert.ok(f.read().manual_checklist.every((p) => !/\[(agent|you)\]/.test(p.action + p.expected)));
+});
+
 test('a checklist line without action → expected is refused by its number and text, and nothing is written', (t) => {
   const f = fixture(t);
   passed(f.setLines(['Open the panel → Checklist appears']));
