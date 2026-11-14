@@ -241,7 +241,8 @@ Checked by `scripts/check-classification` and by `scripts/state … compose`. A 
 | `skill` | string \| null | Chosen catalog id (`source/name`); `null` when the router does the step itself. |
 | `reason` | string | One line: why this skill (or step) was chosen. A decided step's reason is its origin: `preference`, `project` or `remembered · <run>` ([ADR 0005](../../docs/adr/0005-decided-phases-skip-selection.md)). A `cost: high` skill's reason starts "High cost", as an alternative too, so a swap carries it. |
 | `summary` | string | One line: what the step does for this task. |
-| `alternatives` | `{skill, reason}[]` | At most two other `ok` candidates per phase the step was selected for (`issue-tracking` aside), each with a one-line reason ("High cost" first for a `cost: high` one). After a swap, the previous skill takes the swapped alternative's place. |
+| `alternatives` | `{skill, reason}[]` | Other `ok` candidates that can fill all the step’s selected phases (`issue-tracking` aside), each with a one-line reason ("High cost" first for a `cost: high` one). After a swap, the previous skill takes the swapped alternative's place. |
+| `phase_alternatives` (optional) | Phase alternative[] | Selector alternatives that cover only part of a combined step. Shown with their phases and available through `edit`. |
 | `prerequisites` (optional) | string[] | The selector's hard prerequisites for the step's skill (tools, files, harness capabilities), one line each; may be empty. |
 | `cost` (optional) | string \| null | The selector's cost note for the step (arena's **High cost** included); `null` when it gave none. |
 | `tie` (optional) | string \| null | The selector's tie: the skills it judged equivalent for the step and what separates them; `null` when there is none. |
@@ -266,6 +267,14 @@ Step `status`:
 | `done` | Finished; `outcome` set. |
 | `skipped` | Will not run (user declined, or no longer needed); `outcome` says why. |
 | `failed` | Could not finish; `outcome` says why. |
+
+## Phase alternative
+
+| Field | Type | Meaning |
+|---|---|---|
+| `skill` | string | Catalog skill ID. |
+| `reason` | string | The selector’s reason for proposing the skill. |
+| `phases` | string[] | Phases for which the selector proposed the skill. |
 
 ## Progress
 

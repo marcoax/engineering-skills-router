@@ -154,6 +154,14 @@ test('refactor: code-understanding before the specification; refactoring or arch
   f.ok(f.compose({ classification: REFACTOR, selection: { ...FEATURE, phases: [...front, ...without('implementation', 'testing')],
     omitted: [...FEATURE.omitted, implemented] } }));
   assert.deepEqual(f.ids(), ['code-understanding', 'specification', 'branch', 'architecture', 'review', 'verification', 'pull-request']);
+  // A shared design and refactoring step executes once, after the branch.
+  const shared = 'mattpocock/improve-codebase-architecture';
+  f.ok(f.compose({ classification: REFACTOR, selection: {
+    ...FEATURE, phases: [front[0], phase('architecture', shared), phase('refactoring', shared), ...without('implementation', 'testing')],
+    omitted: [...FEATURE.omitted, implemented],
+  } }));
+  assert.deepEqual(f.ids(), ['code-understanding', 'specification', 'branch', 'architecture', 'review', 'verification', 'pull-request']);
+  assert.deepEqual(f.step('architecture').phases, ['architecture', 'refactoring']);
 });
 
 test('a skill selected for two phases is one step that keeps each phase\'s selection', (t) => {
@@ -174,16 +182,21 @@ test('a skill selected for two phases is one step that keeps each phase\'s selec
   assert.equal(step.reason, 'architecture: finds the deepening opportunities; refactoring: refactors toward them');
   assert.equal(step.summary, 'architecture: shape the export module; refactoring: untangle the report queries');
   assert.deepEqual(step.alternatives, [
-    { skill: 'pstack/principle-model-the-domain', reason: 'architecture: deep modules; refactoring: deep modules, for the refactor' },
-    { skill: 'addyosmani/api-and-interface-design', reason: 'contract first' },
-    { skill: 'addyosmani/code-simplification', reason: 'smaller diff' }]);
+    { skill: 'pstack/principle-model-the-domain', reason: 'architecture: deep modules; refactoring: deep modules, for the refactor' }]);
+  assert.deepEqual(step.phase_alternatives, [
+    { skill: 'addyosmani/api-and-interface-design', reason: 'contract first', phases: ['architecture'] },
+    { skill: 'addyosmani/code-simplification', reason: 'smaller diff', phases: ['refactoring'] }]);
   assert.deepEqual(step.prerequisites, ['the report tests pass']);
   assert.equal(step.cost, 'architecture: a long interview');
   assert.equal(step.tie, 'architecture: improve-codebase-architecture and codebase-design; the refactor separates them; '
     + 'refactoring: improve-codebase-architecture and code-simplification; the scope separates them');
-  assert.match(out, /^ {3}c\) addyosmani\/code-simplification: smaller diff$/m);
-  f.ok(f.st('reply', '1c'));
-  assert.equal(f.step('architecture').skill, 'addyosmani/code-simplification');
+  assert.match(out, /^ {3}refactoring alternative \(use edit to reselect\): addyosmani\/code-simplification: smaller diff$/m);
+  const number = f.ids().indexOf('architecture') + 1;
+  assert.equal(f.st('reply', `${number}b`).status, 1);
+  assert.equal(f.step('architecture').skill, ARCH);
+  f.ok(f.st('reply', `${number}a`));
+  assert.equal(f.step('architecture').skill, 'pstack/principle-model-the-domain');
+  assert.deepEqual(f.step('architecture').phases, ['architecture', 'refactoring']);
   // One reason for both phases (a decided skill's origin) stays as it is.
   f.ok(f.compose({ selection: both('preference', 'preference') }));
   assert.equal(f.step('architecture').reason, 'preference');
@@ -228,7 +241,7 @@ test('issue-tracking gets no step of its own; a workflow nothing publishes from 
   const out = f.ok(f.compose({ selection: free }));
   assert.deepEqual(f.step('specification').phases, ['specification']);
   assert.equal(f.step('branch').summary, 'Create <slug> (issue-free.md)');
-  assert.match(out, /^Issue-free: no selected skill publishes an issue \(issue-free\.md\)$/m);
+  assert.match(out, /^Issue-free: the specification does not publish a parent issue \(issue-free\.md\)$/m);
 });
 
 test('an existing spec file is the handoff at composition', (t) => {
@@ -244,6 +257,12 @@ test('an existing spec file is the handoff at composition', (t) => {
   const out = f.ok(f.compose({ selection, extra: ['--spec', 'docs/specs/csv-export.md'] }));
   assert.equal(f.read().handoff.spec, 'docs/specs/csv-export.md');
   assert.match(out, /^Issue-free: the spec file docs\/specs\/csv-export.md is the handoff/m);
+  const tickets = { ...selection, phases: [phase('planning', 'mattpocock/to-tickets'), ...selection.phases],
+    omitted: selection.omitted.filter((o) => o.phase !== 'planning') };
+  const withTickets = f.ok(f.compose({ selection: tickets, extra: ['--spec', 'docs/specs/csv-export.md'] }));
+  assert.deepEqual(f.step('planning').phases, ['planning', 'issue-tracking']);
+  assert.equal(f.step('branch').summary, 'Create <slug> (issue-free.md)');
+  assert.match(withTickets, /^Issue-free: the spec file docs\/specs\/csv-export.md is the handoff/m);
 });
 
 test('setup is prepended when a selected skill needs tracker configuration the target lacks', (t) => {
@@ -253,6 +272,14 @@ test('setup is prepended when a selected skill needs tracker configuration the t
   assert.equal(f.ids()[0], 'setup');
   assert.equal(f.step('setup').skill, 'mattpocock/setup-matt-pocock-skills');
   assert.match(f.step('setup').reason, /mattpocock\/to-spec requires tracker-config/);
+  f.ok(f.st('reply', 'go'));
+  f.ok(f.st('step', 'setup', 'running', '--main-session'));
+  fs.writeFileSync(path.join(f.target, 'docs/agents/issue-tracker.md'), 'GitHub issues\n');
+  f.ok(f.st('step', 'setup', 'done', '--main-session', '--outcome', 'Tracker configured'));
+  const completed = f.step('setup');
+  f.ok(f.st('compose', '--selection', f.input('same.json', FEATURE)));
+  assert.equal(f.ids()[0], 'setup');
+  assert.deepEqual(f.step('setup'), completed);
 });
 
 test('independent-review is optional and off; a requested checkpoint is recorded on its step', (t) => {
@@ -266,6 +293,10 @@ test('independent-review is optional and off; a requested checkpoint is recorded
   assert.equal(f.step('review').confirm, true);
   assert.match(out, /^5\. addyosmani\/code-review-and-quality {3}review {3}on openai-codex\/gpt-6-sol {3}⏸$/m);
   assert.match(out, /^6\. pstack\/blast-radius {3}independent-review .*\(off\)$/m);
+  const recomposed = f.ok(f.st('compose', '--selection', f.input('same.json', selection), '--checkpoint', 'pull-request'));
+  assert.equal(f.step('review').confirm, true);
+  assert.equal(f.step('pull-request').confirm, true);
+  assert.match(recomposed, /^5\. .*review .*⏸$/m);
   const unknown = f.compose({ selection, classification, isNew: false, extra: ['--checkpoint', 'deploy'] });
   assert.equal(unknown.status, 1);
   assert.match(unknown.stderr, /checkpoint deploy: no step or phase "deploy"/);
@@ -315,6 +346,11 @@ test('compose and show print the workflow for the reply, and reply works on it',
   f.ok(f.st('reply', '3a'));
   assert.equal(f.step('implementation').skill, 'addyosmani/incremental-implementation');
   assert.equal(f.step('testing').covered_by, null);
+  f.ok(f.st('reply', '1a'));
+  assert.deepEqual(f.step('specification').phases, ['specification']);
+  assert.equal(f.step('branch').summary, 'Create <slug> (issue-free.md)');
+  f.ok(f.st('reply', '1a'));
+  assert.deepEqual(f.step('specification').phases, ['specification', 'issue-tracking']);
   f.ok(f.st('reply', '6on'));
   assert.equal(f.step('verification').status, 'pending');
   f.ok(f.st('reply', 'primary', 'openai'));

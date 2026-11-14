@@ -51,9 +51,9 @@ function perPhase(pairs) {
   return given.filter(([, v]) => v).map(([phase, v]) => `${phase}: ${v}`).join('; ');
 }
 
-// Every phase's alternatives for a step, in the phases' order; one offered for two phases appears
-// once, with each phase's reason.
-function alternativesOf(entries) {
+// Keep the selector's alternatives and reasons. Only candidates that can fill the entire
+// step are offered as lettered swaps.
+function alternativesOf(entries, skills) {
   const bySkill = new Map();
   for (const e of entries) {
     for (const a of Catalog.arr(e.alternatives)) {
@@ -62,28 +62,44 @@ function alternativesOf(entries) {
       bySkill.get(a.skill).push([e.phase, a.reason]);
     }
   }
-  return [...bySkill].map(([skill, reasons]) => ({ skill, reason: perPhase(reasons) }));
+  const alternatives = [];
+  const phaseAlternatives = [];
+  const required = entries.filter((entry) => entry.phase !== 'issue-tracking');
+  for (const [skill, reasons] of bySkill) {
+    const choice = { skill, reason: perPhase(reasons) };
+    if (required.every(({ phase }) => !Catalog.pickProblem(skill, [phase], skills))) {
+      alternatives.push(choice);
+    } else {
+      phaseAlternatives.push({ ...choice, phases: reasons.map(([phase]) => phase) });
+    }
+  }
+  return { alternatives, ...(phaseAlternatives.length ? { phase_alternatives: phaseAlternatives } : {}) };
 }
 
-// A workflow is issue-free (issue-free.md) when the task is no issue and no step publishes one (§4).
-const issueFree = (steps, issue) => !issue && !steps.some((s) => Catalog.arr(s.phases).includes('issue-tracking'));
+// Planning can publish standalone tickets for a spec without creating a parent issue.
+const issueFree = (steps, { issue, spec }) => !issue && (Boolean(spec) || !steps.some((s) =>
+  s.phases?.includes('specification') && s.phases.includes('issue-tracking')));
+
+function branchSummary(steps, handoff) {
+  if (handoff.issue) return `Create ${handoff.issue.number}-<slug>`;
+  return issueFree(steps, handoff) ? 'Create <slug> (issue-free.md)' : 'Create <issue-number>-<slug> once the issue is published';
+}
 
 // The router's steps (§2): the work branch, verification on the full path, and the pull request
 // when no selected skill writes its body (that skill's step is the pull-request step then).
-function routerSteps(path, issue, steps) {
-  const out = [newStep('branch', 'the work branch, from the default branch',
-    issue ? `Create ${issue.number}-<slug>` : issueFree(steps, issue) ? 'Create <slug> (issue-free.md)' : 'Create <issue-number>-<slug> once the issue is published')];
+function routerSteps(path, handoff, steps) {
+  const out = [newStep('branch', 'the work branch, from the default branch', branchSummary(steps, handoff))];
   if (path !== 'light') out.push(off(newStep('verification', 'agent-checkable points in the manual checklist', 'Work through the [agent] checklist points')));
   if (!steps.some((s) => s.id === 'pull-request')) out.push(newStep('pull-request', 'the router opens the pull request', 'Open the pull request'));
   return out;
 }
 
 // The steps for a checked `selection` under the checked `classification` (type, path), for a target
-// with or without tracker configuration. `issue` ({number, url} | null) when the task is an issue;
+// with or without tracker configuration. `handoff` identifies the existing issue or spec, if any;
 // `checkpoints` the step ids or phases the user asked to stop before. Returns
 // { steps, errors, notes, missing }: `notes` says what compose dropped, `missing` adds the phases
 // it could not fill.
-function build({ classification, selection, skills, trackerConfigured, issue = null, checkpoints = [] }) {
+function build({ classification, selection, skills, trackerConfigured, handoff = {}, checkpoints = [] }) {
   const errors = [];
   const notes = [];
   const missing = [];
@@ -122,14 +138,14 @@ function build({ classification, selection, skills, trackerConfigured, issue = n
     if (Catalog.arr(skills[skill]?.categories).includes('issue-tracking') && !phases.includes('issue-tracking')) phases.push('issue-tracking');
     const step = {
       ...newStep(first.phase, perPhase(entries.map((e) => [e.phase, e.default.reason])), perPhase(entries.map((e) => [e.phase, e.reason]))),
-      phases, skill, alternatives: alternativesOf(entries),
+      phases, skill, ...alternativesOf(entries, skills),
       prerequisites: [...new Set(entries.flatMap((e) => strings(e.prerequisites)))],
       cost: perPhase(entries.map((e) => [e.phase, e.cost])), tie: perPhase(entries.map((e) => [e.phase, e.tie])),
     };
     return OPTIONAL.includes(step.id) ? off(step) : step;
   });
 
-  if (!multi) steps.push(...routerSteps(path, issue, steps));
+  if (!multi) steps.push(...routerSteps(path, handoff, steps));
 
   // A selected skill that publishes to the tracker needs its configuration first (§4).
   const needing = steps.find((s) => s.skill && Catalog.arr(skills[s.skill]?.requires).includes('tracker-config'));
@@ -144,6 +160,9 @@ function build({ classification, selection, skills, trackerConfigured, issue = n
   }
   const rank = (s) => {
     const own = s.phases.filter((p) => p !== 'issue-tracking');
+    // An architecture step that also implements the change belongs after the branch.
+    if (own.includes('architecture') && own.includes('implementation')) return rankOf('implementation');
+    if (own.includes('architecture') && own.includes('refactoring')) return rankOf('refactoring');
     return own.length ? Math.min(...own.map(rankOf)) : rankOf(s.id);
   };
   steps.sort((a, b) => rank(a) - rank(b));
@@ -179,6 +198,9 @@ function present(state, prefs) {
     lines.push(`${started ? `${mark[s.status] ?? '?'} ` : ''}${i + 1}. ${head}${inside}${on}${switched}${checkpoint}${outcome}`);
     if (s.skill) lines.push(`   ${s.summary}`, `   why: ${s.reason}`);
     Catalog.arr(s.alternatives).forEach((a, j) => lines.push(`   ${LETTERS[j]}) ${a.skill}: ${a.reason}`));
+    for (const a of Catalog.arr(s.phase_alternatives)) {
+      lines.push(`   ${a.phases.join(', ')} alternative (use edit to reselect): ${a.skill}: ${a.reason}`);
+    }
     const notes = [s.prerequisites?.length ? `needs: ${s.prerequisites.join('; ')}` : null,
       s.cost ? `cost: ${s.cost}` : null, s.tie ? `tie: ${s.tie}` : null].filter(Boolean);
     if (notes.length) lines.push(`   ${notes.join(' · ')}`);
@@ -188,7 +210,7 @@ function present(state, prefs) {
   if (preset) lines.push(`        (primary from preferences.yaml: the reply "primary ${preset === 'claude' ? 'openai' : 'claude'}" changes it)`);
   for (const o of Catalog.arr(state.omitted)) lines.push(`Skipped: ${o.phase}: ${o.reason}`);
   for (const m of Catalog.arr(state.missing)) lines.push(`Missing: ${m.phase}: no available skill (${m.reason})`);
-  if (issueFree(state.steps, state.handoff?.issue)) lines.push(`Issue-free: ${state.handoff?.spec ? `the spec file ${state.handoff.spec} is the handoff` : 'no selected skill publishes an issue'} (issue-free.md)`);
+  if (issueFree(state.steps, state.handoff ?? {})) lines.push(`Issue-free: ${state.handoff?.spec ? `the spec file ${state.handoff.spec} is the handoff` : 'the specification does not publish a parent issue'} (issue-free.md)`);
   if (!started) {
     lines.push('Execution: go authorizes this workflow through commit, push and the open PR; stops only for exceptions or checkpoints you request. Merge and deployment are separate.');
     if (state.steps.some((s) => s.id === 'security')) lines.push('Security: runs if the diff or task triggers the conditional check (after-implementation.md).');
@@ -197,4 +219,4 @@ function present(state, prefs) {
   return lines;
 }
 
-module.exports = { build, present, TRACKER_FILE };
+module.exports = { build, present, branchSummary, TRACKER_FILE };

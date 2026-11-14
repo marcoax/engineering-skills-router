@@ -113,11 +113,9 @@ const prefs = () => {
 // What a selected skill runs internally, for coverage (SKILL.md §4): the skills it `invokes` that
 // are tagged with one of the phases, from the catalog beside this script plus the target's
 // project skills.
-const invokesFor = (target) => {
+const invokesFor = (skills) => (id, phases) => {
   const Catalog = require('./lib/catalog');
-  Catalog.requireConfig();
-  const skills = Catalog.skills(target);
-  return (id, phases) => Catalog.arr(skills[id]?.invokes)
+  return Catalog.arr(skills[id]?.invokes)
     .filter((inv) => Catalog.arr(skills[inv]?.categories).some((c) => phases.includes(c)));
 };
 
@@ -236,10 +234,11 @@ function compose() {
   const Catalog = require('./lib/catalog');
   Catalog.requireConfig();
   const Compose = require('./lib/compose');
+  const skills = Catalog.skills(target);
   const built = Compose.build({
-    classification: classified.fields, selection, skills: Catalog.skills(target),
+    classification: classified.fields, selection, skills,
     trackerConfigured: fs.existsSync(path.join(target, Compose.TRACKER_FILE)),
-    issue: handoff.issue, checkpoints: (flags.checkpoint ?? '').split(',').map((c) => c.trim()).filter(Boolean),
+    handoff, checkpoints: (flags.checkpoint ?? '').split(',').map((c) => c.trim()).filter(Boolean),
   });
   const errors = [...built.errors];
   const next = {
@@ -256,7 +255,7 @@ function compose() {
     next.reviewed = require('./lib/decided').reviewed();
   } else errors.push(...recompose(next, previous));
   if (errors.length) die(errors.join('\nerror: '));
-  const covered = ops.recalculateCoverage(next, invokesFor(target));
+  const covered = ops.recalculateCoverage(next, invokesFor(skills));
   // A new run archives the previous one, its notes with it, once the new state is valid.
   const archived = () => [
     ...(isNew && previous ? [`archived: the previous run in ${files.archive(target, previous)}`] : []),
@@ -304,9 +303,18 @@ function recompose(next, previous) {
   next.owner = previous.owner;
   // Completed work stays as it ran; only the remaining work is reconsidered.
   for (const old of previous.steps.filter(ops.ran)) {
-    const i = next.steps.findIndex((x) => x.id === old.id);
-    if (i === -1) errors.push(`${old.id}: a recomposition keeps completed steps (${old.status}): select its phase again`);
-    else next.steps[i] = old;
+    const i = next.steps.findIndex((step) => step.id === old.id);
+    if (i !== -1) next.steps[i] = old;
+    else if (old.id === 'setup') next.steps.unshift(old);
+    else errors.push(`${old.id}: a recomposition keeps completed steps (${old.status}): select its phase again`);
+  }
+  // A reselection can merge or split phases, changing which step holds the checkpoint.
+  const checkpoints = previous.steps.filter((step) => step.confirm && !ops.ran(step));
+  for (const step of next.steps.filter((step) => !ops.ran(step))) {
+    if (checkpoints.some((old) => step.id === old.id ||
+      old.phases?.some((phase) => phase !== 'issue-tracking' && step.phases.includes(phase)))) {
+      step.confirm = true;
+    }
   }
   if (previous.primary != null) next.primary = previous.primary;
   next.manual_checklist = previous.manual_checklist ?? [];
@@ -468,7 +476,20 @@ try {
     next = handoffValue(state, args[0], args.slice(1));
   } else if (command === 'reply') {
     // A swap changes what the step runs internally: coverage is recalculated before go.
-    const replied = ops.reply(state, args.join(' '), invokesFor(target));
+    const Catalog = require('./lib/catalog');
+    Catalog.requireConfig();
+    const skills = Catalog.skills(target);
+    const replied = ops.reply(state, args.join(' '), invokesFor(skills), (step, id) => {
+      const phases = step.phases.filter((phase) => phase !== 'issue-tracking');
+      const missing = phases.filter((phase) => Catalog.pickProblem(id, [phase], skills));
+      if (missing.length) throw new Error(`${id} cannot fill ${missing.join(', ')} on step ${step.id}; reply edit to reselect its phases`);
+      if (skills[id].categories.includes('issue-tracking')) phases.push('issue-tracking');
+      return phases;
+    });
+    const branch = replied.state.steps.find((step) => step.id === 'branch' && step.status === 'pending');
+    if (branch && /^[0-9]+[a-z]$/i.test(args.join(' '))) {
+      branch.summary = require('./lib/compose').branchSummary(replied.state.steps, replied.state.handoff ?? {});
+    }
     next = replied.state;
     notes.push(...replied.notes);
   }
