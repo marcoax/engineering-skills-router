@@ -21,15 +21,13 @@ function manualChecklistErrors(points) {
   return errors;
 }
 
-// What `checklist set` reads: the JSON array of points, or the checklist's own lines, one point
-// per line as "action → expected"; list markers, numbering, task boxes and the [agent]/[you]
-// tags are dropped, and the last arrow splits action from expected.
+// What `checklist set` reads, as state.md states it in prose.
 const TAGS = ['agent', 'you'];
 const LINE_PREFIX = /^\s*(?:[-*+]\s+|\d+[.)]\s+)?(?:\[[ xX]\]\s+)?/;
 // A tag as a token of its own, bare, in bold or in code.
 const TAG = new RegExp(`(?:^|\\s+)(\\*\\*|\`)?\\[(?:${TAGS.join('|')})\\]\\1(?=\\s|$)`, 'g');
 
-function checklistInput(text) {
+function parseChecklist(text) {
   try {
     return JSON.parse(text);
   } catch (error) {
@@ -69,4 +67,4 @@ function checkChecklistPoint(state, run, id, value) {
   return { ...state, manual_checklist: state.manual_checklist.map((p) => p.id === id ? { ...p, checked: value === 'on' } : p) };
 }
 
-module.exports = { manualChecklistErrors, checklistInput, setManualChecklist, checkChecklistPoint };
+module.exports = { manualChecklistErrors, parseChecklist, setManualChecklist, checkChecklistPoint };

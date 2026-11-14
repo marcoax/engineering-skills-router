@@ -11,7 +11,8 @@
 //        those still open without a model its model and effort; done or failed closes those
 //        still open with its model and effort. A running or waiting step sets the workflow's
 //        status.
-//   checklist set <file>|-  the checklist's lines "action → expected", or JSON [{action, expected}]; at most 15 points.
+//   checklist set <file>|-   the checklist's lines "action → expected", or JSON
+//                            [{action, expected}]; at most 15 points. - reads standard input.
 //   checklist check <run> <id> on|off
 //                            owner-only personal tick; stale run/item intents are refused.
 //                            reply "checklist <run> <id> on|off" forwards the same intent.
@@ -393,9 +394,9 @@ try {
     next = ops.setStep(state, args[0], args[1], flags);
   }
   else if (command === 'checklist' || (command === 'reply' && replyWords[0]?.toLowerCase() === 'checklist')) {
-    const { checklistInput, setManualChecklist, checkChecklistPoint } = require('./lib/manual-checklist');
+    const { parseChecklist, setManualChecklist, checkChecklistPoint } = require('./lib/manual-checklist');
     const intent = command === 'reply' ? ['check', ...replyWords.slice(1)] : args;
-    if (intent[0] === 'set' && intent.length === 2) next = setManualChecklist(state, checklistInput(fs.readFileSync(intent[1] === '-' ? 0 : intent[1], 'utf8')));
+    if (intent[0] === 'set' && intent.length === 2) next = setManualChecklist(state, parseChecklist(fs.readFileSync(intent[1] === '-' ? 0 : intent[1], 'utf8')));
     else if (intent[0] === 'check' && intent.length === 4) next = checkChecklistPoint(state, ...intent.slice(1));
     else throw new Error('usage: checklist set <file>|- | checklist check <run> <id> on|off');
   }
