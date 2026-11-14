@@ -34,7 +34,7 @@ scripts/state <target repo> checklist set - <<'EOF'
 EOF
 ```
 
-The saved points leave out the `[agent]`/`[you]` tags; the tags and verification evidence stay in this checklist and the step notes. Report a refused `checklist set` to the user and continue the workflow.
+The `[agent]`/`[you]` tags and verification evidence stay in this checklist and the step notes. Report a refused `checklist set` to the user and continue the workflow.
 
 ## Implementation outcome
 
