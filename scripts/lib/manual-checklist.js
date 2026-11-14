@@ -37,7 +37,9 @@ function checklistInput(text) {
   }
   return text.split('\n').flatMap((line, i) => {
     if (!line.trim()) return [];
-    const point = line.replace(LINE_PREFIX, '').replace(TAG, '');
+    const unmarked = line.replace(LINE_PREFIX, '');
+    if (unmarked.startsWith('Also changed')) return [];
+    const point = unmarked.replace(TAG, '');
     const arrow = point.lastIndexOf('→');
     const action = point.slice(0, Math.max(arrow, 0)).trim();
     const expected = point.slice(arrow + 1).trim();

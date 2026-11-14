@@ -198,12 +198,20 @@ test('the router\'s checklist example is saved as written, from standard input',
 test('a checklist line without action → expected is refused by its number and text, and nothing is written', (t) => {
   const f = fixture(t);
   passed(f.setLines(['Open the panel → Checklist appears']));
-  for (const bad of ['Open the panel', '[you] → Checklist appears', '- Open the panel →', 'Also changed: the README']) {
+  for (const bad of ['Open the panel', '[you] → Checklist appears', '- Open the panel →']) {
     const before = fs.readFileSync(f.file, 'utf8');
     const r = f.setLines(['1. Open export as a reader → CSV contains only permitted rows', '', bad]);
     assert.notEqual(r.status, 0, bad);
     assert.ok(r.stderr.includes('line 3') && r.stderr.includes(bad), r.stderr);
     assert.equal(fs.readFileSync(f.file, 'utf8'), before, bad);
+  }
+});
+
+test('the closing Also changed line is skipped, after any marker', (t) => {
+  const f = fixture(t);
+  for (const closing of ['Also changed: the README', '- Also changed: the README → its install steps', '3. Also changed: the README']) {
+    passed(f.setLines(['1. Open the panel → Checklist appears', '2. Open export as a reader → CSV contains only permitted rows', closing]));
+    assert.deepEqual(fields(f), [{ action: 'Open the panel', expected: 'Checklist appears', checked: false }, { ...point, checked: false }], closing);
   }
 });
 

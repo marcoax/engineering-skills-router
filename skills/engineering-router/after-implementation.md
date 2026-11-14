@@ -25,7 +25,7 @@ What the change really does, as points to check: built from `git diff <base comm
 - Tag each point `[agent]` when a command, a test, an HTTP request or a scripted browser can show the result, `[you]` when it needs a person's eye or judgment (layout, responsive, themes, copy, real data).
 - The checklist is a help, never a gate: the user may skip it.
 
-After implementation, and again after behavior-changing fixes, save the points for the panels: pass the checklist's point lines as written, without the `Also changed` line, to `scripts/state <target repo> checklist set`, on standard input (`-`) or in a file ([state.md, Checklist point](state.md#checklist-point)). For example:
+After implementation, and again after behavior-changing fixes, save the points for the panels: pass the checklist's lines as written to `scripts/state <target repo> checklist set`, on standard input (`-`) or in a file ([state.md, Checklist point](state.md#checklist-point)). For example:
 
 ```sh
 scripts/state <target repo> checklist set - <<'EOF'
