@@ -13,13 +13,10 @@ const fixture = (t) => {
   const example = fs.readFileSync(path.join(ROOT, 'skills/engineering-router/state.md'), 'utf8').match(/```json\n([\s\S]*?)```/)[1];
   const file = path.join(target, '.router/state.json');
   fs.writeFileSync(file, example);
-  // A trailing options object gives the command its standard input.
-  const run = (script, ...args) => {
-    const { input } = typeof args.at(-1) === 'object' ? args.pop() : {};
-    return spawnSync(path.join(ROOT, 'scripts', script), args, {
-      encoding: 'utf8', input, env: { ...process.env, ENGINEERING_ROUTER_CONFIG: '', XDG_CONFIG_HOME: path.join(target, 'config'), ROUTER_SESSION: 'session-example' },
-    });
-  };
+  const spawn = (input, script, args) => spawnSync(path.join(ROOT, 'scripts', script), args, {
+    encoding: 'utf8', input, env: { ...process.env, ENGINEERING_ROUTER_CONFIG: '', XDG_CONFIG_HOME: path.join(target, 'config'), ROUTER_SESSION: 'session-example' },
+  });
+  const run = (script, ...args) => spawn(undefined, script, args);
   const state = (...args) => run('state', target, ...args);
   const read = () => JSON.parse(fs.readFileSync(file, 'utf8'));
   const set = (items) => {
@@ -32,7 +29,8 @@ const fixture = (t) => {
     fs.writeFileSync(input, lines.join('\n'));
     return state('checklist', 'set', input);
   };
-  return { target, file, read, state, set, setLines, run };
+  const setStdin = (text) => spawn(text, 'state', [target, 'checklist', 'set', '-']);
+  return { target, file, read, state, set, setLines, setStdin, run };
 };
 const point = { action: 'Open export as a reader', expected: 'CSV contains only permitted rows' };
 const passed = (r) => assert.equal(r.status, 0, r.stdout + r.stderr);
@@ -183,7 +181,7 @@ test('checklist set saves the checklist from its own lines, from a file or stand
     { action: '`scripts/state x show` → run the command', expected: 'it prints the state', checked: false },
     { action: 'Open the panel', expected: 'Checklist appears', checked: false },
   ]);
-  passed(f.state('checklist', 'set', '-', { input: '1) Open the panel → Checklist appears\n' }));
+  passed(f.setStdin('1) Open the panel → Checklist appears\n'));
   assert.deepEqual(fields(f), [{ action: 'Open the panel', expected: 'Checklist appears', checked: false }]);
 });
 
@@ -192,7 +190,7 @@ test('the router\'s checklist example is saved as written, from standard input',
   const doc = fs.readFileSync(path.join(ROOT, 'skills/engineering-router/after-implementation.md'), 'utf8');
   const [, command, lines] = doc.match(/```sh\n(scripts\/state <target repo> checklist set -) <<'EOF'\n([\s\S]*?)EOF\n```/) ?? [];
   assert.ok(command, 'after-implementation.md shows checklist set with a heredoc example');
-  passed(f.state('checklist', 'set', '-', { input: lines }));
+  passed(f.setStdin(lines));
   assert.equal(f.read().manual_checklist.length, lines.trim().split('\n').length);
   assert.ok(f.read().manual_checklist.every((p) => !/\[(agent|you)\]/.test(p.action + p.expected)));
 });
