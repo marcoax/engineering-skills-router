@@ -16,7 +16,7 @@ const fixture = (t) => {
   const file = path.join(target, '.router/state.json');
   fs.writeFileSync(file, example);
   const spawn = (input, script, args) => spawnSync(path.join(ROOT, 'scripts', script), args, {
-    encoding: 'utf8', input, env: { ...process.env, ENGINEERING_ROUTER_CONFIG: '', XDG_CONFIG_HOME: path.join(target, 'config'), ROUTER_SESSION: 'session-example' },
+    encoding: 'utf8', input, env: { ...process.env, ENGINEERING_ROUTER_CONFIG: path.join(target, 'config'), ROUTER_SESSION: 'session-example' },
   });
   const run = (script, ...args) => spawn(undefined, script, args);
   const state = (...args) => run('state', target, ...args);

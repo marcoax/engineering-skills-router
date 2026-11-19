@@ -7,21 +7,21 @@ Issue #64, testing decision 4: check automatic progression on Claude Code and Pi
 - **Ticket:** issue #7 of a scratch Node CLI (`tally`): add `tally report <file> --json` printing `{"total":N,"passed":N,"failed":N}`; four acceptance criteria (exact JSON fields, default output unchanged, unit + CLI test, README).
 - **Fixture:** a fresh `git init` target with one commit and a local bare `origin`; a fake `gh` on `PATH` that serves the issue and records PR calls without reaching GitHub. Router at `963f533`.
 - **Claude Code** 2.1.318, `claude -p` resumed turn by turn, `claude-opus-5-5`, effort medium, `--permission-mode dontAsk` with file, shell and Agent tools; scratch router copy via `ENGINEERING_ROUTER_HOME`.
-- **Pi** 1.5.0, `pi -p` with a fixed session id, primary family OpenAI (`openai-codex/gpt-6.1-sol`) from a scratch `preferences.yaml` via `ENGINEERING_ROUTER_CONFIG`. Pi resolved the router from its installed skill, which points at the maintainer's checkout.
+- **Pi** 1.5.0, `pi -p` with a fixed session id, primary family OpenAI (`openai-codex/gpt-6.2-sol`) from a scratch `preferences.yaml` via `ENGINEERING_ROUTER_CONFIG`. Pi resolved the router from its installed skill, which points at the maintainer's checkout.
 - **Direct arm:** same Claude Code settings, a fresh fixture, one prompt naming the same skill files the router chose (`mattpocock/implement`, `mattpocock/code-review` in a fresh subagent, `addyosmani/security-and-hardening` if the diff warrants it, `mattpocock/pr`) and authorizing branch, commits, push and PR up front.
 
 Cost is the harness-reported `total_cost_usd` (Claude Code) or the per-message `usage.cost` sum (Pi). Elapsed time is wall-clock per `-p` call; time spent waiting for the user is not included because answers were sent immediately.
 
 ## Claude Code, with the router
 
-| Turn | Message sent | Router stopped at | s | USD |
-| --- | --- | --- | --- | --- |
-| 1 | start router on issue #7 | missing `scripts/state` in the scratch router copy: asked whether to restore it | 117 | 1.14 |
-| 2 | restore it and continue | workflow shown, waiting for `go` | 18 | 1.28 |
-| 3 | `go` | cut off by the account spend limit during review 1 (implementation done, 2 commits) | 167 | 2.33 |
-| 4 | continue after the spend-limit cutoff | `gh pr create` printed a URL but `gh pr view` found nothing: refused to claim the PR, step left `waiting` | 136 | 3.00 |
-| 5 | PR #101 exists; fake `gh` fixed | done | 25 | 4.11 |
-| | | **total** | **463** | **11.86** |
+| Turn | Message sent                          | Router stopped at                                                                                         | s       | USD       |
+| ---- | ------------------------------------- | --------------------------------------------------------------------------------------------------------- | ------- | --------- |
+| 1    | start router on issue #7              | missing `scripts/state` in the scratch router copy: asked whether to restore it                           | 117     | 1.14      |
+| 2    | restore it and continue               | workflow shown, waiting for `go`                                                                          | 18      | 1.28      |
+| 3    | `go`                                  | cut off by the account spend limit during review 1 (implementation done, 2 commits)                       | 167     | 2.33      |
+| 4    | continue after the spend-limit cutoff | `gh pr create` printed a URL but `gh pr view` found nothing: refused to claim the PR, step left `waiting` | 136     | 3.00      |
+| 5    | PR #101 exists; fake `gh` fixed       | done                                                                                                      | 25      | 4.11      |
+|      |                                       | **total**                                                                                                 | **463** | **11.86** |
 
 - **Ordinary continuation requests after `go`: 0.** Implementation, review in a fresh subagent, the in-scope fix, the security decision, the PR body and the record ran without asking.
 - **Exception stops: 2, both caused by the eval harness, both correct behavior** (an unavailable prerequisite; an unverifiable publication reported instead of claimed). Turn 3's cutoff is an infrastructure interruption; turn 4 resumed from the state without redoing completed steps and reused review 1's saved report.
@@ -30,13 +30,13 @@ Cost is the harness-reported `total_cost_usd` (Claude Code) or the per-message `
 
 ## Pi, with the router
 
-| Turn | Message sent | Router stopped at | s | USD |
-| --- | --- | --- | --- | --- |
-| 1 | start router on issue #7 | update check due (SKILL.md section 0): asked whether to check vendor updates | 47 | 0.05 |
-| 2 | skip the update check | primary question (models.md): asked which family is primary | 141 | 0.20 |
-| 3 | `1` (OpenAI, the preference) | workflow shown, waiting for `go` | 22 | 0.02 |
-| 4 | `go` | done | 1116 | 0.19 |
-| | | **total** | **1326** | **0.45** |
+| Turn | Message sent                 | Router stopped at                                                            | s        | USD      |
+| ---- | ---------------------------- | ---------------------------------------------------------------------------- | -------- | -------- |
+| 1    | start router on issue #7     | update check due (SKILL.md section 0): asked whether to check vendor updates | 47       | 0.05     |
+| 2    | skip the update check        | primary question (models.md): asked which family is primary                  | 141      | 0.20     |
+| 3    | `1` (OpenAI, the preference) | workflow shown, waiting for `go`                                             | 22       | 0.02     |
+| 4    | `go`                         | done                                                                         | 1116     | 0.19     |
+|      |                              | **total**                                                                    | **1326** | **0.45** |
 
 - **Ordinary continuation requests after `go`: 0.** Branch, implementation, review 1 and security in subagents, PR and record ran in one turn.
 - **Questions before `go`: 2, both by design.** The update check was due because Pi resolved the maintainer's checkout, not the scratch copy; the primary question is asked once per run on harnesses whose subagents can run both families. Together with the start and `go` that is four user messages before any code, against two on Claude Code.
@@ -53,17 +53,17 @@ One turn, 108 s, USD 0.71, no question asked. Branch `feat/report-json-flag`, 2 
 
 ## Comparison
 
-| | Router (Claude Code) | Direct (Claude Code) |
-| --- | --- | --- |
-| Acceptance criteria met | 4/4 | 4/4 |
-| Tests | 6/6 | 6/6 |
-| User messages to reach the PR | 2 by design (start, `go`) + 2 harness-caused + 1 infra resume | 1 |
-| Ordinary continuation requests | 0 | 0 |
-| Wall-clock (sum of turns) | 463 s | 108 s |
-| Cost | USD 11.86 (includes the cut-off turn) | USD 0.71 |
-| Review findings fixed / declined / deferred | 1 / 5 / 1 (Pi run: 0 findings) | 1 / 3 / 0 |
-| Security | skipped with reason | ran, nothing found |
-| Structured run record, resumable state | yes | no |
+|                                             | Router (Claude Code)                                          | Direct (Claude Code) |
+| ------------------------------------------- | ------------------------------------------------------------- | -------------------- |
+| Acceptance criteria met                     | 4/4                                                           | 4/4                  |
+| Tests                                       | 6/6                                                           | 6/6                  |
+| User messages to reach the PR               | 2 by design (start, `go`) + 2 harness-caused + 1 infra resume | 1                    |
+| Ordinary continuation requests              | 0                                                             | 0                    |
+| Wall-clock (sum of turns)                   | 463 s                                                         | 108 s                |
+| Cost                                        | USD 11.86 (includes the cut-off turn)                         | USD 0.71             |
+| Review findings fixed / declined / deferred | 1 / 5 / 1 (Pi run: 0 findings)                                | 1 / 3 / 0            |
+| Security                                    | skipped with reason                                           | ran, nothing found   |
+| Structured run record, resumable state      | yes                                                           | no                   |
 
 The direct arm was given the router's own skill choices, so this compares orchestration only, not selection. On this ticket both arms reach the same acceptable result; the router's one fixed finding (a flag-position test) was already covered in the direct arm by its first tests. The router's cost is dominated by its own procedure (classification, selection proposal, state writes, record), roughly 16 times the direct run here even allowing for the interrupted turn.
 
