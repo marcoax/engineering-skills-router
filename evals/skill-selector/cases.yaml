@@ -68,7 +68,7 @@ cases:
   - id: clear-fit-modern-web-guidance
     task: Audit our frontend under resources/views and resources/js for legacy web platform patterns and modernize the ones worth replacing.
     setup: brownfield Laravel target with Blade views and vanilla JS using a jQuery modal plugin, manual form validation and a scroll-event sticky header; no AGENTS.md browser support policy
-    capabilities: [subagents]
+    capabilities: [subagents, network]
     clear_fit: true
     expect:
       - phase: refactoring
@@ -79,7 +79,7 @@ cases:
   - id: modern-web-guidance-informs-frontend
     task: Add an accessible confirmation modal before deleting a project on the projects page (resources/views/projects/index.blade.php with a Vue component).
     setup: brownfield Laravel target with Blade views and Vue 3 components; no existing modal component
-    capabilities: [subagents]
+    capabilities: [subagents, network]
     expect:
       - phase: research
         proposed_any_of: [modern-web-guidance/modern-web-guidance]
@@ -92,7 +92,7 @@ cases:
   - id: modern-web-guidance-backend-only
     task: Add an Eloquent scope that returns only active subscriptions and use it in the SubscriptionController index query.
     setup: brownfield Laravel target; app/Models/Subscription.php and app/Http/Controllers/SubscriptionController.php exist
-    capabilities: [subagents]
+    capabilities: [subagents, network]
     expect:
       - reason: no phase proposes modern-web-guidance/modern-web-guidance, since the change is backend-only (ORM and controller)
       - phase: research
@@ -105,7 +105,7 @@ cases:
   - id: modern-web-guidance-trivial-label
     task: Change the label of the "Submit" button on the contact form to "Send message".
     setup: brownfield Laravel target; resources/views/contact.blade.php holds the button
-    capabilities: [subagents]
+    capabilities: [subagents, network]
     expect:
       - reason: no phase proposes modern-web-guidance/modern-web-guidance, since a copy change involves no web platform choice
       - phase: implementation
