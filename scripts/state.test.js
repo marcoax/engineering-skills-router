@@ -5,6 +5,7 @@ const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
 const { spawnSync } = require('node:child_process');
+const { reviewed } = require('./lib/decided');
 const ROOT = path.resolve(__dirname, '..');
 
 function fixture(t) {
@@ -207,8 +208,10 @@ test('done delivery closes the workflow when it carries the last open covered st
 
 test('states and archives from before start remain valid, readable and remembered without rewrites', (t) => {
   const f = fixture(t);
-  const old = fs.readFileSync(path.join(__dirname, 'fixtures/state-before-start.json'), 'utf8');
-  const state = JSON.parse(old);
+  const state = JSON.parse(fs.readFileSync(path.join(__dirname, 'fixtures/state-before-start.json'), 'utf8'));
+  // Keep the legacy format while testing a remembered choice that has not expired.
+  state.reviewed = reviewed().filter(({ source }) => source === 'addyosmani');
+  const old = JSON.stringify(state);
   fs.writeFileSync(f.file, old);
   const check = (target) => {
     const r = spawnSync(path.join(ROOT, 'scripts/check-state'), [target], { encoding: 'utf8', env: f.env });

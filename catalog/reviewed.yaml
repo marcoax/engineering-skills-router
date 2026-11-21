@@ -1,7 +1,7 @@
 # Written by scripts/update --approve: the vendor revision each source's catalog entries were
 # last reviewed against. The submodule gitlinks pin what is checked out; this records what was reviewed.
 reviewed:
-  pstack: ecec42adbe4f240e4ae19d296768445f0dfbd38e
-  mattpocock: 4ae2317ddb22b046e26455e4f9c9b3aaaf62212d
-  addyosmani: 301b02b12bff98e4688e6984af6556802322bbde
+  pstack: c3464c11c60b1352d5e8f5f0428a3a6943837568
+  mattpocock: abeeaf95660ba9e8b7c753eb38f441ca707a8823
+  addyosmani: 8c99fa36d90068c82d547f7c12a9d67a3e95f4ee
   modern-web-guidance: 64a6d708f5a43f2cd3fde5d4d7db3905ba1bdf65

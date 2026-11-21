@@ -205,9 +205,11 @@ for (const skillPath of [outsideSkill, '../outside/SKILL.md']) {
   if (!run('validate-catalog', '--target', repo).ok) fail('a project skill may fill review too');
   fs.writeFileSync(prefsFile, 'preferences:\n  review:\n    prefer: [addyosmani/code-review-and-quality]\n');
   ({ out } = run('list-skills', '--reselect', '--target', repo, 'review'));
-  const order = [...out.matchAll(/^\d+\. (\S+) {2}\[(\w+)/gm)].slice(0, 3).map((m) => `${m[1]} ${m[2]}`).join(', ');
-  const expected = 'addyosmani/code-review-and-quality preference, project/fw project, mattpocock/code-review vendor';
-  if (order !== expected) fail(`list-skills --target review: expected ${expected}; got ${order}`);
+  const order = [...out.matchAll(/^\d+\. (\S+) {2}\[(\w+)/gm)];
+  if (order[0]?.[1] !== 'addyosmani/code-review-and-quality' || order[0]?.[2] !== 'preference'
+    || order[1]?.[1] !== 'project/fw' || order[1]?.[2] !== 'project' || order[2]?.[2] !== 'vendor') {
+    fail(`list-skills --target review: expected preference, project, then vendor; got:\n${out}`);
+  }
   fs.rmSync(prefsFile);
 }
 
@@ -352,13 +354,13 @@ fs.rmSync(prefsFile);
     const review = runIn('list-skills', ['--reselect', 'review'], extra).out;
     return [
       docs.match(/^1\. .*$/m)?.[0], docs.match(/^ {3}path: .*notes.*$/m)?.[0],
-      review.match(/^\d+\. mattpocock\/code-review {2}.*$/m)?.[0],
+      review.match(/^\d+\. (mattpocock\/code-review {2}.*)$/m)?.[1],
       runIn('state', [target, 'start', 'implementation'], extra).out.match(/^model: (.+)$/m)?.[1],
       runIn('context-threshold', [], extra).out.trim(),
     ].join('\n');
   };
   const expected = ['1. personal/notes  [preference, ok]', `   path: ${path.join(skillsHome, 'notes/SKILL.md')}`,
-    '1. mattpocock/code-review  [vendor, excluded]', 'openai-codex/gpt-6-sol', '123456'].join('\n');
+    'mattpocock/code-review  [vendor, excluded]', 'openai-codex/gpt-6-sol', '123456'].join('\n');
 
   // External configuration (the XDG default) applies, and survives replacement and cleanup.
   install();

@@ -750,6 +750,7 @@ skills:
     categories: [specification]
     use_when:
       - a spec document (PRD) is needed in the repo rather than on the issue tracker
+      - a shipped spec needs a follow-up change scoped in a separate delta spec
     complexity: [medium, high]
 
   addyosmani/planning-and-task-breakdown:
@@ -822,6 +823,7 @@ skills:
     categories: [documentation]
     use_when:
       - architecture decision or public API change must be recorded
+      - existing documentation may have drifted from the code it describes
 
   addyosmani/git-workflow-and-versioning:
     source: addyosmani
@@ -897,9 +899,21 @@ skills:
     path: vendors/addyosmani/skills/frontend-ui-engineering/SKILL.md
     categories: [implementation]
     use_when:
-      - "building or changing user-facing components, responsive layouts, interaction states or accessibility"
+      - "building accessible user-facing components or changing responsive layouts and interaction states"
     avoid_when:
       - "the change has no user-facing interface"
+      - "the task is an accessibility audit of an existing interface rather than UI construction"
+
+  addyosmani/accessibility-engineering:
+    source: addyosmani
+    path: vendors/addyosmani/skills/accessibility-engineering/SKILL.md
+    categories: [review]
+    use_when:
+      - "an existing web interface needs a WCAG 2.2 AA audit, accessibility finding triage, or remediation of verified violations"
+    avoid_when:
+      - "the task is building new UI or has no web interface to audit"
+    requires:
+      - "a reachable interface, axe-core CLI and pa11y, and manual accessibility verification"
 
   addyosmani/observability-and-instrumentation:
     source: addyosmani
