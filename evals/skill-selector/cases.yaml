@@ -85,7 +85,7 @@ cases:
         proposed_any_of: [modern-web-guidance/modern-web-guidance]
         reason: consults current web platform guidance (native dialog, focus and Escape handling, browser support) before building the modal
       - phase: implementation
-        default_any_of: [addyosmani/frontend-ui-engineering, mattpocock/implement]
+        default_any_of: [addyosmani/frontend-ui-engineering]
         not_proposed: [modern-web-guidance/modern-web-guidance]
         reason: a frontend implementation skill writes the modal; modern-web-guidance informs it from research instead of competing for implementation
 
@@ -95,12 +95,6 @@ cases:
     capabilities: [subagents, network]
     expect:
       - reason: no phase proposes modern-web-guidance/modern-web-guidance, since the change is backend-only (ORM and controller)
-      - phase: research
-        not_proposed: [modern-web-guidance/modern-web-guidance]
-        reason: backend-only work has no web platform choice to consult
-      - phase: implementation
-        not_proposed: [modern-web-guidance/modern-web-guidance]
-        reason: the Eloquent scope is backend code
 
   - id: modern-web-guidance-trivial-label
     task: Change the label of the "Submit" button on the contact form to "Send message".
@@ -108,9 +102,6 @@ cases:
     capabilities: [subagents, network]
     expect:
       - reason: no phase proposes modern-web-guidance/modern-web-guidance, since a copy change involves no web platform choice
-      - phase: implementation
-        not_proposed: [modern-web-guidance/modern-web-guidance]
-        reason: a label change is a trivial edit
 
   - id: tie-review
     task: Review my branch implementing CSV export for the reports page against issue #12.

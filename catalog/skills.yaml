@@ -926,7 +926,7 @@ skills:
     path: vendors/modern-web-guidance/skills/modern-web-guidance/SKILL.md
     categories: [research, refactoring, review, performance]
     use_when:
-      - "client-side HTML/CSS/JS work where a web platform choice matters: dialogs and popovers, tables, forms and validation, layout and responsive CSS, accessibility, Core Web Vitals, HTML sanitization or browser support"
+      - "browser-side markup, styling or script whose outcome depends on which web platform feature is used, such as a modal or popover, a data table, form validation, a responsive layout, accessible interaction, page-load metrics, sanitizing untrusted HTML or deciding what the target browsers support"
       - "the user explicitly asks to audit or modernize existing frontend code for legacy web platform patterns"
     avoid_when:
       - "backend-only work: PHP/Laravel, ORM/Eloquent, SQL or API routes"
@@ -944,4 +944,4 @@ skills:
       - "building, changing or debugging a Chrome extension (Manifest V3, chrome.* APIs, content scripts, extension service worker, popup or side panel)"
       - "preparing a Chrome extension for the Chrome Web Store: listing, permission justifications, privacy policy or a review rejection"
     avoid_when:
-      - "the task is not about a Chrome browser extension"
+      - "an ordinary web page, web app or PWA, including its own service worker, popups or dialogs, that is not packaged as a browser extension"
