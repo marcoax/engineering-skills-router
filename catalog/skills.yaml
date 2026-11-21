@@ -918,3 +918,30 @@ skills:
       - "framework-specific implementation decisions need verification and citations from the official documentation for the installed versions"
     avoid_when:
       - "the task is version-independent logic or the user explicitly prioritizes speed over documentation verification"
+
+  # ---------- modern-web-guidance ----------
+
+  modern-web-guidance/modern-web-guidance:
+    source: modern-web-guidance
+    path: vendors/modern-web-guidance/skills/modern-web-guidance/SKILL.md
+    categories: [research, refactoring, review, performance]
+    use_when:
+      - "client-side HTML/CSS/JS work where a web platform choice matters: dialogs and popovers, tables, forms and validation, layout and responsive CSS, accessibility, Core Web Vitals, HTML sanitization or browser support"
+      - "the user explicitly asks to audit or modernize existing frontend code for legacy web platform patterns"
+    avoid_when:
+      - "backend-only work: PHP/Laravel, ORM/Eloquent, SQL or API routes"
+      - "infrastructure or tooling: CI/CD, Docker, bundler, tsconfig or linter configuration"
+      - "trivial edits such as label or copy changes and renames"
+      - "replacing a working component with a native API only because one exists (e.g. an existing modal with <dialog>); propose a replacement only for a stated benefit (accessibility, maintenance, performance, fewer dependencies), and note that native replacements can change focus handling, Escape, scroll lock and stacking, so they need tests or browser verification"
+    requires:
+      - "outbound network access at runtime: it runs npx -y modern-web-guidance@latest"
+
+  modern-web-guidance/chrome-extensions:
+    source: modern-web-guidance
+    path: vendors/modern-web-guidance/skills/chrome-extensions/SKILL.md
+    categories: [implementation]
+    use_when:
+      - "building, changing or debugging a Chrome extension (Manifest V3, chrome.* APIs, content scripts, extension service worker, popup or side panel)"
+      - "preparing a Chrome extension for the Chrome Web Store: listing, permission justifications, privacy policy or a review rejection"
+    avoid_when:
+      - "the task is not about a Chrome browser extension"

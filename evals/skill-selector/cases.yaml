@@ -65,6 +65,53 @@ cases:
         default_any_of: [addyosmani/performance-optimization]
         reason: cites the Core Web Vitals regression and measure-first optimization
 
+  - id: clear-fit-modern-web-guidance
+    task: Audit our frontend under resources/views and resources/js for legacy web platform patterns and modernize the ones worth replacing.
+    setup: brownfield Laravel target with Blade views and vanilla JS using a jQuery modal plugin, manual form validation and a scroll-event sticky header; no AGENTS.md browser support policy
+    capabilities: [subagents]
+    clear_fit: true
+    expect:
+      - phase: refactoring
+        default_any_of: [modern-web-guidance/modern-web-guidance]
+        reason: ties the choice to an open-ended modernization of client-side HTML/CSS/JS, reached through upstream's own scan, verify and report flow, and needs network access for its CLI
+    ambiguity: classifying the audit half as review instead of refactoring is acceptable when modern-web-guidance is the default there with the same reason
+
+  - id: modern-web-guidance-informs-frontend
+    task: Add an accessible confirmation modal before deleting a project on the projects page (resources/views/projects/index.blade.php with a Vue component).
+    setup: brownfield Laravel target with Blade views and Vue 3 components; no existing modal component
+    capabilities: [subagents]
+    expect:
+      - phase: research
+        proposed_any_of: [modern-web-guidance/modern-web-guidance]
+        reason: consults current web platform guidance (native dialog, focus and Escape handling, browser support) before building the modal
+      - phase: implementation
+        default_any_of: [addyosmani/frontend-ui-engineering, mattpocock/implement]
+        not_proposed: [modern-web-guidance/modern-web-guidance]
+        reason: a frontend implementation skill writes the modal; modern-web-guidance informs it from research instead of competing for implementation
+
+  - id: modern-web-guidance-backend-only
+    task: Add an Eloquent scope that returns only active subscriptions and use it in the SubscriptionController index query.
+    setup: brownfield Laravel target; app/Models/Subscription.php and app/Http/Controllers/SubscriptionController.php exist
+    capabilities: [subagents]
+    expect:
+      - reason: no phase proposes modern-web-guidance/modern-web-guidance, since the change is backend-only (ORM and controller)
+      - phase: research
+        not_proposed: [modern-web-guidance/modern-web-guidance]
+        reason: backend-only work has no web platform choice to consult
+      - phase: implementation
+        not_proposed: [modern-web-guidance/modern-web-guidance]
+        reason: the Eloquent scope is backend code
+
+  - id: modern-web-guidance-trivial-label
+    task: Change the label of the "Submit" button on the contact form to "Send message".
+    setup: brownfield Laravel target; resources/views/contact.blade.php holds the button
+    capabilities: [subagents]
+    expect:
+      - reason: no phase proposes modern-web-guidance/modern-web-guidance, since a copy change involves no web platform choice
+      - phase: implementation
+        not_proposed: [modern-web-guidance/modern-web-guidance]
+        reason: a label change is a trivial edit
+
   - id: tie-review
     task: Review my branch implementing CSV export for the reports page against issue #12.
     setup: brownfield TypeScript target; branch with a medium diff; issue #12 states the behavior
