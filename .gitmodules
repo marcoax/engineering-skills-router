@@ -9,4 +9,4 @@
 	url = https://github.com/addyosmani/agent-skills.git
 [submodule "vendors/modern-web-guidance"]
 	path = vendors/modern-web-guidance
-	url = https://github.com/GoogleChrome/modern-web-guidance
+	url = https://github.com/GoogleChrome/modern-web-guidance.git
