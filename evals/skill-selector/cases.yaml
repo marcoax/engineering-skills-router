@@ -65,6 +65,44 @@ cases:
         default_any_of: [addyosmani/performance-optimization]
         reason: cites the Core Web Vitals regression and measure-first optimization
 
+  - id: clear-fit-modern-web-guidance
+    task: Audit our frontend under resources/views and resources/js for legacy web platform patterns and modernize the ones worth replacing.
+    setup: brownfield Laravel target with Blade views and vanilla JS using a jQuery modal plugin, manual form validation and a scroll-event sticky header; no AGENTS.md browser support policy
+    capabilities: [subagents, network]
+    clear_fit: true
+    expect:
+      - phase: refactoring
+        default_any_of: [modern-web-guidance/modern-web-guidance]
+        reason: ties the choice to an open-ended modernization of client-side HTML/CSS/JS, reached through upstream's own scan, verify and report flow, and needs network access for its CLI
+    ambiguity: classifying the audit half as review or research instead of refactoring is acceptable when modern-web-guidance is the default there with the same reason
+
+  - id: modern-web-guidance-informs-frontend
+    task: Add an accessible confirmation modal before deleting a project on the projects page (resources/views/projects/index.blade.php with a Vue component).
+    setup: brownfield Laravel target with Blade views and Vue 3 components; no existing modal component
+    capabilities: [subagents, network]
+    expect:
+      - phase: research
+        proposed_any_of: [modern-web-guidance/modern-web-guidance]
+        reason: consults current web platform guidance (native dialog, focus and Escape handling, browser support) before building the modal
+      - phase: implementation
+        default_any_of: [addyosmani/frontend-ui-engineering]
+        not_proposed: [modern-web-guidance/modern-web-guidance]
+        reason: a frontend implementation skill writes the modal; modern-web-guidance informs it from research instead of competing for implementation
+
+  - id: modern-web-guidance-backend-only
+    task: Add an Eloquent scope that returns only active subscriptions and use it in the SubscriptionController index query.
+    setup: brownfield Laravel target; app/Models/Subscription.php and app/Http/Controllers/SubscriptionController.php exist
+    capabilities: [subagents, network]
+    expect:
+      - reason: no phase proposes modern-web-guidance/modern-web-guidance, since the change is backend-only (ORM and controller)
+
+  - id: modern-web-guidance-trivial-label
+    task: Change the label of the "Submit" button on the contact form to "Send message".
+    setup: brownfield Laravel target; resources/views/contact.blade.php holds the button
+    capabilities: [subagents, network]
+    expect:
+      - reason: no phase proposes modern-web-guidance/modern-web-guidance, since a copy change involves no web platform choice
+
   - id: tie-review
     task: Review my branch implementing CSV export for the reports page against issue #12.
     setup: brownfield TypeScript target; branch with a medium diff; issue #12 states the behavior
@@ -235,3 +273,17 @@ runs:
   - { case: arena-complex, date: 2026-11-04, model: claude-opus-5-5, effort: medium, harness: "Claude Code 2.1.318, claude -p fresh session", result: pass, notes: "implementation default mattpocock/implement; pstack/arena is the second alternative, its reason starting High cost with runners, judging, grafting and verification and the benefit of comparing CRDT vs LWW builds" }
   - { case: arena-without-subagents, date: 2026-11-04, model: claude-opus-5-5, effort: medium, harness: "Claude Code 2.1.318, claude -p fresh session", result: pass, notes: "pstack/arena left out because the harness has no subagents with isolated outputs; an architecture candidate notes its internal arena would run in sequence (reduced independence)" }
   - { case: arena-simple, date: 2026-11-04, model: claude-opus-5-5, effort: medium, harness: "Claude Code 2.1.318, claude -p fresh session", result: pass, notes: "implementation default mattpocock/implement, no arena; the settled one-file change gets a single implementation" }
+  # 2026-11-21 batch at router cb04123, same method as 2026-11-04: skill file followed by path, user config isolated
+  # (ENGINEERING_ROUTER_CONFIG empty, XDG_CONFIG_HOME empty), tools Read/Grep/Glob/Bash/Agent, no Write/Edit; Laravel
+  # targets without a GitHub remote. Graded by check-selection, the target snapshot and a mechanical expect check,
+  # reasons read by hand. 4 cases, total USD 4.63 (harness-reported).
+  - { case: clear-fit-modern-web-guidance, date: 2026-11-21, model: claude-opus-5-5, effort: medium, harness: "Claude Code 2.1.330, claude -p fresh session", result: fail, notes: "proposal fits: refactoring default modern-web-guidance/modern-web-guidance via its legacy-scan, verify and report flow, network named, also the research default; but the answer's last json block was a shortened copy without reasons (check-selection: 24 errors) and the full selection only passed from a file it wrote under /tmp" }
+  - { case: modern-web-guidance-informs-frontend, date: 2026-11-21, model: claude-opus-5-5, effort: medium, harness: "Claude Code 2.1.330, claude -p fresh session", result: fail, notes: "no research phase: modern-web-guidance/modern-web-guidance appears only as a review alternative (native dialog focus, Escape, inert); implementation default addyosmani/frontend-ui-engineering without it holds" }
+  - { case: modern-web-guidance-backend-only, date: 2026-11-21, model: claude-opus-5-5, effort: medium, harness: "Claude Code 2.1.330, claude -p fresh session", result: pass, notes: "modern-web-guidance appears in no phase (implementation addyosmani/source-driven-development); the answer gives no explicit reason for leaving it out" }
+  - { case: modern-web-guidance-trivial-label, date: 2026-11-21, model: claude-opus-5-5, effort: medium, harness: "Claude Code 2.1.330, claude -p fresh session", result: pass, notes: "modern-web-guidance appears in no phase (implementation mattpocock/implement, review, pull-request); the answer gives no explicit reason for leaving it out" }
+  # 2026-11-21 second batch, same method, after skill-selector §3 (research enters on a current external fact the target
+  # does not settle) and §7 (the json block is the whole checked selection). 4 cases, total USD 5.37 (harness-reported).
+  - { case: clear-fit-modern-web-guidance, date: 2026-11-21, model: claude-opus-5-5, effort: medium, harness: "Claude Code 2.1.330, claude -p fresh session", result: pass, notes: "pass under the ambiguity widened after this run to accept research (fail as first graded); classified maintenance, no refactoring phase: modern-web-guidance/modern-web-guidance is the research default, its reason naming the use_when, the legacy-scan, keepWhen/dropWhen and per-finding guide flow and network, and a review alternative; implementation addyosmani/frontend-ui-engineering; the json block is now complete (selection OK)" }
+  - { case: modern-web-guidance-informs-frontend, date: 2026-11-21, model: claude-opus-5-5, effort: medium, harness: "Claude Code 2.1.330, claude -p fresh session", result: pass, notes: "research default modern-web-guidance/modern-web-guidance (native dialog vs custom ARIA dialog, focus, Escape, inertness, unsettled by the repo); implementation default addyosmani/frontend-ui-engineering without it; also a review alternative" }
+  - { case: modern-web-guidance-backend-only, date: 2026-11-21, model: claude-opus-5-5, effort: medium, harness: "Claude Code 2.1.330, claude -p fresh session", result: pass, notes: "no research phase and modern-web-guidance in no phase; implementation mattpocock/implement" }
+  - { case: modern-web-guidance-trivial-label, date: 2026-11-21, model: claude-opus-5-5, effort: medium, harness: "Claude Code 2.1.330, claude -p fresh session", result: pass, notes: "no research phase and modern-web-guidance in no phase; four phases, implementation mattpocock/implement" }

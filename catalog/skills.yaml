@@ -918,3 +918,30 @@ skills:
       - "framework-specific implementation decisions need verification and citations from the official documentation for the installed versions"
     avoid_when:
       - "the task is version-independent logic or the user explicitly prioritizes speed over documentation verification"
+
+  # ---------- modern-web-guidance ----------
+
+  modern-web-guidance/modern-web-guidance:
+    source: modern-web-guidance
+    path: vendors/modern-web-guidance/skills/modern-web-guidance/SKILL.md
+    categories: [research, refactoring, review, performance]
+    use_when:
+      - "browser-side markup, styling or script whose outcome depends on which web platform feature is used, such as a modal or popover, a data table, form validation, a responsive layout, accessible interaction, page-load metrics, sanitizing untrusted HTML or deciding what the target browsers support"
+      - "the user explicitly asks to audit or modernize existing frontend code for legacy web platform patterns"
+    avoid_when:
+      - "backend-only work: PHP/Laravel, ORM/Eloquent, SQL or API routes"
+      - "infrastructure or tooling: CI/CD, Docker, bundler, tsconfig or linter configuration"
+      - "trivial edits such as label or copy changes and renames"
+      - "replacing a working component with a native API only because one exists (e.g. an existing modal with <dialog>); propose a replacement only for a stated benefit (accessibility, maintenance, performance, fewer dependencies), and note that native replacements can change focus handling, Escape, scroll lock and stacking, so they need tests or browser verification"
+    requires:
+      - "outbound network access at runtime: it runs npx -y modern-web-guidance@latest"
+
+  modern-web-guidance/chrome-extensions:
+    source: modern-web-guidance
+    path: vendors/modern-web-guidance/skills/chrome-extensions/SKILL.md
+    categories: [implementation]
+    use_when:
+      - "building, changing or debugging a Chrome extension (Manifest V3, chrome.* APIs, content scripts, extension service worker, popup or side panel)"
+      - "preparing a Chrome extension for the Chrome Web Store: listing, permission justifications, privacy policy or a review rejection"
+    avoid_when:
+      - "an ordinary web page, web app or PWA, including its own service worker, popups or dialogs, that is not packaged as a browser extension"

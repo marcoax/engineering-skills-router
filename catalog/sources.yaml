@@ -18,3 +18,9 @@ sources:
     local_path: vendors/addyosmani
     skill_globs:
       - skills/*/SKILL.md
+
+  modern-web-guidance:
+    repository: https://github.com/GoogleChrome/modern-web-guidance
+    local_path: vendors/modern-web-guidance
+    skill_globs:
+      - skills/*/SKILL.md
